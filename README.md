@@ -39,3 +39,14 @@ infra/
 - Booking overlap is blocked at DB level with `btree_gist`, `tstzrange`, and partial active-only exclusion.
 - Bookings are cancelled via status (`ACTIVE`, `CANCELLED`) and never hard deleted.
 
+## Workspace API (Implemented)
+
+- `POST /api/workspaces` creates a workspace and the creator is added as `ADMIN`.
+- `GET /api/workspaces` lists only visible workspaces:
+  - active membership
+  - pending invitation matching authenticated user email
+- `POST /api/workspaces/:workspaceId/invitations` invites a user email (admin-only).
+- `POST /api/workspaces/invitations/:invitationId/accept` accepts an invitation.
+- `POST /api/workspaces/invitations/:invitationId/reject` rejects an invitation.
+
+All workspace endpoints enforce verified email and return errors in `{ code, message }` format.

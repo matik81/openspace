@@ -15,6 +15,8 @@
 
 - Email verification flow
 - Invitation accept flow
+- Invitation reject flow
+- Workspace visibility rules (active member or pending invitation only)
 - Booking creation
 - Booking overlap rejection
 
