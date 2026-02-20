@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  REVOKED
+}
+
+enum BookingStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum BookingCriticality {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model User {
+  id                String            @id @default(uuid()) @db.Uuid
+  firstName         String
+  lastName          String
+  email             String            @unique
+  passwordHash      String
+  emailVerifiedAt   DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  memberships       WorkspaceMember[]
+  createdWorkspaces Workspace[]       @relation("WorkspaceCreatedBy")
+  invitations       Invitation[]      @relation("InvitationInvitedBy")
+  bookings          Booking[]
+}
+
+model Workspace {
+  id              String            @id @default(uuid()) @db.Uuid
+  name            String
+  timezone        String            @default("UTC")
+  createdByUserId String            @db.Uuid
+  createdByUser   User              @relation("WorkspaceCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  members         WorkspaceMember[]
+  invitations     Invitation[]
+  rooms           Room[]
+  bookings        Booking[]
+
+  @@index([createdByUserId])
+}
+
+model WorkspaceMember {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  userId      String           @db.Uuid
+  role        WorkspaceRole    @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId, status])
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  workspaceId    String           @db.Uuid
+  email          String
+  tokenHash      String
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  invitedByUserId String          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedByUser  User             @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@index([workspaceId, email, status])
+}
+
+model Room {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model Booking {
+  id             String            @id @default(uuid()) @db.Uuid
+  workspaceId    String            @db.Uuid
+  roomId         String            @db.Uuid
+  createdByUserId String           @db.Uuid
+  startAt        DateTime          @db.Timestamptz(6)
+  endAt          DateTime          @db.Timestamptz(6)
+  timeRange      Unsupported("tstzrange")? @map("timeRange")
+  subject        String
+  criticality    BookingCriticality @default(MEDIUM)
+  status         BookingStatus      @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  room           Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdByUser  User               @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, startAt])
+  @@index([workspaceId, status])
+}
+

@@ -1,0 +1,8 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+.env
+apps/api/.env
+infra/docker/.env
