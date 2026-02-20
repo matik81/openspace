@@ -9,6 +9,7 @@ type ValidatedEnv = {
   JWT_REFRESH_SECRET: string;
   JWT_ACCESS_TTL: string;
   JWT_REFRESH_TTL: string;
+  EMAIL_VERIFICATION_TTL_MINUTES: number;
 };
 
 function isNonEmptyString(value: unknown): value is string {
@@ -23,6 +24,23 @@ function parsePort(value: unknown, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
     throw new Error('API_PORT must be an integer between 1 and 65535');
+  }
+
+  return parsed;
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  fallback: number,
+  fieldName: string,
+): number {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} must be a positive integer`);
   }
 
   return parsed;
@@ -107,6 +125,16 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     isNonEmptyString(config.JWT_ACCESS_TTL) ? config.JWT_ACCESS_TTL : '15m';
   const jwtRefreshTtl =
     isNonEmptyString(config.JWT_REFRESH_TTL) ? config.JWT_REFRESH_TTL : '7d';
+  let emailVerificationTtlMinutes = 60;
+  try {
+    emailVerificationTtlMinutes = parsePositiveInteger(
+      config.EMAIL_VERIFICATION_TTL_MINUTES,
+      60,
+      'EMAIL_VERIFICATION_TTL_MINUTES',
+    );
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
 
   if (errors.length > 0) {
     throw new Error(`Invalid environment variables: ${errors.join('; ')}`);
@@ -121,6 +149,6 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     JWT_REFRESH_SECRET: jwtRefreshSecret,
     JWT_ACCESS_TTL: jwtAccessTtl,
     JWT_REFRESH_TTL: jwtRefreshTtl,
+    EMAIL_VERIFICATION_TTL_MINUTES: emailVerificationTtlMinutes,
   };
 }
-
