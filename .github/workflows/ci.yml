@@ -55,6 +55,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Prisma generate
+        run: pnpm --filter @openspace/api run prisma:generate
+
       - name: Typecheck
         run: pnpm typecheck
 
