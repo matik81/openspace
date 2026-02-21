@@ -46,15 +46,17 @@ function parsePositiveInteger(
   return parsed;
 }
 
-function assertUrl(name: string, value: unknown): string {
-  if (!isNonEmptyString(value)) {
+function assertUrl(name: string, value: unknown, fallback?: string): string {
+  const resolvedValue = isNonEmptyString(value) ? value : fallback;
+
+  if (!isNonEmptyString(resolvedValue)) {
     throw new Error(`${name} is required`);
   }
 
   try {
     // URL parsing ensures basic URI structure.
-    new URL(value);
-    return value;
+    new URL(resolvedValue);
+    return resolvedValue;
   } catch {
     throw new Error(`${name} must be a valid URL`);
   }
@@ -104,7 +106,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
   }
 
   try {
-    redisUrl = assertUrl('REDIS_URL', config.REDIS_URL);
+    redisUrl = assertUrl('REDIS_URL', config.REDIS_URL, 'redis://localhost:6379');
   } catch (error) {
     errors.push((error as Error).message);
   }

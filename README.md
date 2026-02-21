@@ -20,9 +20,12 @@ infra/
    - `pnpm install`
 2. Start local infrastructure:
    - `pnpm db:up`
-3. Configure frontend environment:
+3. Configure API environment:
+   - Copy `apps/api/.env.example` to `apps/api/.env`.
+   - `REDIS_URL` defaults to `redis://localhost:6379` in development if omitted, but you can set it explicitly.
+4. Configure frontend environment:
    - Copy `apps/web/.env.example` to `apps/web/.env.local` (or `.env`) and keep `OPENSPACE_API_BASE_URL=http://localhost:3001` for local development.
-4. Run development:
+5. Run development:
    - `pnpm dev`
 
 ## Workspace Commands
