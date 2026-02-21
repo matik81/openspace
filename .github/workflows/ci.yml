@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: openspace
+          POSTGRES_USER: openspace
+          POSTGRES_PASSWORD: openspace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openspace -d openspace"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      API_PORT: 3001
+      DATABASE_URL: postgresql://openspace:openspace@localhost:5432/openspace?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: 1234567890abcdef
+      JWT_REFRESH_SECRET: abcdef1234567890
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      EMAIL_VERIFICATION_TTL_MINUTES: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Prisma migrate
+        run: pnpm --filter @openspace/api run prisma:migrate:deploy
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
