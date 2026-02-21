@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
@@ -261,17 +260,6 @@ export default function DashboardPage() {
           </ul>
         ) : null}
 
-        <p className="mt-6 text-sm text-slate-600">
-          Need to register or verify another account?{' '}
-          <Link className="font-medium text-brand underline-offset-2 hover:underline" href="/register">
-            Register
-          </Link>{' '}
-          or{' '}
-          <Link className="font-medium text-brand underline-offset-2 hover:underline" href="/verify-email">
-            verify email
-          </Link>
-          .
-        </p>
       </section>
     </main>
   );

@@ -46,7 +46,7 @@ export default function RegisterPage() {
     }
 
     const email = encodeURIComponent(form.email.trim());
-    router.push(`/verify-email?email=${email}&registered=1`);
+    router.replace(`/verify-email?email=${email}&registered=1`);
   }
 
   return (

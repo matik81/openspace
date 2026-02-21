@@ -107,12 +107,20 @@ function LoginPageContent() {
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-slate-600">
-          Need an account?{' '}
-          <Link className="font-medium text-brand underline-offset-2 hover:underline" href="/register">
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/register"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
             Register
           </Link>
-        </p>
+          <Link
+            href="/verify-email"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Verify email
+          </Link>
+        </div>
       </section>
     </main>
   );

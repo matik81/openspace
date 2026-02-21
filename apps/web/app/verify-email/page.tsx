@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useMemo, useState } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
 import type { ErrorPayload } from '@/lib/types';
@@ -15,6 +14,7 @@ export default function VerifyEmailPage() {
 }
 
 function VerifyEmailPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialToken = useMemo(() => searchParams.get('token') ?? '', [searchParams]);
   const email = searchParams.get('email');
@@ -23,13 +23,11 @@ function VerifyEmailPageContent() {
   const [token, setToken] = useState(initialToken);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<ErrorPayload | null>(null);
-  const [isVerified, setIsVerified] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    setIsVerified(false);
 
     const response = await fetch('/api/auth/verify-email', {
       method: 'POST',
@@ -45,8 +43,7 @@ function VerifyEmailPageContent() {
       return;
     }
 
-    setIsVerified(true);
-    setIsSubmitting(false);
+    router.replace('/login');
   }
 
   return (
@@ -66,12 +63,6 @@ function VerifyEmailPageContent() {
         {error ? (
           <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error.code}: {error.message}
-          </p>
-        ) : null}
-
-        {isVerified ? (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Email verified. You can now log in.
           </p>
         ) : null}
 
@@ -96,12 +87,6 @@ function VerifyEmailPageContent() {
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-slate-600">
-          Ready to continue?{' '}
-          <Link className="font-medium text-brand underline-offset-2 hover:underline" href="/login">
-            Go to login
-          </Link>
-        </p>
       </section>
     </main>
   );
