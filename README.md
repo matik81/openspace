@@ -50,3 +50,17 @@ infra/
 - `POST /api/workspaces/invitations/:invitationId/reject` rejects an invitation.
 
 All workspace endpoints enforce verified email and return errors in `{ code, message }` format.
+
+## Room API (Implemented, Admin Only)
+
+- `POST /api/workspaces/:workspaceId/rooms` creates a room.
+- `GET /api/workspaces/:workspaceId/rooms` lists workspace rooms.
+- `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room.
+- `PATCH /api/workspaces/:workspaceId/rooms/:roomId` updates a room.
+- `DELETE /api/workspaces/:workspaceId/rooms/:roomId` deletes a room when no bookings exist.
+
+## Booking API (Implemented)
+
+- `POST /api/workspaces/:workspaceId/bookings` creates an `ACTIVE` booking.
+- `POST /api/workspaces/:workspaceId/bookings/:bookingId/cancel` soft-cancels booking by setting status to `CANCELLED`.
+- Overlap violations return `{ code: "BOOKING_OVERLAP", message: "..." }` from PostgreSQL exclusion constraints.
