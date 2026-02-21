@@ -20,7 +20,9 @@ infra/
    - `pnpm install`
 2. Start local infrastructure:
    - `pnpm db:up`
-3. Run development:
+3. Configure frontend environment:
+   - Copy `apps/web/.env.example` to `apps/web/.env.local` (or `.env`) and keep `OPENSPACE_API_BASE_URL=http://localhost:3001` for local development.
+4. Run development:
    - `pnpm dev`
 
 ## Workspace Commands
@@ -58,6 +60,17 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room.
 - `PATCH /api/workspaces/:workspaceId/rooms/:roomId` updates a room.
 - `DELETE /api/workspaces/:workspaceId/rooms/:roomId` deletes a room when no bookings exist.
+
+## Web Frontend (Implemented)
+
+- `GET /register` user registration page connected to `POST /api/auth/register`.
+- `GET /verify-email` email verification page connected to `POST /api/auth/verify-email`.
+- `GET /login` login page connected to `POST /api/auth/login`.
+- `GET /dashboard` workspace visibility page connected to:
+  - `GET /api/workspaces`
+  - `POST /api/workspaces/invitations/:invitationId/accept`
+  - `POST /api/workspaces/invitations/:invitationId/reject`
+- Dashboard highlights pending invitations and provides Accept/Reject actions.
 
 ## Booking API (Implemented)
 
