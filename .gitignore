@@ -6,3 +6,4 @@ coverage
 .env
 apps/api/.env
 infra/docker/.env
+.private
