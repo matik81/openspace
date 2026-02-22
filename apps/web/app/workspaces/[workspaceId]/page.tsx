@@ -466,58 +466,60 @@ function WorkspaceMemberContent({
             />
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
-            <input
-              required
-              type="date"
-              min={minBookingDate}
-              value={bookingForm.dateLocal}
-              onChange={(event) =>
-                setBookingForm((previous) => ({
-                  ...previous,
-                  dateLocal: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+          <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
+              <input
+                required
+                type="date"
+                min={minBookingDate}
+                value={bookingForm.dateLocal}
+                onChange={(event) =>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    dateLocal: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
-            <input
-              required
-              type="time"
-              value={bookingForm.startTimeLocal}
-              onChange={(event) => {
-                const nextStartTime = event.target.value;
-                const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
+              <input
+                required
+                type="time"
+                value={bookingForm.startTimeLocal}
+                onChange={(event) => {
+                  const nextStartTime = event.target.value;
+                  const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
 
-                setBookingForm((previous) => ({
-                  ...previous,
-                  startTimeLocal: nextStartTime,
-                  endTimeLocal: autoEndTime ?? previous.endTimeLocal,
-                }));
-              }}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    startTimeLocal: nextStartTime,
+                    endTimeLocal: autoEndTime ?? previous.endTimeLocal,
+                  }));
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
-            <input
-              required
-              type="time"
-              value={bookingForm.endTimeLocal}
-              onChange={(event) =>
-                setBookingForm((previous) => ({
-                  ...previous,
-                  endTimeLocal: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
+              <input
+                required
+                type="time"
+                value={bookingForm.endTimeLocal}
+                onChange={(event) =>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    endTimeLocal: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+          </div>
 
           <div className="md:col-span-2">
             <button
