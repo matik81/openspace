@@ -11,6 +11,7 @@ type RegisterFormState = {
   lastName: string;
   email: string;
   password: string;
+  confirmPassword: string;
 };
 
 const initialFormState: RegisterFormState = {
@@ -18,6 +19,7 @@ const initialFormState: RegisterFormState = {
   lastName: '',
   email: '',
   password: '',
+  confirmPassword: '',
 };
 
 export default function RegisterPage() {
@@ -28,15 +30,29 @@ export default function RegisterPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    setIsSubmitting(true);
     setError(null);
+
+    if (form.password !== form.confirmPassword) {
+      setError({
+        code: 'PASSWORD_MISMATCH',
+        message: 'Password and password confirmation must match',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
 
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
       },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        password: form.password,
+      }),
     });
 
     if (!response.ok) {
@@ -63,25 +79,27 @@ export default function RegisterPage() {
         ) : null}
 
         <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">First name</span>
-            <input
-              required
-              value={form.firstName}
-              onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">First name</span>
+              <input
+                required
+                value={form.firstName}
+                onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Last name</span>
-            <input
-              required
-              value={form.lastName}
-              onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Last name</span>
+              <input
+                required
+                value={form.lastName}
+                onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+          </div>
 
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">Email</span>
@@ -94,17 +112,31 @@ export default function RegisterPage() {
             />
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Password</span>
-            <input
-              required
-              minLength={8}
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Password</span>
+              <input
+                required
+                minLength={8}
+                type="password"
+                value={form.password}
+                onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Confirm password</span>
+              <input
+                required
+                minLength={8}
+                type="password"
+                value={form.confirmPassword}
+                onChange={(event) => setForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+          </div>
 
           <button
             type="submit"
