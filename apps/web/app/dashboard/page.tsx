@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
+import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
 import type {
   ErrorPayload,
   InvitationStatus,
@@ -37,6 +38,11 @@ type WorkspaceListPayload = {
 
 type InvitationAction = 'accept' | 'reject';
 
+type CreateWorkspaceFormState = {
+  name: string;
+  timezone: string;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [items, setItems] = useState<WorkspaceItem[]>([]);
@@ -47,6 +53,12 @@ export default function DashboardPage() {
     invitationId: string;
     action: InvitationAction;
   } | null>(null);
+  const [isCreateWorkspaceFormVisible, setIsCreateWorkspaceFormVisible] = useState(false);
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [createWorkspaceForm, setCreateWorkspaceForm] = useState<CreateWorkspaceFormState>({
+    name: '',
+    timezone: 'UTC',
+  });
 
   const pendingInvitationId = pendingInvitationAction?.invitationId ?? null;
 
@@ -132,6 +144,89 @@ export default function DashboardPage() {
     router.refresh();
   }, [router]);
 
+  const resetCreateWorkspaceForm = useCallback(() => {
+    setCreateWorkspaceForm({
+      name: '',
+      timezone: resolveDefaultTimezone(),
+    });
+  }, []);
+
+  const handleToggleCreateWorkspaceForm = useCallback(() => {
+    setBanner(null);
+    setError(null);
+    setIsCreateWorkspaceFormVisible((previous) => {
+      const next = !previous;
+      if (next) {
+        resetCreateWorkspaceForm();
+      }
+
+      return next;
+    });
+  }, [resetCreateWorkspaceForm]);
+
+  const handleCancelCreateWorkspace = useCallback(() => {
+    setIsCreateWorkspaceFormVisible(false);
+    setBanner(null);
+    setError(null);
+    resetCreateWorkspaceForm();
+  }, [resetCreateWorkspaceForm]);
+
+  const handleCreateWorkspace = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (isCreatingWorkspace) {
+        return;
+      }
+
+      setIsCreatingWorkspace(true);
+      setError(null);
+      setBanner(null);
+
+      try {
+        const response = await fetch('/api/workspaces', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: createWorkspaceForm.name,
+            timezone: createWorkspaceForm.timezone,
+          }),
+        });
+        const payload = await safeReadJson(response);
+
+        if (!response.ok) {
+          const normalized = normalizeErrorPayload(payload, response.status);
+          if (normalized.code === 'UNAUTHORIZED') {
+            router.replace('/login?reason=session-expired');
+            return;
+          }
+
+          if (normalized.code === 'EMAIL_NOT_VERIFIED') {
+            router.replace('/verify-email');
+            return;
+          }
+
+          setError(normalized);
+          return;
+        }
+
+        setBanner('Workspace created.');
+        setIsCreateWorkspaceFormVisible(false);
+        resetCreateWorkspaceForm();
+        await loadWorkspaces();
+      } catch {
+        setError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Unable to reach API service',
+        });
+      } finally {
+        setIsCreatingWorkspace(false);
+      }
+    },
+    [createWorkspaceForm, isCreatingWorkspace, loadWorkspaces, resetCreateWorkspaceForm, router],
+  );
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
       <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -147,6 +242,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleToggleCreateWorkspaceForm}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95"
+            >
+              {isCreateWorkspaceFormVisible ? 'Close create form' : 'Create workspace'}
+            </button>
             <button
               type="button"
               onClick={() => void loadWorkspaces()}
@@ -174,6 +276,74 @@ export default function DashboardPage() {
           <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error.code}: {error.message}
           </p>
+        ) : null}
+
+        {isCreateWorkspaceFormVisible ? (
+          <form
+            className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-5"
+            onSubmit={(event) => void handleCreateWorkspace(event)}
+          >
+            <h2 className="text-lg font-semibold text-slate-900">Create workspace</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Configure a workspace name and its display timezone.
+            </p>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Workspace name</span>
+                <input
+                  required
+                  value={createWorkspaceForm.name}
+                  onChange={(event) =>
+                    setCreateWorkspaceForm((previous) => ({
+                      ...previous,
+                      name: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
+                <select
+                  required
+                  value={createWorkspaceForm.timezone}
+                  onChange={(event) =>
+                    setCreateWorkspaceForm((previous) => ({
+                      ...previous,
+                      timezone: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  {IANA_TIMEZONES.map((timezone) => (
+                    <option key={timezone} value={timezone}>
+                      {timezone}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={isCreatingWorkspace}
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCreatingWorkspace ? 'Creating...' : 'Create workspace'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelCreateWorkspace}
+                disabled={isCreatingWorkspace}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         ) : null}
 
         {isLoading ? <p className="mt-6 text-slate-600">Loading workspaces...</p> : null}
@@ -211,7 +381,7 @@ export default function DashboardPage() {
                     </div>
                     {item.membership ? (
                       <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                        {item.membership.role} · {item.membership.status}
+                        {item.membership.role} / {item.membership.status}
                       </span>
                     ) : item.invitation ? (
                       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -259,7 +429,6 @@ export default function DashboardPage() {
             })}
           </ul>
         ) : null}
-
       </section>
     </main>
   );

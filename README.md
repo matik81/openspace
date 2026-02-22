@@ -70,10 +70,11 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - `GET /verify-email` email verification page connected to `POST /api/auth/verify-email`.
 - `GET /login` login page connected to `POST /api/auth/login`.
 - `GET /dashboard` workspace visibility page connected to:
+  - `POST /api/workspaces`
   - `GET /api/workspaces`
   - `POST /api/workspaces/invitations/:invitationId/accept`
   - `POST /api/workspaces/invitations/:invitationId/reject`
-- Dashboard highlights pending invitations and provides Accept/Reject actions.
+- Dashboard supports creating workspaces, highlights pending invitations, and provides Accept/Reject actions.
 
 ## Booking API (Implemented)
 
