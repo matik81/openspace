@@ -46,6 +46,21 @@ export class BookingsService {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+    const workspace = await this.prismaService.workspace.findUnique({
+      where: {
+        id: normalizedWorkspaceId,
+      },
+      select: {
+        timezone: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Workspace not found',
+      });
+    }
 
     const mine = this.parseBooleanQuery(query.mine, true, 'mine');
     const includePast = this.parseBooleanQuery(query.includePast, false, 'includePast');
@@ -67,20 +82,21 @@ export class BookingsService {
       where.status = BookingStatus.ACTIVE;
     }
 
-    if (!includePast) {
-      where.endAt = {
-        gte: new Date(),
-      };
-    }
-
     const bookings = await this.prismaService.booking.findMany({
       where,
       select: this.bookingListSelect(),
       orderBy: [{ startAt: 'asc' }, { createdAt: 'asc' }],
     });
 
+    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
+    const visibleBookings = includePast
+      ? bookings
+      : bookings.filter(
+          (booking) => this.toLocalDateKey(booking.startAt, workspace.timezone) >= todayDateKey,
+        );
+
     return {
-      items: bookings.map((booking) => ({
+      items: visibleBookings.map((booking) => ({
         id: booking.id,
         workspaceId: booking.workspaceId,
         roomId: booking.roomId,

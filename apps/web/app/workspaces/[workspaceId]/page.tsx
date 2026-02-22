@@ -18,6 +18,7 @@ import {
   addHoursToTimeInput,
   dateAndTimeToUtcIso,
   formatUtcInTimezone,
+  formatUtcRangeInTimezone,
   utcIsoToWorkspaceDateInput,
   workspaceTodayDateInput,
 } from '@/lib/workspace-time';
@@ -180,6 +181,18 @@ function WorkspaceMemberContent({
     }));
   }, [rooms]);
 
+  useEffect(() => {
+    if (!selectedWorkspace || !isActiveMember) {
+      return;
+    }
+
+    const today = workspaceTodayDateInput(selectedWorkspace.timezone);
+    setBookingForm((previous) => ({
+      ...previous,
+      dateLocal: previous.dateLocal || today,
+    }));
+  }, [selectedWorkspace, isActiveMember]);
+
   const handleCreateBooking = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -253,7 +266,7 @@ function WorkspaceMemberContent({
       setBookingForm((previous) => ({
         ...previous,
         subject: '',
-        dateLocal: '',
+        dateLocal: workspaceTodayDateInput(selectedWorkspace.timezone),
         startTimeLocal: '',
         endTimeLocal: '',
       }));
@@ -576,8 +589,11 @@ function WorkspaceMemberContent({
                       {booking.roomName} • {booking.criticality} • {booking.status}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {formatUtcInTimezone(booking.startAt, selectedWorkspace.timezone)} to{' '}
-                      {formatUtcInTimezone(booking.endAt, selectedWorkspace.timezone)}
+                      {formatUtcRangeInTimezone(
+                        booking.startAt,
+                        booking.endAt,
+                        selectedWorkspace.timezone,
+                      )}
                     </p>
                   </div>
                   <button

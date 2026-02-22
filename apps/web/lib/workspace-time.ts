@@ -14,6 +14,36 @@ export function formatUtcInTimezone(value: string, timezone: string): string {
   return zoned.toLocaleString(DateTime.DATETIME_MED);
 }
 
+export function formatUtcRangeInTimezone(
+  startValue: string,
+  endValue: string,
+  timezone: string,
+): string {
+  const start = DateTime.fromISO(startValue, { zone: 'utc' });
+  const end = DateTime.fromISO(endValue, { zone: 'utc' });
+
+  if (!start.isValid || !end.isValid) {
+    return `${formatUtcInTimezone(startValue, timezone)} to ${formatUtcInTimezone(endValue, timezone)}`;
+  }
+
+  const zonedStart = start.setZone(timezone);
+  const zonedEnd = end.setZone(timezone);
+
+  if (!zonedStart.isValid || !zonedEnd.isValid) {
+    return `${formatUtcInTimezone(startValue, timezone)} to ${formatUtcInTimezone(endValue, timezone)}`;
+  }
+
+  if (zonedStart.hasSame(zonedEnd, 'day')) {
+    return `${zonedStart.toLocaleString(DateTime.DATETIME_MED)} to ${zonedEnd.toLocaleString(
+      DateTime.TIME_24_SIMPLE,
+    )}`;
+  }
+
+  return `${zonedStart.toLocaleString(DateTime.DATETIME_MED)} to ${zonedEnd.toLocaleString(
+    DateTime.DATETIME_MED,
+  )}`;
+}
+
 export function localInputToUtcIso(localValue: string, timezone: string): string | null {
   const parsed = DateTime.fromFormat(localValue, "yyyy-LL-dd'T'HH:mm", { zone: timezone });
   if (!parsed.isValid) {
