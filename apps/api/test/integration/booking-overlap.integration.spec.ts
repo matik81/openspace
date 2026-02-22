@@ -227,7 +227,7 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('cancels bookings softly and allows rebooking the same time range', async () => {
+  it('hard deletes cancelled bookings and allows rebooking the same time range', async () => {
     const adminEmail = 'booking-admin-cancel@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -271,7 +271,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(cancelResponse.status).toBe(201);
-    expect(cancelResponse.body.status).toBe('CANCELLED');
+    expect(cancelResponse.body).toEqual({ deleted: true });
 
     if (!prismaService) {
       throw new Error('Prisma service unavailable');
@@ -279,12 +279,9 @@ describe('Booking overlap integration', () => {
 
     const persistedBooking = await prismaService.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, status: true },
+      select: { id: true },
     });
-    expect(persistedBooking).toEqual({
-      id: bookingId,
-      status: 'CANCELLED',
-    });
+    expect(persistedBooking).toBeNull();
 
     const secondBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
@@ -298,6 +295,102 @@ describe('Booking overlap integration', () => {
 
     expect(secondBookingResponse.status).toBe(201);
     expect(secondBookingResponse.body.status).toBe('ACTIVE');
+  });
+
+  it('allows cancelling same-day reservations and blocks cancelling past reservations', async () => {
+    const adminEmail = 'booking-cancel-date-rules@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Cancel Date Rules',
+        timezone: 'UTC',
+      });
+
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Room Cancel Rule',
+      });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
+
+    const adminUser = await prismaService.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true },
+    });
+    expect(adminUser).toEqual({ id: expect.any(String) });
+
+    const now = new Date();
+    const todayUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+    );
+    const yesterdayUtc = new Date(todayUtc);
+    yesterdayUtc.setUTCDate(yesterdayUtc.getUTCDate() - 1);
+
+    const toUtcIso = (date: Date, hour: number, minute = 0) =>
+      new Date(
+        Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute, 0, 0),
+      ).toISOString();
+
+    const pastBooking = await prismaService.booking.create({
+      data: {
+        workspaceId,
+        roomId,
+        createdByUserId: adminUser!.id,
+        startAt: new Date(toUtcIso(yesterdayUtc, 10)),
+        endAt: new Date(toUtcIso(yesterdayUtc, 11)),
+        subject: 'Past reservation',
+      },
+      select: { id: true },
+    });
+
+    const cancelPastResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings/${pastBooking.id}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(cancelPastResponse.status).toBe(400);
+    expect(cancelPastResponse.body).toEqual({
+      code: 'BOOKING_PAST_CANCELLATION_NOT_ALLOWED',
+      message: 'Past reservations cannot be cancelled',
+    });
+
+    const sameDayBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: toUtcIso(todayUtc, 8),
+        endAt: toUtcIso(todayUtc, 9),
+        subject: 'Same day reservation',
+      });
+
+    expect(sameDayBookingResponse.status).toBe(201);
+    const sameDayBookingId = sameDayBookingResponse.body.id as string;
+
+    const cancelSameDayResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings/${sameDayBookingId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(cancelSameDayResponse.status).toBe(201);
+    expect(cancelSameDayResponse.body).toEqual({ deleted: true });
+
+    const deletedSameDayBooking = await prismaService.booking.findUnique({
+      where: { id: sameDayBookingId },
+      select: { id: true },
+    });
+    expect(deletedSameDayBooking).toBeNull();
   });
 
   it('lists bookings with default own-upcoming-active filter and optional history toggles', async () => {
@@ -409,7 +502,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(cancelFutureBookingResponse.status).toBe(201);
-    expect(cancelFutureBookingResponse.body.status).toBe('CANCELLED');
+    expect(cancelFutureBookingResponse.body).toEqual({ deleted: true });
 
     const defaultListResponse = await request(app.getHttpServer())
       .get(`/api/workspaces/${workspaceId}/bookings`)
@@ -429,13 +522,10 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(includeHistoryResponse.status).toBe(200);
-    expect(includeHistoryResponse.body.items).toHaveLength(3);
+    expect(includeHistoryResponse.body.items).toHaveLength(2);
     const returnedIds = includeHistoryResponse.body.items.map((item: { id: string }) => item.id);
-    expect(returnedIds).toEqual([
-      pastBooking.id,
-      activeFutureBookingId,
-      cancelledFutureBookingId,
-    ]);
+    expect(returnedIds).toEqual([pastBooking.id, activeFutureBookingId]);
+    expect(returnedIds).not.toContain(cancelledFutureBookingId);
 
     const pendingListResponse = await request(app.getHttpServer())
       .get(`/api/workspaces/${workspaceId}/bookings`)

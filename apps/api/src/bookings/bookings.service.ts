@@ -211,7 +211,13 @@ export class BookingsService {
       },
       select: {
         id: true,
+        startAt: true,
         status: true,
+        workspace: {
+          select: {
+            timezone: true,
+          },
+        },
       },
     });
 
@@ -229,15 +235,24 @@ export class BookingsService {
       });
     }
 
-    return this.prismaService.booking.update({
+    const bookingDateKey = this.toLocalDateKey(booking.startAt, booking.workspace.timezone);
+    const todayDateKey = this.toLocalDateKey(new Date(), booking.workspace.timezone);
+    if (bookingDateKey < todayDateKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_PAST_CANCELLATION_NOT_ALLOWED',
+        message: 'Past reservations cannot be cancelled',
+      });
+    }
+
+    await this.prismaService.booking.delete({
       where: {
         id: booking.id,
       },
-      data: {
-        status: BookingStatus.CANCELLED,
-      },
-      select: this.bookingSelect(),
     });
+
+    return {
+      deleted: true,
+    };
   }
 
   private async requireVerifiedUser(userId: string): Promise<VerifiedUser> {

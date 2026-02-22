@@ -90,10 +90,9 @@ Overlap safety must be concurrency-proof.
 
 ## Cancellation Policy
 
-Bookings must not be deleted.
-Use status:
-- ACTIVE
-- CANCELLED
+Users can cancel only reservations scheduled on the current workspace day or in the future.
+Past reservations cannot be cancelled.
+Reservation cancellation performs a definitive hard delete from the database.
 
 ---
 

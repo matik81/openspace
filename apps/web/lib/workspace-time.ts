@@ -39,6 +39,20 @@ export function workspaceTodayDateInput(timezone: string): string {
   return DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd');
 }
 
+export function utcIsoToWorkspaceDateInput(utcValue: string, timezone: string): string {
+  const parsed = DateTime.fromISO(utcValue, { zone: 'utc' });
+  if (!parsed.isValid) {
+    return '';
+  }
+
+  const zoned = parsed.setZone(timezone);
+  if (!zoned.isValid) {
+    return '';
+  }
+
+  return zoned.toFormat('yyyy-LL-dd');
+}
+
 export function addHoursToTimeInput(timeValue: string, hours: number): string | null {
   if (!timeValue) {
     return null;

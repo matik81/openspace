@@ -18,6 +18,7 @@ import {
   addHoursToTimeInput,
   dateAndTimeToUtcIso,
   formatUtcInTimezone,
+  utcIsoToWorkspaceDateInput,
   workspaceTodayDateInput,
 } from '@/lib/workspace-time';
 
@@ -75,7 +76,6 @@ function WorkspaceMemberContent({
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [includePast, setIncludePast] = useState(false);
-  const [includeCancelled, setIncludeCancelled] = useState(false);
   const [bookingForm, setBookingForm] = useState<BookingFormState>(bookingFormInitialState);
 
   const isPendingInvitationOnly =
@@ -113,12 +113,11 @@ function WorkspaceMemberContent({
   }, []);
 
   const loadBookings = useCallback(
-    async (workspace: WorkspaceItem, options: { includePast: boolean; includeCancelled: boolean }) => {
+    async (workspace: WorkspaceItem, options: { includePast: boolean }) => {
       setIsLoadingBookings(true);
       const query = new URLSearchParams({
         mine: 'true',
         includePast: String(options.includePast),
-        includeCancelled: String(options.includeCancelled),
       });
 
       const response = await fetch(`/api/workspaces/${workspace.id}/bookings?${query.toString()}`, {
@@ -163,9 +162,8 @@ function WorkspaceMemberContent({
     void loadRooms(selectedWorkspace);
     void loadBookings(selectedWorkspace, {
       includePast,
-      includeCancelled,
     });
-  }, [selectedWorkspace, isActiveMember, includePast, includeCancelled, loadBookings, loadRooms]);
+  }, [selectedWorkspace, isActiveMember, includePast, loadBookings, loadRooms]);
 
   useEffect(() => {
     if (!rooms.length) {
@@ -259,7 +257,7 @@ function WorkspaceMemberContent({
         startTimeLocal: '',
         endTimeLocal: '',
       }));
-      await loadBookings(selectedWorkspace, { includePast, includeCancelled });
+      await loadBookings(selectedWorkspace, { includePast });
       setIsCreatingBooking(false);
     },
     [
@@ -268,7 +266,6 @@ function WorkspaceMemberContent({
       isCreatingBooking,
       bookingForm,
       includePast,
-      includeCancelled,
       loadBookings,
     ],
   );
@@ -297,11 +294,11 @@ function WorkspaceMemberContent({
         return;
       }
 
-      setLocalBanner('Reservation cancelled.');
-      await loadBookings(selectedWorkspace, { includePast, includeCancelled });
+      setLocalBanner('Reservation cancelled and removed.');
+      await loadBookings(selectedWorkspace, { includePast });
       setCancellingBookingId(null);
     },
-    [selectedWorkspace, isActiveMember, cancellingBookingId, includePast, includeCancelled, loadBookings],
+    [selectedWorkspace, isActiveMember, cancellingBookingId, includePast, loadBookings],
   );
 
   const sortedRooms = useMemo(
@@ -311,6 +308,9 @@ function WorkspaceMemberContent({
   const minBookingDate = selectedWorkspace
     ? workspaceTodayDateInput(selectedWorkspace.timezone)
     : undefined;
+  const todayBookingDateKey = selectedWorkspace
+    ? workspaceTodayDateInput(selectedWorkspace.timezone)
+    : '';
 
   if (isLoading) {
     return <p className="text-slate-600">Loading workspace...</p>;
@@ -535,7 +535,13 @@ function WorkspaceMemberContent({
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
+            <p className="mt-1 text-xs text-slate-600">
+              Cancellation is permanent and allowed only for reservations on the current workspace
+              day or in the future.
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -544,14 +550,6 @@ function WorkspaceMemberContent({
                 onChange={(event) => setIncludePast(event.target.checked)}
               />
               Include past
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={includeCancelled}
-                onChange={(event) => setIncludeCancelled(event.target.checked)}
-              />
-              Include cancelled
             </label>
           </div>
         </div>
@@ -564,7 +562,12 @@ function WorkspaceMemberContent({
 
         {!isLoadingBookings && bookings.length > 0 ? (
           <ul className="mt-3 space-y-2">
-            {bookings.map((booking) => (
+            {bookings.map((booking) => {
+              const isPastReservation =
+                utcIsoToWorkspaceDateInput(booking.startAt, selectedWorkspace.timezone) <
+                todayBookingDateKey;
+
+              return (
               <li key={booking.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -580,14 +583,20 @@ function WorkspaceMemberContent({
                   <button
                     type="button"
                     onClick={() => void handleCancelBooking(booking.id)}
-                    disabled={booking.status !== 'ACTIVE' || cancellingBookingId === booking.id}
+                    disabled={
+                      booking.status !== 'ACTIVE' ||
+                      isPastReservation ||
+                      cancellingBookingId === booking.id
+                    }
+                    title={isPastReservation ? 'Past reservations cannot be cancelled' : undefined}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel'}
                   </button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         ) : null}
       </section>
