@@ -4,14 +4,17 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtSubject } from '../auth/types/jwt-subject.type';
+import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
 type AuthenticatedRequest = {
@@ -35,6 +38,32 @@ export class WorkspacesController {
   async listVisibleWorkspaces(@Req() request: AuthenticatedRequest) {
     return this.workspacesService.listVisibleWorkspaces(
       this.extractAuthUser(request),
+    );
+  }
+
+  @Patch(':workspaceId')
+  async updateWorkspace(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Body() body: UpdateWorkspaceDto,
+  ) {
+    return this.workspacesService.updateWorkspace(
+      this.extractAuthUser(request),
+      workspaceId,
+      body,
+    );
+  }
+
+  @Post(':workspaceId/cancel')
+  async cancelWorkspace(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Body() body: CancelWorkspaceDto,
+  ) {
+    return this.workspacesService.cancelWorkspace(
+      this.extractAuthUser(request),
+      workspaceId,
+      body,
     );
   }
 

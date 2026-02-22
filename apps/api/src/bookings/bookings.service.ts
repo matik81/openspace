@@ -108,11 +108,44 @@ export class BookingsService {
     const endAt = this.parseDate(dto.endAt, 'endAt');
     const subject = this.requireString(dto.subject, 'subject');
     const criticality = this.parseCriticality(dto.criticality);
+    const workspace = await this.prismaService.workspace.findUnique({
+      where: {
+        id: normalizedWorkspaceId,
+      },
+      select: {
+        id: true,
+        timezone: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Workspace not found',
+      });
+    }
 
     if (endAt <= startAt) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
         message: 'endAt must be after startAt',
+      });
+    }
+
+    const startDateKey = this.toLocalDateKey(startAt, workspace.timezone);
+    const endDateKey = this.toLocalDateKey(endAt, workspace.timezone);
+    if (startDateKey !== endDateKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
+        message: 'Booking must start and end on the same date in the workspace timezone',
+      });
+    }
+
+    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
+    if (startDateKey < todayDateKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
+        message: 'Booking date cannot be in the past',
       });
     }
 
@@ -346,6 +379,28 @@ export class BookingsService {
       code: 'BAD_REQUEST',
       message: 'criticality must be one of HIGH, MEDIUM, LOW',
     });
+  }
+
+  private toLocalDateKey(date: Date, timezone: string): string {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'Unable to evaluate booking date in workspace timezone',
+      });
+    }
+
+    return `${year}-${month}-${day}`;
   }
 
   private parseBooleanQuery(

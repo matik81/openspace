@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -10,10 +11,13 @@ import {
   MembershipStatus,
   WorkspaceRole,
 } from '@prisma/client';
+import { compare } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 type AuthUser = {
   userId: string;
@@ -189,6 +193,90 @@ export class WorkspacesService {
       items: Array.from(byWorkspaceId.values()).sort(
         (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
       ),
+    };
+  }
+
+  async updateWorkspace(authUser: AuthUser, workspaceId: string, dto: UpdateWorkspaceDto) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+    await this.findWorkspaceOrThrow(normalizedWorkspaceId);
+
+    const data: {
+      name?: string;
+      timezone?: string;
+    } = {};
+
+    if (dto.name !== undefined) {
+      data.name = this.requireString(dto.name, 'name');
+    }
+
+    if (dto.timezone !== undefined) {
+      data.timezone = this.requireTimezone(dto.timezone);
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'At least one field must be provided to update workspace',
+      });
+    }
+
+    return this.prismaService.workspace.update({
+      where: { id: normalizedWorkspaceId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
+        createdByUserId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async cancelWorkspace(authUser: AuthUser, workspaceId: string, dto: CancelWorkspaceDto) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+
+    const workspace = await this.findWorkspaceOrThrow(normalizedWorkspaceId);
+    const workspaceName = this.requireString(dto.workspaceName, 'workspaceName');
+    const email = this.normalizeEmail(dto.email);
+    const password = this.requireString(dto.password, 'password');
+
+    if (workspace.name !== workspaceName || user.email !== email) {
+      this.throwWorkspaceCancelConfirmationFailed();
+    }
+
+    const userCredentials = await this.prismaService.user.findUnique({
+      where: { id: user.id },
+      select: {
+        passwordHash: true,
+      },
+    });
+
+    if (!userCredentials) {
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid access token',
+      });
+    }
+
+    const isPasswordValid = await compare(password, userCredentials.passwordHash);
+    if (!isPasswordValid) {
+      this.throwWorkspaceCancelConfirmationFailed();
+    }
+
+    await this.prismaService.workspace.delete({
+      where: {
+        id: normalizedWorkspaceId,
+      },
+    });
+
+    return {
+      deleted: true,
     };
   }
 
@@ -577,6 +665,38 @@ export class WorkspacesService {
       data: {
         status: InvitationStatus.EXPIRED,
       },
+    });
+  }
+
+  private async findWorkspaceOrThrow(workspaceId: string) {
+    const workspace = await this.prismaService.workspace.findUnique({
+      where: {
+        id: workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
+        createdByUserId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Workspace not found',
+      });
+    }
+
+    return workspace;
+  }
+
+  private throwWorkspaceCancelConfirmationFailed(): never {
+    throw new ForbiddenException({
+      code: 'WORKSPACE_CANCEL_CONFIRMATION_FAILED',
+      message: 'Workspace cancellation confirmation failed',
     });
   }
 

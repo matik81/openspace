@@ -561,4 +561,299 @@ describe('Booking overlap integration', () => {
       message: 'Workspace not visible',
     });
   });
+
+  it('rejects bookings that cross a local date boundary in the workspace timezone', async () => {
+    const adminEmail = 'booking-date-boundary-admin@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Timezone Rules',
+        timezone: 'Europe/Paris',
+      });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Boundary Room',
+      });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-05-01T21:30:00.000Z',
+        endAt: '2099-05-01T22:30:00.000Z',
+        subject: 'Cross midnight local',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
+      message: 'Booking must start and end on the same date in the workspace timezone',
+    });
+  });
+
+  it('blocks past booking dates but allows same-day past-time bookings', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-22T12:00:00.000Z'));
+
+    try {
+      const adminEmail = 'booking-past-date-admin@example.com';
+      await registerAndVerify(adminEmail);
+      const adminToken = await login(adminEmail);
+
+      const createWorkspaceResponse = await request(app.getHttpServer())
+        .post('/api/workspaces')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Past Date Rule',
+          timezone: 'UTC',
+        });
+      expect(createWorkspaceResponse.status).toBe(201);
+      const workspaceId = createWorkspaceResponse.body.id as string;
+
+      const createRoomResponse = await request(app.getHttpServer())
+        .post(`/api/workspaces/${workspaceId}/rooms`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Past Rule Room',
+        });
+      expect(createRoomResponse.status).toBe(201);
+      const roomId = createRoomResponse.body.id as string;
+
+      const pastDateResponse = await request(app.getHttpServer())
+        .post(`/api/workspaces/${workspaceId}/bookings`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          roomId,
+          startAt: '2026-02-21T10:00:00.000Z',
+          endAt: '2026-02-21T11:00:00.000Z',
+          subject: 'Yesterday booking',
+        });
+
+      expect(pastDateResponse.status).toBe(400);
+      expect(pastDateResponse.body).toEqual({
+        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
+        message: 'Booking date cannot be in the past',
+      });
+
+      const sameDayPastTimeResponse = await request(app.getHttpServer())
+        .post(`/api/workspaces/${workspaceId}/bookings`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          roomId,
+          startAt: '2026-02-22T08:00:00.000Z',
+          endAt: '2026-02-22T09:00:00.000Z',
+          subject: 'Same day past time',
+        });
+
+      expect(sameDayPastTimeResponse.status).toBe(201);
+      expect(sameDayPastTimeResponse.body).toMatchObject({
+        status: 'ACTIVE',
+        roomId,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('allows admins to update workspace settings and blocks members', async () => {
+    const adminEmail = 'workspace-settings-admin@example.com';
+    const memberEmail = 'workspace-settings-member@example.com';
+    await registerAndVerify(adminEmail);
+    await registerAndVerify(memberEmail);
+    const adminToken = await login(adminEmail);
+    const memberToken = await login(memberEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Old Workspace Name',
+        timezone: 'UTC',
+      });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const inviteMemberResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: memberEmail,
+      });
+    expect(inviteMemberResponse.status).toBe(201);
+
+    const acceptMemberResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/invitations/${inviteMemberResponse.body.id as string}/accept`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(acceptMemberResponse.status).toBe(201);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Updated Workspace Name',
+        timezone: 'Europe/Rome',
+      });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body).toMatchObject({
+      id: workspaceId,
+      name: 'Updated Workspace Name',
+      timezone: 'Europe/Rome',
+    });
+
+    const adminListResponse = await request(app.getHttpServer())
+      .get('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminListResponse.status).toBe(200);
+    expect(adminListResponse.body.items).toContainEqual(
+      expect.objectContaining({
+        id: workspaceId,
+        name: 'Updated Workspace Name',
+        timezone: 'Europe/Rome',
+      }),
+    );
+
+    const memberUpdateResponse = await request(app.getHttpServer())
+      .patch(`/api/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        name: 'Member Cannot Update',
+      });
+    expect(memberUpdateResponse.status).toBe(403);
+    expect(memberUpdateResponse.body).toEqual({
+      code: 'UNAUTHORIZED',
+      message: 'Only workspace admins can perform this action',
+    });
+  });
+
+  it('requires safe confirmation to cancel a workspace and hard deletes on success', async () => {
+    const adminEmail = 'workspace-cancel-admin@example.com';
+    const pendingEmail = 'workspace-cancel-pending@example.com';
+    await registerAndVerify(adminEmail);
+    await registerAndVerify(pendingEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Cancel Me',
+        timezone: 'UTC',
+      });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Room To Delete' });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    const createBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-08-01T10:00:00.000Z',
+        endAt: '2099-08-01T11:00:00.000Z',
+        subject: 'Future booking before cancel',
+      });
+    expect(createBookingResponse.status).toBe(201);
+
+    const inviteResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: pendingEmail,
+      });
+    expect(inviteResponse.status).toBe(201);
+
+    const expectedFailure = {
+      code: 'WORKSPACE_CANCEL_CONFIRMATION_FAILED',
+      message: 'Workspace cancellation confirmation failed',
+    };
+
+    const wrongNameResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        workspaceName: 'Wrong Name',
+        email: adminEmail,
+        password,
+      });
+    expect(wrongNameResponse.status).toBe(403);
+    expect(wrongNameResponse.body).toEqual(expectedFailure);
+
+    const wrongEmailResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        workspaceName: 'Cancel Me',
+        email: 'not-admin@example.com',
+        password,
+      });
+    expect(wrongEmailResponse.status).toBe(403);
+    expect(wrongEmailResponse.body).toEqual(expectedFailure);
+
+    const wrongPasswordResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        workspaceName: 'Cancel Me',
+        email: adminEmail,
+        password: 'wrong-password',
+      });
+    expect(wrongPasswordResponse.status).toBe(403);
+    expect(wrongPasswordResponse.body).toEqual(expectedFailure);
+
+    const cancelResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        workspaceName: 'Cancel Me',
+        email: adminEmail,
+        password,
+      });
+    expect(cancelResponse.status).toBe(201);
+    expect(cancelResponse.body).toEqual({ deleted: true });
+
+    const adminListResponse = await request(app.getHttpServer())
+      .get('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminListResponse.status).toBe(200);
+    expect(adminListResponse.body.items).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ id: workspaceId })]),
+    );
+
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
+
+    const [workspace, room, booking, invitation, memberships] = await Promise.all([
+      prismaService.workspace.findUnique({ where: { id: workspaceId } }),
+      prismaService.room.findUnique({ where: { id: roomId } }),
+      prismaService.booking.findFirst({ where: { workspaceId } }),
+      prismaService.invitation.findFirst({ where: { workspaceId } }),
+      prismaService.workspaceMember.findMany({ where: { workspaceId } }),
+    ]);
+
+    expect(workspace).toBeNull();
+    expect(room).toBeNull();
+    expect(booking).toBeNull();
+    expect(invitation).toBeNull();
+    expect(memberships).toHaveLength(0);
+  });
 });
