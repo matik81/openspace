@@ -724,7 +724,7 @@ function WorkspaceAdminContent({
       <section className="rounded-xl border border-rose-300 bg-rose-50 p-4">
         <h3 className="text-lg font-semibold text-rose-900">Danger Zone</h3>
         <p className="mt-1 text-sm text-rose-800">
-          Canceling a workspace permanently deletes rooms, reservations, members, and invitations.
+          Canceling a workspace permanently deletes rooms, reservations, memberships, and invitations.
         </p>
 
         <div className="mt-4">
