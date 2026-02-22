@@ -203,7 +203,7 @@ export class WorkspacesService {
       email,
     });
 
-    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user.id);
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
 
     const existingUser = await this.prismaService.user.findUnique({
       where: { email },
@@ -270,6 +270,82 @@ export class WorkspacesService {
     });
 
     return invitation;
+  }
+
+  async listWorkspaceMembers(authUser: AuthUser, workspaceId: string) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+
+    const members = await this.prismaService.workspaceMember.findMany({
+      where: {
+        workspaceId: normalizedWorkspaceId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: {
+        userId: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    return {
+      items: members.map((member) => ({
+        userId: member.userId,
+        firstName: member.user.firstName,
+        lastName: member.user.lastName,
+        email: member.user.email,
+        role: member.role,
+        status: member.status,
+        joinedAt: member.createdAt,
+      })),
+    };
+  }
+
+  async listWorkspacePendingInvitations(authUser: AuthUser, workspaceId: string) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    const now = new Date();
+    await this.expirePendingInvitations(now, {
+      workspaceId: normalizedWorkspaceId,
+    });
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+
+    const invitations = await this.prismaService.invitation.findMany({
+      where: {
+        workspaceId: normalizedWorkspaceId,
+        status: InvitationStatus.PENDING,
+        expiresAt: {
+          gt: now,
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        expiresAt: true,
+        invitedByUserId: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return {
+      items: invitations,
+    };
   }
 
   async acceptInvitation(authUser: AuthUser, invitationId: string) {
@@ -421,25 +497,54 @@ export class WorkspacesService {
     };
   }
 
-  private async assertWorkspaceAdmin(workspaceId: string, userId: string): Promise<void> {
-    const member = await this.prismaService.workspaceMember.findFirst({
+  private async assertWorkspaceAdmin(workspaceId: string, user: VerifiedUser): Promise<void> {
+    const activeMembership = await this.prismaService.workspaceMember.findFirst({
       where: {
         workspaceId,
-        userId,
-        role: WorkspaceRole.ADMIN,
+        userId: user.id,
         status: MembershipStatus.ACTIVE,
+      },
+      select: {
+        role: true,
+      },
+    });
+
+    if (activeMembership?.role === WorkspaceRole.ADMIN) {
+      return;
+    }
+
+    if (activeMembership) {
+      throw new ForbiddenException({
+        code: 'UNAUTHORIZED',
+        message: 'Only workspace admins can perform this action',
+      });
+    }
+
+    const pendingInvitation = await this.prismaService.invitation.findFirst({
+      where: {
+        workspaceId,
+        email: user.email,
+        status: InvitationStatus.PENDING,
+        expiresAt: {
+          gt: new Date(),
+        },
       },
       select: {
         id: true,
       },
     });
 
-    if (!member) {
+    if (pendingInvitation) {
       throw new ForbiddenException({
         code: 'UNAUTHORIZED',
         message: 'Only workspace admins can perform this action',
       });
     }
+
+    throw new ForbiddenException({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
   }
 
   private async expirePendingInvitations(

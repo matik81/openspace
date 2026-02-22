@@ -61,7 +61,7 @@ export class RoomsService {
   async listRooms(authUser: AuthUser, workspaceId: string) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
 
     const items = await this.prismaService.room.findMany({
       where: {
@@ -80,7 +80,7 @@ export class RoomsService {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const normalizedRoomId = this.requireUuid(roomId, 'roomId');
-    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
 
     return this.findWorkspaceRoom(normalizedWorkspaceId, normalizedRoomId);
   }
@@ -258,6 +258,52 @@ export class RoomsService {
       throw new ForbiddenException({
         code: 'UNAUTHORIZED',
         message: 'Only workspace admins can perform this action',
+      });
+    }
+
+    throw new ForbiddenException({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
+  }
+
+  private async assertActiveWorkspaceMember(
+    workspaceId: string,
+    user: VerifiedUser,
+  ): Promise<void> {
+    const activeMembership = await this.prismaService.workspaceMember.findFirst({
+      where: {
+        workspaceId,
+        userId: user.id,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (activeMembership) {
+      return;
+    }
+
+    const pendingInvitation = await this.prismaService.invitation.findFirst({
+      where: {
+        workspaceId,
+        email: user.email,
+        status: InvitationStatus.PENDING,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (pendingInvitation) {
+      throw new ForbiddenException({
+        code: 'UNAUTHORIZED',
+        message: 'Only active workspace members can view rooms',
       });
     }
 

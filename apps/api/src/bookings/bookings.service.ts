@@ -25,9 +25,74 @@ type VerifiedUser = {
   email: string;
 };
 
+type ListBookingsQuery = {
+  mine?: string;
+  includePast?: string;
+  includeCancelled?: string;
+};
+
 @Injectable()
 export class BookingsService {
   constructor(private readonly prismaService: PrismaService) {}
+
+  async listBookings(
+    authUser: AuthUser,
+    workspaceId: string,
+    query: ListBookingsQuery = {},
+  ) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+
+    const mine = this.parseBooleanQuery(query.mine, true, 'mine');
+    const includePast = this.parseBooleanQuery(query.includePast, false, 'includePast');
+    const includeCancelled = this.parseBooleanQuery(
+      query.includeCancelled,
+      false,
+      'includeCancelled',
+    );
+
+    const where: Prisma.BookingWhereInput = {
+      workspaceId: normalizedWorkspaceId,
+    };
+
+    if (mine) {
+      where.createdByUserId = user.id;
+    }
+
+    if (!includeCancelled) {
+      where.status = BookingStatus.ACTIVE;
+    }
+
+    if (!includePast) {
+      where.endAt = {
+        gte: new Date(),
+      };
+    }
+
+    const bookings = await this.prismaService.booking.findMany({
+      where,
+      select: this.bookingListSelect(),
+      orderBy: [{ startAt: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return {
+      items: bookings.map((booking) => ({
+        id: booking.id,
+        workspaceId: booking.workspaceId,
+        roomId: booking.roomId,
+        roomName: booking.room.name,
+        createdByUserId: booking.createdByUserId,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        subject: booking.subject,
+        criticality: booking.criticality,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt,
+      })),
+    };
+  }
 
   async createBooking(
     authUser: AuthUser,
@@ -229,6 +294,27 @@ export class BookingsService {
     };
   }
 
+  private bookingListSelect() {
+    return {
+      id: true,
+      workspaceId: true,
+      roomId: true,
+      createdByUserId: true,
+      startAt: true,
+      endAt: true,
+      subject: true,
+      criticality: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      room: {
+        select: {
+          name: true,
+        },
+      },
+    };
+  }
+
   private parseDate(value: string | undefined | null, fieldName: string): Date {
     const raw = this.requireString(value, fieldName);
     const date = new Date(raw);
@@ -259,6 +345,30 @@ export class BookingsService {
     throw new BadRequestException({
       code: 'BAD_REQUEST',
       message: 'criticality must be one of HIGH, MEDIUM, LOW',
+    });
+  }
+
+  private parseBooleanQuery(
+    value: string | undefined,
+    defaultValue: boolean,
+    fieldName: string,
+  ): boolean {
+    if (value === undefined) {
+      return defaultValue;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') {
+      return true;
+    }
+
+    if (normalized === 'false' || normalized === '0') {
+      return false;
+    }
+
+    throw new BadRequestException({
+      code: 'BAD_REQUEST',
+      message: `${fieldName} must be a boolean`,
     });
   }
 

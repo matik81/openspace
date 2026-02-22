@@ -2,8 +2,10 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +22,25 @@ type AuthenticatedRequest = {
 @Controller('workspaces/:workspaceId/bookings')
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
+
+  @Get()
+  async listBookings(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Query('mine') mine: string | undefined,
+    @Query('includePast') includePast: string | undefined,
+    @Query('includeCancelled') includeCancelled: string | undefined,
+  ) {
+    return this.bookingsService.listBookings(
+      this.extractAuthUser(request),
+      workspaceId,
+      {
+        mine,
+        includePast,
+        includeCancelled,
+      },
+    );
+  }
 
   @Post()
   async createBooking(

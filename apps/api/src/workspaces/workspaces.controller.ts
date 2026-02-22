@@ -51,6 +51,28 @@ export class WorkspacesController {
     );
   }
 
+  @Get(':workspaceId/members')
+  async listWorkspaceMembers(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspacesService.listWorkspaceMembers(
+      this.extractAuthUser(request),
+      workspaceId,
+    );
+  }
+
+  @Get(':workspaceId/invitations')
+  async listWorkspacePendingInvitations(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspacesService.listWorkspacePendingInvitations(
+      this.extractAuthUser(request),
+      workspaceId,
+    );
+  }
+
   @Post('invitations/:invitationId/accept')
   async acceptInvitation(
     @Req() request: AuthenticatedRequest,
