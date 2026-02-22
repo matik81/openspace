@@ -144,8 +144,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2026-02-20T10:00:00.000Z',
-        endAt: '2026-02-20T11:00:00.000Z',
+        startAt: '2099-02-20T10:00:00.000Z',
+        endAt: '2099-02-20T11:00:00.000Z',
         subject: 'Incident review',
       });
 
@@ -156,8 +156,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2026-02-20T10:30:00.000Z',
-        endAt: '2026-02-20T11:30:00.000Z',
+        startAt: '2099-02-20T10:30:00.000Z',
+        endAt: '2099-02-20T11:30:00.000Z',
         subject: 'Overlapping slot',
       });
 
@@ -165,6 +165,65 @@ describe('Booking overlap integration', () => {
     expect(overlappingBookingResponse.body).toEqual({
       code: 'BOOKING_OVERLAP',
       message: 'Booking overlaps with an existing active booking',
+    });
+  });
+
+  it('rejects overlapping bookings by the same user across different rooms', async () => {
+    const adminEmail = 'booking-user-overlap@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'User Overlap Rules',
+      });
+
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomAResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Room A',
+      });
+    expect(createRoomAResponse.status).toBe(201);
+
+    const createRoomBResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Room B',
+      });
+    expect(createRoomBResponse.status).toBe(201);
+
+    const firstBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId: createRoomAResponse.body.id as string,
+        startAt: '2099-06-01T10:00:00.000Z',
+        endAt: '2099-06-01T11:00:00.000Z',
+        subject: 'First room booking',
+      });
+    expect(firstBookingResponse.status).toBe(201);
+
+    const overlappingSecondRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId: createRoomBResponse.body.id as string,
+        startAt: '2099-06-01T10:30:00.000Z',
+        endAt: '2099-06-01T11:30:00.000Z',
+        subject: 'Second room same user',
+      });
+
+    expect(overlappingSecondRoomResponse.status).toBe(409);
+    expect(overlappingSecondRoomResponse.body).toEqual({
+      code: 'BOOKING_USER_OVERLAP',
+      message: 'User already has an active booking in this time range',
     });
   });
 
@@ -198,8 +257,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2026-02-20T13:00:00.000Z',
-        endAt: '2026-02-20T14:00:00.000Z',
+        startAt: '2099-02-20T13:00:00.000Z',
+        endAt: '2099-02-20T14:00:00.000Z',
         subject: 'Ticket triage',
       });
 
@@ -232,8 +291,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2026-02-20T13:00:00.000Z',
-        endAt: '2026-02-20T14:00:00.000Z',
+        startAt: '2099-02-20T13:00:00.000Z',
+        endAt: '2099-02-20T14:00:00.000Z',
         subject: 'Replacement booking',
       });
 
@@ -297,17 +356,27 @@ describe('Booking overlap integration', () => {
     expect(createRoomResponse.status).toBe(201);
     const roomId = createRoomResponse.body.id as string;
 
-    const pastBookingResponse = await request(app.getHttpServer())
-      .post(`/api/workspaces/${workspaceId}/bookings`)
-      .set('Authorization', `Bearer ${memberToken}`)
-      .send({
-        roomId,
-        startAt: '2021-05-01T09:00:00.000Z',
-        endAt: '2021-05-01T10:00:00.000Z',
-        subject: 'Past booking',
-      });
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
 
-    expect(pastBookingResponse.status).toBe(201);
+    const memberUser = await prismaService.user.findUnique({
+      where: { email: memberEmail },
+      select: { id: true },
+    });
+    expect(memberUser).toEqual({ id: expect.any(String) });
+
+    const pastBooking = await prismaService.booking.create({
+      data: {
+        workspaceId,
+        roomId,
+        createdByUserId: memberUser!.id,
+        startAt: new Date('2021-05-01T09:00:00.000Z'),
+        endAt: new Date('2021-05-01T10:00:00.000Z'),
+        subject: 'Past booking',
+      },
+      select: { id: true },
+    });
 
     const activeFutureBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
@@ -363,7 +432,7 @@ describe('Booking overlap integration', () => {
     expect(includeHistoryResponse.body.items).toHaveLength(3);
     const returnedIds = includeHistoryResponse.body.items.map((item: { id: string }) => item.id);
     expect(returnedIds).toEqual([
-      pastBookingResponse.body.id as string,
+      pastBooking.id,
       activeFutureBookingId,
       cancelledFutureBookingId,
     ]);
@@ -603,68 +672,140 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('blocks past booking dates but allows same-day past-time bookings', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-02-22T12:00:00.000Z'));
+  it('enforces booking hours between 07:00 and 22:00 in the workspace timezone', async () => {
+    const adminEmail = 'booking-hours-admin@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
 
-    try {
-      const adminEmail = 'booking-past-date-admin@example.com';
-      await registerAndVerify(adminEmail);
-      const adminToken = await login(adminEmail);
-
-      const createWorkspaceResponse = await request(app.getHttpServer())
-        .post('/api/workspaces')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          name: 'Past Date Rule',
-          timezone: 'UTC',
-        });
-      expect(createWorkspaceResponse.status).toBe(201);
-      const workspaceId = createWorkspaceResponse.body.id as string;
-
-      const createRoomResponse = await request(app.getHttpServer())
-        .post(`/api/workspaces/${workspaceId}/rooms`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          name: 'Past Rule Room',
-        });
-      expect(createRoomResponse.status).toBe(201);
-      const roomId = createRoomResponse.body.id as string;
-
-      const pastDateResponse = await request(app.getHttpServer())
-        .post(`/api/workspaces/${workspaceId}/bookings`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          roomId,
-          startAt: '2026-02-21T10:00:00.000Z',
-          endAt: '2026-02-21T11:00:00.000Z',
-          subject: 'Yesterday booking',
-        });
-
-      expect(pastDateResponse.status).toBe(400);
-      expect(pastDateResponse.body).toEqual({
-        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
-        message: 'Booking date cannot be in the past',
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Hours Rule',
+        timezone: 'UTC',
       });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
 
-      const sameDayPastTimeResponse = await request(app.getHttpServer())
-        .post(`/api/workspaces/${workspaceId}/bookings`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          roomId,
-          startAt: '2026-02-22T08:00:00.000Z',
-          endAt: '2026-02-22T09:00:00.000Z',
-          subject: 'Same day past time',
-        });
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Meeting Room',
+      });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
 
-      expect(sameDayPastTimeResponse.status).toBe(201);
-      expect(sameDayPastTimeResponse.body).toMatchObject({
-        status: 'ACTIVE',
+    const earlyResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
         roomId,
+        startAt: '2099-07-01T06:30:00.000Z',
+        endAt: '2099-07-01T07:30:00.000Z',
+        subject: 'Too early',
       });
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(earlyResponse.status).toBe(400);
+    expect(earlyResponse.body).toEqual({
+      code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
+      message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+    });
+
+    const lateResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-07-01T21:30:00.000Z',
+        endAt: '2099-07-01T22:30:00.000Z',
+        subject: 'Too late',
+      });
+    expect(lateResponse.status).toBe(400);
+    expect(lateResponse.body).toEqual({
+      code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
+      message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+    });
+
+    const boundaryResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-07-01T07:00:00.000Z',
+        endAt: '2099-07-01T22:00:00.000Z',
+        subject: 'Allowed boundary',
+      });
+    expect(boundaryResponse.status).toBe(201);
+    expect(boundaryResponse.body.status).toBe('ACTIVE');
+  });
+
+  it('blocks past booking dates but allows same-day bookings', async () => {
+    const adminEmail = 'booking-past-date-admin@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Past Date Rule',
+        timezone: 'UTC',
+      });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Past Rule Room',
+      });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    const now = new Date();
+    const todayUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+    );
+    const yesterdayUtc = new Date(todayUtc);
+    yesterdayUtc.setUTCDate(yesterdayUtc.getUTCDate() - 1);
+
+    const toUtcIso = (date: Date, hour: number, minute = 0) =>
+      new Date(
+        Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute, 0, 0),
+      ).toISOString();
+
+    const pastDateResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: toUtcIso(yesterdayUtc, 10),
+        endAt: toUtcIso(yesterdayUtc, 11),
+        subject: 'Yesterday booking',
+      });
+
+    expect(pastDateResponse.status).toBe(400);
+    expect(pastDateResponse.body).toEqual({
+      code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
+      message: 'Booking date cannot be in the past',
+    });
+
+    const sameDayResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: toUtcIso(todayUtc, 8),
+        endAt: toUtcIso(todayUtc, 9),
+        subject: 'Same day booking',
+      });
+
+    expect(sameDayResponse.status).toBe(201);
+    expect(sameDayResponse.body).toMatchObject({
+      status: 'ACTIVE',
+      roomId,
+    });
   });
 
   it('allows admins to update workspace settings and blocks members', async () => {

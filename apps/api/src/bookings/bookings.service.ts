@@ -33,6 +33,9 @@ type ListBookingsQuery = {
 
 @Injectable()
 export class BookingsService {
+  private static readonly BOOKING_WINDOW_START_HOUR = 7;
+  private static readonly BOOKING_WINDOW_END_HOUR = 22;
+
   constructor(private readonly prismaService: PrismaService) {}
 
   async listBookings(
@@ -166,6 +169,8 @@ export class BookingsService {
       });
     }
 
+    this.assertBookingWithinAllowedHours(startAt, endAt, workspace.timezone);
+
     try {
       return await this.prismaService.booking.create({
         data: {
@@ -181,10 +186,11 @@ export class BookingsService {
         select: this.bookingSelect(),
       });
     } catch (error) {
-      if (this.isBookingOverlapError(error)) {
+      const bookingConflict = this.getBookingConflict(error);
+      if (bookingConflict) {
         throw new ConflictException({
-          code: 'BOOKING_OVERLAP',
-          message: 'Booking overlaps with an existing active booking',
+          code: bookingConflict.code,
+          message: bookingConflict.message,
         });
       }
 
@@ -427,8 +433,64 @@ export class BookingsService {
     });
   }
 
-  private isBookingOverlapError(error: unknown): boolean {
+  private assertBookingWithinAllowedHours(
+    startAt: Date,
+    endAt: Date,
+    timezone: string,
+  ): void {
+    const startTime = this.toLocalTimeParts(startAt, timezone);
+    const endTime = this.toLocalTimeParts(endAt, timezone);
+
+    const startsTooEarly =
+      startTime.hour < BookingsService.BOOKING_WINDOW_START_HOUR;
+    const endsTooLate =
+      endTime.hour > BookingsService.BOOKING_WINDOW_END_HOUR ||
+      (endTime.hour === BookingsService.BOOKING_WINDOW_END_HOUR &&
+        (endTime.minute > 0 || endTime.second > 0));
+
+    if (startsTooEarly || endsTooLate) {
+      throw new BadRequestException({
+        code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
+        message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+      });
+    }
+  }
+
+  private toLocalTimeParts(
+    date: Date,
+    timezone: string,
+  ): {
+    hour: number;
+    minute: number;
+    second: number;
+  } {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
+    const parts = formatter.formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+    const second = Number(parts.find((part) => part.type === 'second')?.value);
+
+    if ([hour, minute, second].some((value) => Number.isNaN(value))) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'Unable to evaluate booking time in workspace timezone',
+      });
+    }
+
+    return { hour, minute, second };
+  }
+
+  private getBookingConflict(
+    error: unknown,
+  ): { code: string; message: string } | null {
     const errorMessage = error instanceof Error ? error.message : '';
+    const normalizedErrorMessage = errorMessage.toLowerCase();
 
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       const meta = error.meta as
@@ -438,18 +500,50 @@ export class BookingsService {
         | undefined;
       const databaseError =
         typeof meta?.database_error === 'string' ? meta.database_error : '';
+      const normalizedDatabaseError = databaseError.toLowerCase();
 
-      return (
+      if (
+        databaseError.includes('Booking_active_user_overlap_exclusion') ||
+        error.message.includes('Booking_active_user_overlap_exclusion')
+      ) {
+        return {
+          code: 'BOOKING_USER_OVERLAP',
+          message: 'User already has an active booking in this time range',
+        };
+      }
+
+      if (
         databaseError.includes('Booking_active_overlap_exclusion') ||
         error.message.includes('Booking_active_overlap_exclusion') ||
-        databaseError.toLowerCase().includes('exclusion constraint')
-      );
+        normalizedDatabaseError.includes('exclusion constraint')
+      ) {
+        return {
+          code: 'BOOKING_OVERLAP',
+          message: 'Booking overlaps with an existing active booking',
+        };
+      }
+
+      return null;
     }
 
-    return (
+    if (errorMessage.includes('Booking_active_user_overlap_exclusion')) {
+      return {
+        code: 'BOOKING_USER_OVERLAP',
+        message: 'User already has an active booking in this time range',
+      };
+    }
+
+    if (
       errorMessage.includes('Booking_active_overlap_exclusion') ||
-      errorMessage.toLowerCase().includes('exclusion constraint')
-    );
+      normalizedErrorMessage.includes('exclusion constraint')
+    ) {
+      return {
+        code: 'BOOKING_OVERLAP',
+        message: 'Booking overlaps with an existing active booking',
+      };
+    }
+
+    return null;
   }
 
   private requireString(value: string | undefined | null, fieldName: string): string {

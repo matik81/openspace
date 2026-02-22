@@ -41,7 +41,9 @@ infra/
 - Email verification is a hard gate (`emailVerifiedAt` must be present).
 - Workspace visibility is restricted to active members or invited emails.
 - Bookings are stored in UTC (`timestamptz`) and displayed with workspace timezone.
-- Booking overlap is blocked at DB level with `btree_gist`, `tstzrange`, and partial active-only exclusion.
+- Room booking overlap is blocked at DB level with `btree_gist`, `tstzrange`, and partial active-only exclusion.
+- User double-booking (same user, overlapping active bookings) is blocked at DB level with an active-only exclusion constraint.
+- Booking creation is restricted to `07:00`-`22:00` in the workspace timezone.
 - Bookings are cancelled via status (`ACTIVE`, `CANCELLED`) and never hard deleted.
 
 ## Workspace API (Implemented)
@@ -84,9 +86,13 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 ## Booking API (Implemented)
 
 - `POST /api/workspaces/:workspaceId/bookings` creates an `ACTIVE` booking.
+  - Enforces same-local-day booking and local booking hours (`07:00`-`22:00`).
+  - Rejects overlapping active bookings for the same room.
+  - Rejects overlapping active bookings for the same user across rooms.
 - `GET /api/workspaces/:workspaceId/bookings` lists bookings with filters:
   - `mine` (default `true`)
   - `includePast` (default `false`)
   - `includeCancelled` (default `false`)
 - `POST /api/workspaces/:workspaceId/bookings/:bookingId/cancel` soft-cancels booking by setting status to `CANCELLED`.
-- Overlap violations return `{ code: "BOOKING_OVERLAP", message: "..." }` from PostgreSQL exclusion constraints.
+- Room overlap violations return `{ code: "BOOKING_OVERLAP", message: "..." }`.
+- User double-booking violations return `{ code: "BOOKING_USER_OVERLAP", message: "..." }`.
