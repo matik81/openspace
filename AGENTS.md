@@ -6,6 +6,16 @@ Codex must read and follow these instructions before making any changes.
 
 ---
 
+# 0. Private Folder Boundary
+
+Codex must treat `.private/` as off-limits.
+
+- Do not read files in `.private/`
+- Do not write or modify files in `.private/`
+- Do not use `.private/` content as task context unless the user explicitly overrides this rule for a specific file
+
+---
+
 # 1. Architecture
 
 This project must be implemented as:
