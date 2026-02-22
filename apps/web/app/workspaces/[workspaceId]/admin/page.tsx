@@ -1,10 +1,11 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
+import { IANA_TIMEZONES } from '@/lib/iana-timezones';
 import type {
   ErrorPayload,
   RoomItem,
@@ -25,6 +26,17 @@ type WorkspacePageParams = {
 type RoomEditState = {
   name: string;
   description: string;
+};
+
+type WorkspaceSettingsState = {
+  name: string;
+  timezone: string;
+};
+
+type CancelWorkspaceState = {
+  workspaceName: string;
+  email: string;
+  password: string;
 };
 
 export default function WorkspaceAdminPage() {
@@ -49,7 +61,8 @@ function WorkspaceAdminContent({
   context: WorkspaceShellRenderContext;
   workspaceId: string;
 }) {
-  const { selectedWorkspace, isLoading } = context;
+  const router = useRouter();
+  const { selectedWorkspace, isLoading, loadWorkspaces } = context;
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [members, setMembers] = useState<WorkspaceMemberListItem[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<WorkspaceInvitationSummary[]>([]);
@@ -63,7 +76,19 @@ function WorkspaceAdminContent({
   const [roomEditForm, setRoomEditForm] = useState<RoomEditState>({ name: '', description: '' });
   const [isSubmittingRoom, setIsSubmittingRoom] = useState(false);
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
+  const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>({
+    name: '',
+    timezone: 'UTC',
+  });
+  const [isCancelWorkspaceFormVisible, setIsCancelWorkspaceFormVisible] = useState(false);
+  const [isCancellingWorkspace, setIsCancellingWorkspace] = useState(false);
+  const [cancelWorkspaceForm, setCancelWorkspaceForm] = useState<CancelWorkspaceState>({
+    workspaceName: '',
+    email: '',
+    password: '',
+  });
 
   const isAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
@@ -158,6 +183,64 @@ function WorkspaceAdminContent({
     void loadAdminData();
   }, [loadAdminData]);
 
+  useEffect(() => {
+    if (!selectedWorkspace) {
+      return;
+    }
+
+    setWorkspaceSettingsForm({
+      name: selectedWorkspace.name,
+      timezone: selectedWorkspace.timezone,
+    });
+    setCancelWorkspaceForm((previous) => ({
+      ...previous,
+      workspaceName: '',
+      password: '',
+    }));
+  }, [selectedWorkspace]);
+
+  const handleSaveWorkspaceSettings = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedWorkspace || !isAdmin || isSubmittingWorkspaceSettings) {
+        return;
+      }
+
+      setIsSubmittingWorkspaceSettings(true);
+      setLocalError(null);
+      setLocalBanner(null);
+
+      const response = await fetch(`/api/workspaces/${selectedWorkspace.id}`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: workspaceSettingsForm.name,
+          timezone: workspaceSettingsForm.timezone,
+        }),
+      });
+      const responsePayload = await safeReadJson(response);
+
+      if (!response.ok) {
+        setLocalError(normalizeErrorPayload(responsePayload, response.status));
+        setIsSubmittingWorkspaceSettings(false);
+        return;
+      }
+
+      await loadWorkspaces();
+      setLocalBanner('Workspace settings updated.');
+      setIsSubmittingWorkspaceSettings(false);
+    },
+    [
+      selectedWorkspace,
+      isAdmin,
+      isSubmittingWorkspaceSettings,
+      workspaceSettingsForm,
+      loadWorkspaces,
+    ],
+  );
+
   const handleCreateRoom = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -242,6 +325,14 @@ function WorkspaceAdminContent({
         return;
       }
 
+      const room = rooms.find((item) => item.id === roomId);
+      const confirmed = window.confirm(
+        `Delete room${room ? ` "${room.name}"` : ''}? This action cannot be undone.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
       setDeletingRoomId(roomId);
       setLocalError(null);
       setLocalBanner(null);
@@ -261,7 +352,7 @@ function WorkspaceAdminContent({
       await loadAdminData();
       setDeletingRoomId(null);
     },
-    [selectedWorkspace, isAdmin, deletingRoomId, loadAdminData],
+    [selectedWorkspace, isAdmin, deletingRoomId, rooms, loadAdminData],
   );
 
   const handleInvite = useCallback(
@@ -300,6 +391,46 @@ function WorkspaceAdminContent({
     [selectedWorkspace, isAdmin, isSubmittingInvite, inviteEmail, loadAdminData],
   );
 
+  const handleCancelWorkspace = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedWorkspace || !isAdmin || isCancellingWorkspace) {
+        return;
+      }
+
+      setIsCancellingWorkspace(true);
+      setLocalError(null);
+      setLocalBanner(null);
+
+      const response = await fetch(`/api/workspaces/${selectedWorkspace.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(cancelWorkspaceForm),
+      });
+      const responsePayload = await safeReadJson(response);
+
+      if (!response.ok) {
+        setLocalError(normalizeErrorPayload(responsePayload, response.status));
+        setIsCancellingWorkspace(false);
+        return;
+      }
+
+      await loadWorkspaces();
+      router.replace('/dashboard');
+      router.refresh();
+    },
+    [
+      selectedWorkspace,
+      isAdmin,
+      isCancellingWorkspace,
+      cancelWorkspaceForm,
+      loadWorkspaces,
+      router,
+    ],
+  );
+
   if (isLoading) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
@@ -333,6 +464,64 @@ function WorkspaceAdminContent({
           {localError.code}: {localError.message}
         </p>
       ) : null}
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Update the workspace name and timezone used for booking displays and validations.
+        </p>
+
+        <form
+          className="mt-4 grid gap-4 md:grid-cols-2"
+          onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
+        >
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">Workspace Name</span>
+            <input
+              required
+              value={workspaceSettingsForm.name}
+              onChange={(event) =>
+                setWorkspaceSettingsForm((previous) => ({
+                  ...previous,
+                  name: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
+            <select
+              required
+              value={workspaceSettingsForm.timezone}
+              onChange={(event) =>
+                setWorkspaceSettingsForm((previous) => ({
+                  ...previous,
+                  timezone: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              {IANA_TIMEZONES.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {timezone}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="md:col-span-2">
+            <button
+              type="submit"
+              disabled={isSubmittingWorkspaceSettings}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmittingWorkspaceSettings ? 'Saving...' : 'Save Workspace Settings'}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="text-lg font-semibold text-slate-900">Meeting Rooms</h3>
@@ -406,26 +595,42 @@ function WorkspaceAdminContent({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <input
-                        value={roomEditForm.name}
-                        onChange={(event) =>
-                          setRoomEditForm((previous) => ({
-                            ...previous,
-                            name: event.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                      />
-                      <input
-                        value={roomEditForm.description}
-                        onChange={(event) =>
-                          setRoomEditForm((previous) => ({
-                            ...previous,
-                            description: event.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                      />
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Room Name
+                        </span>
+                        <p className="mb-2 text-xs text-slate-500">
+                          Unique within this workspace. Used in reservation lists and filters.
+                        </p>
+                        <input
+                          value={roomEditForm.name}
+                          onChange={(event) =>
+                            setRoomEditForm((previous) => ({
+                              ...previous,
+                              name: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Description
+                        </span>
+                        <p className="mb-2 text-xs text-slate-500">
+                          Optional notes such as capacity, equipment, or room usage.
+                        </p>
+                        <input
+                          value={roomEditForm.description}
+                          onChange={(event) =>
+                            setRoomEditForm((previous) => ({
+                              ...previous,
+                              description: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                      </label>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -514,6 +719,110 @@ function WorkspaceAdminContent({
             )}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-rose-300 bg-rose-50 p-4">
+        <h3 className="text-lg font-semibold text-rose-900">Danger Zone</h3>
+        <p className="mt-1 text-sm text-rose-800">
+          Canceling a workspace permanently deletes rooms, reservations, members, and invitations.
+        </p>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setIsCancelWorkspaceFormVisible((current) => !current);
+              setCancelWorkspaceForm((previous) => ({
+                ...previous,
+                workspaceName: '',
+                password: '',
+              }));
+            }}
+            className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+          >
+            {isCancelWorkspaceFormVisible ? 'Close Workspace Cancel' : 'Cancel Workspace'}
+          </button>
+        </div>
+
+        {isCancelWorkspaceFormVisible ? (
+          <form className="mt-4 space-y-3" onSubmit={(event) => void handleCancelWorkspace(event)}>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-rose-900">
+                Workspace Name Confirmation
+              </span>
+              <p className="mb-2 text-xs text-rose-800">
+                Type <span className="font-semibold">{selectedWorkspace.name}</span> to confirm.
+              </p>
+              <input
+                required
+                value={cancelWorkspaceForm.workspaceName}
+                onChange={(event) =>
+                  setCancelWorkspaceForm((previous) => ({
+                    ...previous,
+                    workspaceName: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-rose-900">Email (username)</span>
+              <p className="mb-2 text-xs text-rose-800">
+                Enter your admin account email address.
+              </p>
+              <input
+                required
+                type="email"
+                value={cancelWorkspaceForm.email}
+                onChange={(event) =>
+                  setCancelWorkspaceForm((previous) => ({
+                    ...previous,
+                    email: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-rose-900">Password</span>
+              <p className="mb-2 text-xs text-rose-800">
+                Re-enter your password to complete the workspace cancellation.
+              </p>
+              <input
+                required
+                type="password"
+                value={cancelWorkspaceForm.password}
+                onChange={(event) =>
+                  setCancelWorkspaceForm((previous) => ({
+                    ...previous,
+                    password: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                disabled={isCancellingWorkspace}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCancellingWorkspace ? 'Cancelling Workspace...' : 'Confirm Workspace Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCancelWorkspaceFormVisible(false)}
+                disabled={isCancellingWorkspace}
+                className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Keep Workspace
+              </button>
+            </div>
+          </form>
+        ) : null}
       </section>
     </div>
   );

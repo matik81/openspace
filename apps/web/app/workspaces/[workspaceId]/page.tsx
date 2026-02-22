@@ -14,7 +14,12 @@ import type {
   WorkspaceItem,
 } from '@/lib/types';
 import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
-import { formatUtcInTimezone, localInputToUtcIso } from '@/lib/workspace-time';
+import {
+  addHoursToTimeInput,
+  dateAndTimeToUtcIso,
+  formatUtcInTimezone,
+  workspaceTodayDateInput,
+} from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
   workspaceId: string;
@@ -24,16 +29,18 @@ type BookingFormState = {
   roomId: string;
   subject: string;
   criticality: BookingCriticality;
-  startAtLocal: string;
-  endAtLocal: string;
+  dateLocal: string;
+  startTimeLocal: string;
+  endTimeLocal: string;
 };
 
 const bookingFormInitialState: BookingFormState = {
   roomId: '',
   subject: '',
   criticality: 'MEDIUM',
-  startAtLocal: '',
-  endAtLocal: '',
+  dateLocal: '',
+  startTimeLocal: '',
+  endTimeLocal: '',
 };
 
 export default function WorkspacePage() {
@@ -182,13 +189,39 @@ function WorkspaceMemberContent({
         return;
       }
 
-      const startAt = localInputToUtcIso(bookingForm.startAtLocal, selectedWorkspace.timezone);
-      const endAt = localInputToUtcIso(bookingForm.endAtLocal, selectedWorkspace.timezone);
+      if (!bookingForm.dateLocal || !bookingForm.startTimeLocal || !bookingForm.endTimeLocal) {
+        setLocalError({
+          code: 'BAD_REQUEST',
+          message: 'date, start time, and end time are required',
+        });
+        return;
+      }
+
+      const startLocal = `${bookingForm.dateLocal}T${bookingForm.startTimeLocal}`;
+      const endLocal = `${bookingForm.dateLocal}T${bookingForm.endTimeLocal}`;
+      if (endLocal <= startLocal) {
+        setLocalError({
+          code: 'BAD_REQUEST',
+          message: 'End time must be after start time on the selected date',
+        });
+        return;
+      }
+
+      const startAt = dateAndTimeToUtcIso(
+        bookingForm.dateLocal,
+        bookingForm.startTimeLocal,
+        selectedWorkspace.timezone,
+      );
+      const endAt = dateAndTimeToUtcIso(
+        bookingForm.dateLocal,
+        bookingForm.endTimeLocal,
+        selectedWorkspace.timezone,
+      );
 
       if (!startAt || !endAt) {
         setLocalError({
           code: 'BAD_REQUEST',
-          message: 'startAt and endAt must be valid datetime values',
+          message: 'Date and time values must be valid in the workspace timezone',
         });
         return;
       }
@@ -222,8 +255,9 @@ function WorkspaceMemberContent({
       setBookingForm((previous) => ({
         ...previous,
         subject: '',
-        startAtLocal: '',
-        endAtLocal: '',
+        dateLocal: '',
+        startTimeLocal: '',
+        endTimeLocal: '',
       }));
       await loadBookings(selectedWorkspace, { includePast, includeCancelled });
       setIsCreatingBooking(false);
@@ -274,6 +308,9 @@ function WorkspaceMemberContent({
     () => [...rooms].sort((left, right) => left.name.localeCompare(right.name)),
     [rooms],
   );
+  const minBookingDate = selectedWorkspace
+    ? workspaceTodayDateInput(selectedWorkspace.timezone)
+    : undefined;
 
   if (isLoading) {
     return <p className="text-slate-600">Loading workspace...</p>;
@@ -430,15 +467,16 @@ function WorkspaceMemberContent({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Start</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
             <input
               required
-              type="datetime-local"
-              value={bookingForm.startAtLocal}
+              type="date"
+              min={minBookingDate}
+              value={bookingForm.dateLocal}
               onChange={(event) =>
                 setBookingForm((previous) => ({
                   ...previous,
-                  startAtLocal: event.target.value,
+                  dateLocal: event.target.value,
                 }))
               }
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
@@ -446,15 +484,35 @@ function WorkspaceMemberContent({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">End</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
             <input
               required
-              type="datetime-local"
-              value={bookingForm.endAtLocal}
+              type="time"
+              value={bookingForm.startTimeLocal}
+              onChange={(event) => {
+                const nextStartTime = event.target.value;
+                const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
+
+                setBookingForm((previous) => ({
+                  ...previous,
+                  startTimeLocal: nextStartTime,
+                  endTimeLocal: autoEndTime ?? previous.endTimeLocal,
+                }));
+              }}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
+            <input
+              required
+              type="time"
+              value={bookingForm.endTimeLocal}
               onChange={(event) =>
                 setBookingForm((previous) => ({
                   ...previous,
-                  endAtLocal: event.target.value,
+                  endTimeLocal: event.target.value,
                 }))
               }
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
