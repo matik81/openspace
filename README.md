@@ -51,6 +51,8 @@ infra/
   - active membership
   - pending invitation matching authenticated user email
 - `POST /api/workspaces/:workspaceId/invitations` invites a user email (admin-only).
+- `GET /api/workspaces/:workspaceId/members` lists active workspace members (admin-only).
+- `GET /api/workspaces/:workspaceId/invitations` lists pending workspace invitations (admin-only).
 - `POST /api/workspaces/invitations/:invitationId/accept` accepts an invitation.
 - `POST /api/workspaces/invitations/:invitationId/reject` rejects an invitation.
 
@@ -59,8 +61,8 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 ## Room API (Implemented, Admin Only)
 
 - `POST /api/workspaces/:workspaceId/rooms` creates a room.
-- `GET /api/workspaces/:workspaceId/rooms` lists workspace rooms.
-- `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room.
+- `GET /api/workspaces/:workspaceId/rooms` lists workspace rooms (active member read access).
+- `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room (active member read access).
 - `PATCH /api/workspaces/:workspaceId/rooms/:roomId` updates a room.
 - `DELETE /api/workspaces/:workspaceId/rooms/:roomId` deletes a room when no bookings exist.
 
@@ -75,9 +77,16 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
   - `POST /api/workspaces/invitations/:invitationId/accept`
   - `POST /api/workspaces/invitations/:invitationId/reject`
 - Dashboard supports creating workspaces, highlights pending invitations, and provides Accept/Reject actions.
+- Sidebar-based workspace navigation is shared across `/dashboard`, `/workspaces/[workspaceId]`, and `/workspaces/[workspaceId]/admin`.
+- `/workspaces/[workspaceId]` supports invitation acceptance/rejection for pending users and reservation management for active members.
+- `/workspaces/[workspaceId]/admin` supports room CRUD, active member listing, pending invitation listing, and invite-by-email.
 
 ## Booking API (Implemented)
 
 - `POST /api/workspaces/:workspaceId/bookings` creates an `ACTIVE` booking.
+- `GET /api/workspaces/:workspaceId/bookings` lists bookings with filters:
+  - `mine` (default `true`)
+  - `includePast` (default `false`)
+  - `includeCancelled` (default `false`)
 - `POST /api/workspaces/:workspaceId/bookings/:bookingId/cancel` soft-cancels booking by setting status to `CANCELLED`.
 - Overlap violations return `{ code: "BOOKING_OVERLAP", message: "..." }` from PostgreSQL exclusion constraints.

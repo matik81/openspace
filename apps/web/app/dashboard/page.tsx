@@ -1,496 +1,103 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
-import { safeReadJson } from '@/lib/client-http';
-import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
-import type {
-  ErrorPayload,
-  InvitationStatus,
-  MembershipStatus,
-  WorkspaceRole,
-} from '@/lib/types';
-
-type WorkspaceItem = {
-  id: string;
-  name: string;
-  timezone: string;
-  createdAt: string;
-  updatedAt: string;
-  membership: {
-    role: WorkspaceRole;
-    status: MembershipStatus;
-  } | null;
-  invitation: {
-    id: string;
-    status: InvitationStatus;
-    email: string;
-    expiresAt: string;
-    invitedByUserId: string;
-    createdAt: string;
-  } | null;
-};
-
-type WorkspaceListPayload = {
-  items: WorkspaceItem[];
-};
-
-type InvitationAction = 'accept' | 'reject';
-
-type CreateWorkspaceFormState = {
-  name: string;
-  timezone: string;
-};
+import Link from 'next/link';
+import { WorkspaceShell } from '@/components/workspace-shell';
+import { formatUtcInTimezone } from '@/lib/workspace-time';
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [items, setItems] = useState<WorkspaceItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<ErrorPayload | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
-  const [pendingInvitationAction, setPendingInvitationAction] = useState<{
-    invitationId: string;
-    action: InvitationAction;
-  } | null>(null);
-  const [isCreateWorkspaceFormVisible, setIsCreateWorkspaceFormVisible] = useState(false);
-  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
-  const [createWorkspaceForm, setCreateWorkspaceForm] = useState<CreateWorkspaceFormState>({
-    name: '',
-    timezone: 'UTC',
-  });
-
-  const pendingInvitationId = pendingInvitationAction?.invitationId ?? null;
-
-  const loadWorkspaces = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    const response = await fetch('/api/workspaces', { method: 'GET', cache: 'no-store' });
-    const payload = await safeReadJson(response);
-
-    if (!response.ok) {
-      const normalized = normalizeErrorPayload(payload, response.status);
-      if (normalized.code === 'UNAUTHORIZED') {
-        router.replace('/login?reason=session-expired');
-        return;
-      }
-
-      if (normalized.code === 'EMAIL_NOT_VERIFIED') {
-        router.replace('/verify-email');
-        return;
-      }
-
-      setError(normalized);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!isWorkspaceListPayload(payload)) {
-      setError({
-        code: 'BAD_GATEWAY',
-        message: 'Unexpected workspace payload',
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    setItems(payload.items);
-    setIsLoading(false);
-  }, [router]);
-
-  useEffect(() => {
-    void loadWorkspaces();
-  }, [loadWorkspaces]);
-
-  const pendingInvitationsCount = useMemo(
-    () => items.filter((item) => item.invitation && item.invitation.status === 'PENDING').length,
-    [items],
-  );
-
-  const handleInvitationAction = useCallback(
-    async (invitationId: string, action: InvitationAction) => {
-      setPendingInvitationAction({ invitationId, action });
-      setError(null);
-      setBanner(null);
-
-      const response = await fetch(`/api/workspaces/invitations/${invitationId}/${action}`, {
-        method: 'POST',
-      });
-      const payload = await safeReadJson(response);
-
-      if (!response.ok) {
-        const normalized = normalizeErrorPayload(payload, response.status);
-        if (normalized.code === 'UNAUTHORIZED') {
-          router.replace('/login?reason=session-expired');
-          return;
-        }
-
-        setError(normalized);
-        setPendingInvitationAction(null);
-        return;
-      }
-
-      setBanner(action === 'accept' ? 'Invitation accepted.' : 'Invitation rejected.');
-      await loadWorkspaces();
-      setPendingInvitationAction(null);
-    },
-    [loadWorkspaces, router],
-  );
-
-  const handleLogout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-    router.refresh();
-  }, [router]);
-
-  const resetCreateWorkspaceForm = useCallback(() => {
-    setCreateWorkspaceForm({
-      name: '',
-      timezone: resolveDefaultTimezone(),
-    });
-  }, []);
-
-  const handleToggleCreateWorkspaceForm = useCallback(() => {
-    setBanner(null);
-    setError(null);
-    setIsCreateWorkspaceFormVisible((previous) => {
-      const next = !previous;
-      if (next) {
-        resetCreateWorkspaceForm();
-      }
-
-      return next;
-    });
-  }, [resetCreateWorkspaceForm]);
-
-  const handleCancelCreateWorkspace = useCallback(() => {
-    setIsCreateWorkspaceFormVisible(false);
-    setBanner(null);
-    setError(null);
-    resetCreateWorkspaceForm();
-  }, [resetCreateWorkspaceForm]);
-
-  const handleCreateWorkspace = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (isCreatingWorkspace) {
-        return;
-      }
-
-      setIsCreatingWorkspace(true);
-      setError(null);
-      setBanner(null);
-
-      try {
-        const response = await fetch('/api/workspaces', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: createWorkspaceForm.name,
-            timezone: createWorkspaceForm.timezone,
-          }),
-        });
-        const payload = await safeReadJson(response);
-
-        if (!response.ok) {
-          const normalized = normalizeErrorPayload(payload, response.status);
-          if (normalized.code === 'UNAUTHORIZED') {
-            router.replace('/login?reason=session-expired');
-            return;
-          }
-
-          if (normalized.code === 'EMAIL_NOT_VERIFIED') {
-            router.replace('/verify-email');
-            return;
-          }
-
-          setError(normalized);
-          return;
-        }
-
-        setBanner('Workspace created.');
-        setIsCreateWorkspaceFormVisible(false);
-        resetCreateWorkspaceForm();
-        await loadWorkspaces();
-      } catch {
-        setError({
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Unable to reach API service',
-        });
-      } finally {
-        setIsCreatingWorkspace(false);
-      }
-    },
-    [createWorkspaceForm, isCreatingWorkspace, loadWorkspaces, resetCreateWorkspaceForm, router],
-  );
-
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
-      <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">OpenSpace</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-900">Dashboard</h1>
-            <p className="mt-2 text-slate-600">
-              {pendingInvitationsCount > 0
-                ? `You have ${pendingInvitationsCount} pending invitation${pendingInvitationsCount === 1 ? '' : 's'}.`
-                : 'Your visible workspaces appear below.'}
-            </p>
-          </div>
+    <WorkspaceShell
+      pageTitle="Dashboard"
+      pageDescription="Workspace visibility, invitation inbox, and quick navigation."
+    >
+      {({ items, isLoading }) => {
+        if (isLoading) {
+          return <p className="text-slate-600">Loading workspace visibility...</p>;
+        }
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleToggleCreateWorkspaceForm}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95"
-            >
-              {isCreateWorkspaceFormVisible ? 'Close create form' : 'Create workspace'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadWorkspaces()}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
+        const pendingInvitations = items.filter(
+          (item) => item.invitation?.status === 'PENDING',
+        );
+        const activeMemberships = items.filter(
+          (item) => item.membership?.status === 'ACTIVE',
+        );
 
-        {banner ? (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {banner}
-          </p>
-        ) : null}
+        return (
+          <div className="space-y-5">
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
+              <p className="mt-2 text-sm text-slate-700">
+                Active workspaces: <span className="font-semibold">{activeMemberships.length}</span>
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                Pending invitations: <span className="font-semibold">{pendingInvitations.length}</span>
+              </p>
+            </section>
 
-        {error ? (
-          <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error.code}: {error.message}
-          </p>
-        ) : null}
-
-        {isCreateWorkspaceFormVisible ? (
-          <form
-            className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-5"
-            onSubmit={(event) => void handleCreateWorkspace(event)}
-          >
-            <h2 className="text-lg font-semibold text-slate-900">Create workspace</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Configure a workspace name and its display timezone.
-            </p>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Workspace name</span>
-                <input
-                  required
-                  value={createWorkspaceForm.name}
-                  onChange={(event) =>
-                    setCreateWorkspaceForm((previous) => ({
-                      ...previous,
-                      name: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
-                <select
-                  required
-                  value={createWorkspaceForm.timezone}
-                  onChange={(event) =>
-                    setCreateWorkspaceForm((previous) => ({
-                      ...previous,
-                      timezone: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                >
-                  {IANA_TIMEZONES.map((timezone) => (
-                    <option key={timezone} value={timezone}>
-                      {timezone}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={isCreatingWorkspace}
-                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isCreatingWorkspace ? 'Creating...' : 'Create workspace'}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelCreateWorkspace}
-                disabled={isCreatingWorkspace}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        ) : null}
-
-        {isLoading ? <p className="mt-6 text-slate-600">Loading workspaces...</p> : null}
-
-        {!isLoading && items.length === 0 ? (
-          <p className="mt-6 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-slate-600">
-            No workspace is visible for this account yet.
-          </p>
-        ) : null}
-
-        {!isLoading ? (
-          <ul className="mt-6 grid gap-4">
-            {items.map((item) => {
-              const hasPendingInvitation = item.invitation?.status === 'PENDING';
-              const isActionInProgress = pendingInvitationId === item.invitation?.id;
-
-              return (
-                <li
-                  key={item.id}
-                  className={`rounded-xl border p-5 ${
-                    hasPendingInvitation
-                      ? 'border-amber-300 bg-amber-50/60'
-                      : 'border-slate-200 bg-slate-50/70'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-xl font-semibold text-slate-900">{item.name}</h2>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Timezone: <span className="font-medium">{item.timezone}</span>
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Created: {formatDateInTimezone(item.createdAt, item.timezone)}
-                      </p>
-                    </div>
-                    {item.membership ? (
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                        {item.membership.role} / {item.membership.status}
-                      </span>
-                    ) : item.invitation ? (
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                        Invitation {item.invitation.status}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {item.invitation?.status === 'PENDING' ? (
-                    <div className="mt-4 rounded-lg border border-amber-200 bg-white px-4 py-3">
-                      <p className="text-sm text-slate-700">
-                        Invitation for <span className="font-medium">{item.invitation.email}</span> expires{' '}
-                        {formatDateInTimezone(item.invitation.expiresAt, item.timezone)}.
-                      </p>
-                      <div className="mt-3 flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleInvitationAction(item.invitation!.id, 'accept')
-                          }
-                          disabled={isActionInProgress}
-                          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            {pendingInvitations.length > 0 ? (
+              <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <h3 className="text-lg font-semibold text-slate-900">Invitation Inbox</h3>
+                <ul className="mt-3 space-y-2">
+                  {pendingInvitations.map((item) => (
+                    <li key={item.id} className="rounded-lg border border-amber-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                          {item.invitation ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              Expires{' '}
+                              {formatUtcInTimezone(item.invitation.expiresAt, item.timezone)} (
+                              {item.timezone})
+                            </p>
+                          ) : null}
+                        </div>
+                        <Link
+                          href={`/workspaces/${item.id}`}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                         >
-                          {isActionInProgress && pendingInvitationAction?.action === 'accept'
-                            ? 'Accepting...'
-                            : 'Accept'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleInvitationAction(item.invitation!.id, 'reject')
-                          }
-                          disabled={isActionInProgress}
-                          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isActionInProgress && pendingInvitationAction?.action === 'reject'
-                            ? 'Rejecting...'
-                            : 'Reject'}
-                        </button>
+                          Open
+                        </Link>
                       </div>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
-    </main>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-lg font-semibold text-slate-900">Visible Workspaces</h3>
+              {items.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">No workspace is visible for this account yet.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {items.map((item) => (
+                    <li key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {item.membership
+                              ? `${item.membership.role} / ${item.membership.status}`
+                              : item.invitation
+                                ? `Invitation ${item.invitation.status}`
+                                : 'Unknown visibility'}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/workspaces/${item.id}`}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Open
+                        </Link>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        );
+      }}
+    </WorkspaceShell>
   );
-}
-
-function isWorkspaceListPayload(payload: unknown): payload is WorkspaceListPayload {
-  if (!isRecord(payload) || !Array.isArray(payload.items)) {
-    return false;
-  }
-
-  return payload.items.every(isWorkspaceItem);
-}
-
-function isWorkspaceItem(payload: unknown): payload is WorkspaceItem {
-  if (!isRecord(payload)) {
-    return false;
-  }
-
-  return (
-    typeof payload.id === 'string' &&
-    typeof payload.name === 'string' &&
-    typeof payload.timezone === 'string' &&
-    typeof payload.createdAt === 'string' &&
-    typeof payload.updatedAt === 'string' &&
-    (payload.membership === null || isMembership(payload.membership)) &&
-    (payload.invitation === null || isInvitation(payload.invitation))
-  );
-}
-
-function isMembership(payload: unknown): payload is WorkspaceItem['membership'] {
-  return (
-    isRecord(payload) &&
-    typeof payload.role === 'string' &&
-    typeof payload.status === 'string'
-  );
-}
-
-function isInvitation(payload: unknown): payload is WorkspaceItem['invitation'] {
-  return (
-    isRecord(payload) &&
-    typeof payload.id === 'string' &&
-    typeof payload.status === 'string' &&
-    typeof payload.email === 'string' &&
-    typeof payload.expiresAt === 'string' &&
-    typeof payload.invitedByUserId === 'string' &&
-    typeof payload.createdAt === 'string'
-  );
-}
-
-function formatDateInTimezone(value: string, timezone: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: timezone,
-    }).format(date);
-  } catch {
-    return date.toISOString();
-  }
 }

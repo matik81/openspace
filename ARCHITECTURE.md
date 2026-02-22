@@ -47,6 +47,7 @@ App Router structure:
 - /verify-email
 - /dashboard
 - /workspaces/[id]
+- /workspaces/[id]/admin
 
 Internationalization ready.
 
