@@ -35,6 +35,7 @@ type ListBookingsQuery = {
 export class BookingsService {
   private static readonly BOOKING_WINDOW_START_HOUR = 7;
   private static readonly BOOKING_WINDOW_END_HOUR = 22;
+  private static readonly BOOKING_MINUTE_STEP = 5;
 
   constructor(private readonly prismaService: PrismaService) {}
 
@@ -186,6 +187,7 @@ export class BookingsService {
     }
 
     this.assertBookingWithinAllowedHours(startAt, endAt, workspace.timezone);
+    this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
 
     try {
       return await this.prismaService.booking.create({
@@ -468,6 +470,29 @@ export class BookingsService {
       throw new BadRequestException({
         code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
         message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+      });
+    }
+  }
+
+  private assertBookingOnAllowedMinuteStep(
+    startAt: Date,
+    endAt: Date,
+    timezone: string,
+  ): void {
+    const startTime = this.toLocalTimeParts(startAt, timezone);
+    const endTime = this.toLocalTimeParts(endAt, timezone);
+
+    const hasInvalidMilliseconds =
+      startAt.getUTCMilliseconds() !== 0 || endAt.getUTCMilliseconds() !== 0;
+    const startNotAligned =
+      startTime.minute % BookingsService.BOOKING_MINUTE_STEP !== 0 || startTime.second !== 0;
+    const endNotAligned =
+      endTime.minute % BookingsService.BOOKING_MINUTE_STEP !== 0 || endTime.second !== 0;
+
+    if (hasInvalidMilliseconds || startNotAligned || endNotAligned) {
+      throw new BadRequestException({
+        code: 'BOOKING_INVALID_TIME_INCREMENT',
+        message: 'Bookings must start and end on 5-minute increments in the workspace timezone',
       });
     }
   }

@@ -832,6 +832,58 @@ describe('Booking overlap integration', () => {
     expect(boundaryResponse.body.status).toBe('ACTIVE');
   });
 
+  it('rejects bookings not aligned to 5-minute increments in the workspace timezone', async () => {
+    const adminEmail = 'booking-step-admin@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Minute Step Rule',
+        timezone: 'UTC',
+      });
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Step Room',
+      });
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    const misalignedResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-07-02T09:03:00.000Z',
+        endAt: '2099-07-02T10:00:00.000Z',
+        subject: 'Misaligned start',
+      });
+    expect(misalignedResponse.status).toBe(400);
+    expect(misalignedResponse.body).toEqual({
+      code: 'BOOKING_INVALID_TIME_INCREMENT',
+      message: 'Bookings must start and end on 5-minute increments in the workspace timezone',
+    });
+
+    const alignedResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: '2099-07-02T09:05:00.000Z',
+        endAt: '2099-07-02T10:00:00.000Z',
+        subject: 'Aligned booking',
+      });
+    expect(alignedResponse.status).toBe(201);
+    expect(alignedResponse.body.status).toBe('ACTIVE');
+  });
+
   it('blocks past booking dates but allows same-day bookings', async () => {
     const adminEmail = 'booking-past-date-admin@example.com';
     await registerAndVerify(adminEmail);
