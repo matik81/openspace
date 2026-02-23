@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PNPM_CMD = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-const DEFAULT_URL = 'http://localhost:3000';
+const DEFAULT_URL = process.env.DEV_CHROME_URL ?? 'http://localhost:3000';
+const READY_TIMEOUT_MS = readPositiveIntEnv('DEV_CHROME_READY_TIMEOUT_MS', 120_000);
+const PERSISTENT_PROFILE_DIR = process.env.DEV_CHROME_PROFILE_DIR?.trim() || null;
 
 let devProcess = null;
 let chromeProcess = null;
@@ -13,6 +15,16 @@ let cleaningUp = false;
 
 function log(message) {
   process.stdout.write(`[dev:chrome] ${message}\n`);
+}
+
+function readPositiveIntEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function runCommand(command, args, options = {}) {
@@ -41,6 +53,86 @@ function runCommand(command, args, options = {}) {
       );
     });
   });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForHttpReady(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let lastErrorMessage = 'connection not ready';
+
+  while (Date.now() < deadline) {
+    if (devProcess?.exitCode != null) {
+      throw new Error('pnpm dev si è chiuso prima che l’app fosse pronta.');
+    }
+
+    attempts += 1;
+
+    try {
+      const response = await fetchWithTimeout(url, 2_500);
+      if (response.status < 500) {
+        log(`Application ready on ${url} (HTTP ${response.status}).`);
+        return;
+      }
+
+      lastErrorMessage = `HTTP ${response.status}`;
+    } catch (error) {
+      lastErrorMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    if (attempts === 1 || attempts % 5 === 0) {
+      log(`Waiting for application on ${url}...`);
+    }
+
+    await sleep(1_000);
+  }
+
+  throw new Error(
+    `Timeout waiting for ${url} (${Math.round(timeoutMs / 1000)}s). Last error: ${lastErrorMessage}`,
+  );
+}
+
+function ensureChromePreferences(profileDir) {
+  const defaultProfileDir = join(profileDir, 'Default');
+  const preferencesPath = join(defaultProfileDir, 'Preferences');
+
+  if (existsSync(preferencesPath)) {
+    return;
+  }
+
+  mkdirSync(defaultProfileDir, { recursive: true });
+
+  writeFileSync(
+    preferencesPath,
+    JSON.stringify(
+      {
+        translate: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
 }
 
 function findChromePath() {
@@ -123,7 +215,7 @@ async function cleanup(reason) {
 
   await terminateProcessTree(devProcess, 'pnpm dev').catch(() => {});
 
-  if (chromeProfileDir) {
+  if (chromeProfileDir && !PERSISTENT_PROFILE_DIR) {
     try {
       rmSync(chromeProfileDir, { recursive: true, force: true });
     } catch {
@@ -163,17 +255,30 @@ async function main() {
     }
   });
 
-  chromeProfileDir = mkdtempSync(join(tmpdir(), 'openspace-chrome-'));
+  if (PERSISTENT_PROFILE_DIR) {
+    chromeProfileDir = PERSISTENT_PROFILE_DIR;
+    mkdirSync(chromeProfileDir, { recursive: true });
+    log(`Using persistent Chrome profile: ${chromeProfileDir}`);
+  } else {
+    chromeProfileDir = mkdtempSync(join(tmpdir(), 'openspace-chrome-'));
+  }
 
-  log(`Opening Chrome incognito on ${DEFAULT_URL}...`);
+  ensureChromePreferences(chromeProfileDir);
+
+  log(`Waiting for application readiness on ${DEFAULT_URL}...`);
+  await waitForHttpReady(DEFAULT_URL, READY_TIMEOUT_MS);
+
+  log(`Opening Chrome on ${DEFAULT_URL}...`);
   chromeProcess = spawn(
     chromePath,
     [
-      '--incognito',
       '--new-window',
       '--no-first-run',
       '--no-default-browser-check',
+      '--disable-translate',
+      '--disable-features=Translate,TranslateUI',
       `--user-data-dir=${chromeProfileDir}`,
+      ...(PERSISTENT_PROFILE_DIR ? [] : ['--incognito']),
       DEFAULT_URL,
     ],
     {
