@@ -227,13 +227,7 @@ export class BookingsService {
       },
       select: {
         id: true,
-        startAt: true,
         status: true,
-        workspace: {
-          select: {
-            timezone: true,
-          },
-        },
       },
     });
 
@@ -248,15 +242,6 @@ export class BookingsService {
       throw new ConflictException({
         code: 'BOOKING_ALREADY_CANCELLED',
         message: 'Booking is already cancelled',
-      });
-    }
-
-    const bookingDateKey = this.toLocalDateKey(booking.startAt, booking.workspace.timezone);
-    const todayDateKey = this.toLocalDateKey(new Date(), booking.workspace.timezone);
-    if (bookingDateKey < todayDateKey) {
-      throw new BadRequestException({
-        code: 'BOOKING_PAST_CANCELLATION_NOT_ALLOWED',
-        message: 'Past reservations cannot be cancelled',
       });
     }
 

@@ -19,7 +19,6 @@ import {
   dateAndTimeToUtcIso,
   formatUtcInTimezone,
   formatUtcRangeInTimezone,
-  utcIsoToWorkspaceDateInput,
   workspaceTodayDateInput,
 } from '@/lib/workspace-time';
 
@@ -321,10 +320,6 @@ function WorkspaceMemberContent({
   const minBookingDate = selectedWorkspace
     ? workspaceTodayDateInput(selectedWorkspace.timezone)
     : undefined;
-  const todayBookingDateKey = selectedWorkspace
-    ? workspaceTodayDateInput(selectedWorkspace.timezone)
-    : '';
-
   if (isLoading) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
@@ -576,10 +571,6 @@ function WorkspaceMemberContent({
         {!isLoadingBookings && bookings.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {bookings.map((booking) => {
-              const isPastReservation =
-                utcIsoToWorkspaceDateInput(booking.startAt, selectedWorkspace.timezone) <
-                todayBookingDateKey;
-
               return (
               <li key={booking.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -599,12 +590,7 @@ function WorkspaceMemberContent({
                   <button
                     type="button"
                     onClick={() => void handleCancelBooking(booking.id)}
-                    disabled={
-                      booking.status !== 'ACTIVE' ||
-                      isPastReservation ||
-                      cancellingBookingId === booking.id
-                    }
-                    title={isPastReservation ? 'Past reservations cannot be cancelled' : undefined}
+                    disabled={booking.status !== 'ACTIVE' || cancellingBookingId === booking.id}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel'}

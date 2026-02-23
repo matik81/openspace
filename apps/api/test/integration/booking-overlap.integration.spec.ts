@@ -297,7 +297,7 @@ describe('Booking overlap integration', () => {
     expect(secondBookingResponse.body.status).toBe('ACTIVE');
   });
 
-  it('allows cancelling same-day reservations and blocks cancelling past reservations', async () => {
+  it('allows cancelling past and same-day reservations with hard delete', async () => {
     const adminEmail = 'booking-cancel-date-rules@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -360,11 +360,14 @@ describe('Booking overlap integration', () => {
       .post(`/api/workspaces/${workspaceId}/bookings/${pastBooking.id}/cancel`)
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(cancelPastResponse.status).toBe(400);
-    expect(cancelPastResponse.body).toEqual({
-      code: 'BOOKING_PAST_CANCELLATION_NOT_ALLOWED',
-      message: 'Past reservations cannot be cancelled',
+    expect(cancelPastResponse.status).toBe(201);
+    expect(cancelPastResponse.body).toEqual({ deleted: true });
+
+    const deletedPastBooking = await prismaService.booking.findUnique({
+      where: { id: pastBooking.id },
+      select: { id: true },
     });
+    expect(deletedPastBooking).toBeNull();
 
     const sameDayBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)

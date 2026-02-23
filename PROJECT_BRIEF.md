@@ -88,8 +88,7 @@ Rules:
 - Displayed in workspace timezone
 
 Cancellation:
-- Allowed only for reservations on the current workspace day or future dates
-- Past reservations cannot be cancelled
+- Allowed for past, same-day, and future reservations
 - Hard delete reservation record on cancellation
 
 ---

@@ -90,8 +90,7 @@ Overlap safety must be concurrency-proof.
 
 ## Cancellation Policy
 
-Users can cancel only reservations scheduled on the current workspace day or in the future.
-Past reservations cannot be cancelled.
+Users can cancel reservations scheduled in the past, on the current workspace day, or in the future.
 Reservation cancellation performs a definitive hard delete from the database.
 
 ---
