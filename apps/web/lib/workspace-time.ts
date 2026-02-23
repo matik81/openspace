@@ -96,6 +96,31 @@ export function addHoursToTimeInput(timeValue: string, hours: number): string | 
   return parsed.plus({ hours }).toFormat('HH:mm');
 }
 
+export function quantizeTimeInputToMinuteStep(
+  timeValue: string,
+  minuteStep: number,
+): string | null {
+  if (!timeValue) {
+    return null;
+  }
+
+  if (!Number.isInteger(minuteStep) || minuteStep <= 0) {
+    return null;
+  }
+
+  const parsed = DateTime.fromFormat(timeValue, 'HH:mm', { zone: 'utc' });
+  if (!parsed.isValid) {
+    return null;
+  }
+
+  const totalMinutes = parsed.hour * 60 + parsed.minute;
+  const quantizedMinutes = Math.round(totalMinutes / minuteStep) * minuteStep;
+  const maxMinutes = 24 * 60 - minuteStep;
+  const clampedMinutes = Math.max(0, Math.min(maxMinutes, quantizedMinutes));
+
+  return parsed.startOf('day').plus({ minutes: clampedMinutes }).toFormat('HH:mm');
+}
+
 export function utcIsoToLocalInput(utcValue: string, timezone: string): string {
   const parsed = DateTime.fromISO(utcValue, { zone: 'utc' });
   if (!parsed.isValid) {

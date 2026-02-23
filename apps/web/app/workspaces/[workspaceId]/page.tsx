@@ -19,6 +19,7 @@ import {
   dateAndTimeToUtcIso,
   formatUtcInTimezone,
   formatUtcRangeInTimezone,
+  quantizeTimeInputToMinuteStep,
   workspaceTodayDateInput,
 } from '@/lib/workspace-time';
 
@@ -34,6 +35,25 @@ type BookingFormState = {
   startTimeLocal: string;
   endTimeLocal: string;
 };
+
+const BOOKING_TIME_STEP_MINUTES = 5;
+const BOOKING_TIME_START_HOUR = 7;
+const BOOKING_TIME_END_HOUR = 22;
+const BOOKING_TIME_OPTIONS = Array.from(
+  {
+    length:
+      ((BOOKING_TIME_END_HOUR - BOOKING_TIME_START_HOUR) * 60) / BOOKING_TIME_STEP_MINUTES + 1,
+  },
+  (_, index) => {
+    const totalMinutes = BOOKING_TIME_START_HOUR * 60 + index * BOOKING_TIME_STEP_MINUTES;
+    const hours = Math.floor(totalMinutes / 60)
+      .toString()
+      .padStart(2, '0');
+    const minutes = (totalMinutes % 60).toString().padStart(2, '0');
+
+    return `${hours}:${minutes}`;
+  },
+);
 
 const bookingFormInitialState: BookingFormState = {
   roomId: '',
@@ -207,8 +227,14 @@ function WorkspaceMemberContent({
         return;
       }
 
-      const startLocal = `${bookingForm.dateLocal}T${bookingForm.startTimeLocal}`;
-      const endLocal = `${bookingForm.dateLocal}T${bookingForm.endTimeLocal}`;
+      const startTimeLocal =
+        quantizeTimeInputToMinuteStep(bookingForm.startTimeLocal, BOOKING_TIME_STEP_MINUTES) ??
+        bookingForm.startTimeLocal;
+      const endTimeLocal =
+        quantizeTimeInputToMinuteStep(bookingForm.endTimeLocal, BOOKING_TIME_STEP_MINUTES) ??
+        bookingForm.endTimeLocal;
+      const startLocal = `${bookingForm.dateLocal}T${startTimeLocal}`;
+      const endLocal = `${bookingForm.dateLocal}T${endTimeLocal}`;
       if (endLocal <= startLocal) {
         setLocalError({
           code: 'BAD_REQUEST',
@@ -219,12 +245,12 @@ function WorkspaceMemberContent({
 
       const startAt = dateAndTimeToUtcIso(
         bookingForm.dateLocal,
-        bookingForm.startTimeLocal,
+        startTimeLocal,
         selectedWorkspace.timezone,
       );
       const endAt = dateAndTimeToUtcIso(
         bookingForm.dateLocal,
-        bookingForm.endTimeLocal,
+        endTimeLocal,
         selectedWorkspace.timezone,
       );
 
@@ -494,12 +520,13 @@ function WorkspaceMemberContent({
 
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
-              <input
+              <select
                 required
-                type="time"
                 value={bookingForm.startTimeLocal}
                 onChange={(event) => {
-                  const nextStartTime = event.target.value;
+                  const nextStartTime =
+                    quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
+                    event.target.value;
                   const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
 
                   setBookingForm((previous) => ({
@@ -509,23 +536,38 @@ function WorkspaceMemberContent({
                   }));
                 }}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
+              >
+                <option value="">Select start time</option>
+                {BOOKING_TIME_OPTIONS.map((timeValue) => (
+                  <option key={timeValue} value={timeValue}>
+                    {timeValue}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
-              <input
+              <select
                 required
-                type="time"
                 value={bookingForm.endTimeLocal}
                 onChange={(event) =>
                   setBookingForm((previous) => ({
                     ...previous,
-                    endTimeLocal: event.target.value,
+                    endTimeLocal:
+                      quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
+                      event.target.value,
                   }))
                 }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
+              >
+                <option value="">Select end time</option>
+                {BOOKING_TIME_OPTIONS.map((timeValue) => (
+                  <option key={timeValue} value={timeValue}>
+                    {timeValue}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
