@@ -1,5 +1,6 @@
 'use client';
 
+import { DateTime } from 'luxon';
 import {
   DndContext,
   DragEndEvent,
@@ -51,12 +52,19 @@ export type WorkspaceShellRenderContext = {
   runInvitationAction: (invitationId: string, action: InvitationAction) => Promise<void>;
 };
 
+type WorkspaceShellPageLayout = {
+  main: ReactNode;
+  rightSidebar?: ReactNode;
+};
+
 type WorkspaceShellProps = {
   selectedWorkspaceId?: string;
   pageTitle: string;
   pageDescription: string;
-  children: (context: WorkspaceShellRenderContext) => ReactNode;
+  children: (context: WorkspaceShellRenderContext) => ReactNode | WorkspaceShellPageLayout;
 };
+
+const SHELL_CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const createWorkspaceInitialState: CreateWorkspaceFormState = {
   name: '',
@@ -173,6 +181,116 @@ function SortableWorkspaceListItem({
         </div>
       ) : null}
     </li>
+  );
+}
+
+function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
+  const [selectedDateKey, setSelectedDateKey] = useState(() =>
+    DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'),
+  );
+  const [calendarMonthKey, setCalendarMonthKey] = useState(() =>
+    DateTime.now().setZone(timezone).toFormat('yyyy-LL'),
+  );
+
+  useEffect(() => {
+    const now = DateTime.now().setZone(timezone);
+    if (!now.isValid) {
+      return;
+    }
+
+    setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
+    setCalendarMonthKey(now.toFormat('yyyy-LL'));
+  }, [timezone]);
+
+  const todayDateKey = useMemo(() => DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'), [timezone]);
+  const calendarMonth = useMemo(() => {
+    const parsed = DateTime.fromISO(`${calendarMonthKey}-01`, { zone: timezone });
+    if (parsed.isValid) {
+      return parsed.startOf('month');
+    }
+
+    return DateTime.now().setZone(timezone).startOf('month');
+  }, [calendarMonthKey, timezone]);
+
+  const calendarDayCells = useMemo(() => {
+    const monthStart = calendarMonth.startOf('month');
+    const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const day = gridStart.plus({ days: index });
+      const dateKey = day.toFormat('yyyy-LL-dd');
+
+      return {
+        dateKey,
+        dayNumber: day.day,
+        isCurrentMonth: day.month === monthStart.month,
+        isToday: dateKey === todayDateKey,
+        isSelected: dateKey === selectedDateKey,
+      };
+    });
+  }, [calendarMonth, selectedDateKey, todayDateKey]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
+      <p className="mt-1 text-sm text-slate-900">{timezone}</p>
+
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            aria-label="Previous month"
+          >
+            {'<'}
+          </button>
+          <p className="text-sm font-semibold text-slate-900">{calendarMonth.toFormat('LLLL yyyy')}</p>
+          <button
+            type="button"
+            onClick={() => setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            aria-label="Next month"
+          >
+            {'>'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1">
+          {SHELL_CALENDAR_WEEKDAY_LABELS.map((label) => (
+            <div
+              key={label}
+              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+            >
+              {label}
+            </div>
+          ))}
+
+          {calendarDayCells.map((cell) => (
+            <button
+              key={cell.dateKey}
+              type="button"
+              onClick={() => {
+                setSelectedDateKey(cell.dateKey);
+                setCalendarMonthKey(cell.dateKey.slice(0, 7));
+              }}
+              className={`relative h-8 rounded-md border text-xs font-medium transition ${
+                cell.isSelected
+                  ? 'border-brand bg-cyan-100 text-cyan-900'
+                  : cell.isToday
+                    ? 'border-slate-400 bg-white text-slate-900'
+                    : cell.isCurrentMonth
+                      ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      : 'border-transparent bg-transparent text-slate-400 hover:bg-white/60'
+              }`}
+              aria-label={`Select ${cell.dateKey}`}
+            >
+              {cell.dayNumber}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -456,10 +574,39 @@ export function WorkspaceShell({
     router.refresh();
   }, [router]);
 
+  const renderedChildren = children({
+    items,
+    selectedWorkspace,
+    isLoading,
+    error,
+    banner,
+    pendingInvitationAction,
+    loadWorkspaces,
+    runInvitationAction,
+  });
+  const hasCustomLayout =
+    renderedChildren !== null &&
+    typeof renderedChildren === 'object' &&
+    !Array.isArray(renderedChildren) &&
+    'main' in renderedChildren;
+  const pageMainContent = hasCustomLayout
+    ? (renderedChildren as WorkspaceShellPageLayout).main
+    : renderedChildren;
+  const pageRightSidebar = hasCustomLayout
+    ? (renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null
+    : null;
+  const effectiveRightSidebar =
+    pageRightSidebar ??
+    (
+      <WorkspaceShellMiniCalendar
+        timezone={selectedWorkspace?.timezone ?? resolveDefaultTimezone()}
+      />
+    );
+
   return (
-    <main className="mx-auto min-h-screen w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-6 lg:flex-row">
-        <aside className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6 lg:w-80 lg:self-start">
+        <aside className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6 lg:w-72 lg:self-start">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">OpenSpace</p>
           </div>
@@ -603,37 +750,34 @@ export function WorkspaceShell({
           ) : null}
         </aside>
 
-        <section className="min-h-[70vh] flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <header>
-            <h2 className="text-2xl font-bold text-slate-900">{pageTitle}</h2>
-            <p className="mt-2 text-sm text-slate-600">{pageDescription}</p>
-          </header>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-6 xl:flex-row">
+            <section className="min-h-[70vh] min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <header>
+                <h2 className="text-2xl font-bold text-slate-900">{pageTitle}</h2>
+                <p className="mt-2 text-sm text-slate-600">{pageDescription}</p>
+              </header>
 
-          {banner ? (
-            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {banner}
-            </p>
-          ) : null}
+              {banner ? (
+                <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {banner}
+                </p>
+              ) : null}
 
-          {error ? (
-            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error.code}: {error.message}
-            </p>
-          ) : null}
+              {error ? (
+                <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {error.code}: {error.message}
+                </p>
+              ) : null}
 
-          <div className="mt-6">
-            {children({
-              items,
-              selectedWorkspace,
-              isLoading,
-              error,
-              banner,
-              pendingInvitationAction,
-              loadWorkspaces,
-              runInvitationAction,
-            })}
+              <div className="mt-6">{pageMainContent}</div>
+            </section>
+
+            <aside className="w-full xl:sticky xl:top-6 xl:w-72 xl:self-start">
+              {effectiveRightSidebar}
+            </aside>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   );

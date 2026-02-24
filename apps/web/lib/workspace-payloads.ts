@@ -100,6 +100,7 @@ export function isBookingListPayload(payload: unknown): payload is BookingListPa
       typeof item.roomId === 'string' &&
       typeof item.roomName === 'string' &&
       typeof item.createdByUserId === 'string' &&
+      typeof item.createdByDisplayName === 'string' &&
       typeof item.startAt === 'string' &&
       typeof item.endAt === 'string' &&
       typeof item.subject === 'string' &&

@@ -103,6 +103,10 @@ export class BookingsService {
         roomId: booking.roomId,
         roomName: booking.room.name,
         createdByUserId: booking.createdByUserId,
+        createdByDisplayName: this.toDisplayName(
+          booking.createdByUser.firstName,
+          booking.createdByUser.lastName,
+        ),
         startAt: booking.startAt,
         endAt: booking.endAt,
         subject: booking.subject,
@@ -369,6 +373,12 @@ export class BookingsService {
           name: true,
         },
       },
+      createdByUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
     };
   }
 
@@ -600,6 +610,14 @@ export class BookingsService {
 
   private normalizeEmail(value: string | undefined | null): string {
     return this.requireString(value, 'email').toLowerCase();
+  }
+
+  private toDisplayName(firstName: string, lastName: string): string {
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+    const fullName = `${normalizedFirstName} ${normalizedLastName}`.trim();
+
+    return fullName || 'Unknown User';
   }
 
   private requireUuid(value: string | undefined | null, fieldName: string): string {

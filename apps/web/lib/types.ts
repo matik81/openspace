@@ -78,6 +78,7 @@ export type BookingListItem = {
   roomId: string;
   roomName: string;
   createdByUserId: string;
+  createdByDisplayName: string;
   startAt: string;
   endAt: string;
   subject: string;
