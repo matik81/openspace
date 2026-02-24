@@ -65,6 +65,12 @@ type MockVerificationToken = {
   createdAt: Date;
 };
 
+type MockUserWorkspacePreference = {
+  userId: string;
+  workspaceId: string;
+  sortOrder: number;
+};
+
 function selectRecord<T extends Record<string, unknown>>(
   record: T,
   select?: Record<string, unknown>,
@@ -89,6 +95,7 @@ function createPrismaMock(): PrismaService {
   const members: MockWorkspaceMember[] = [];
   const invitations: MockInvitation[] = [];
   const verificationTokens: MockVerificationToken[] = [];
+  const userWorkspacePreferences: MockUserWorkspacePreference[] = [];
 
   const delegates = {
     user: {
@@ -614,6 +621,56 @@ function createPrismaMock(): PrismaService {
             }
           }
           return { count };
+        },
+      ),
+    },
+    userWorkspacePreference: {
+      findMany: jest.fn(
+        async ({
+          where,
+          select,
+        }: {
+          where: { userId: string; workspaceId: { in: string[] } };
+          select: { workspaceId: true; sortOrder: true };
+        }) =>
+          userWorkspacePreferences
+            .filter(
+              (item) =>
+                item.userId === where.userId &&
+                where.workspaceId.in.includes(item.workspaceId),
+            )
+            .map((item) =>
+              selectRecord(item as unknown as Record<string, unknown>, select),
+            ),
+      ),
+      upsert: jest.fn(
+        async ({
+          where,
+          update,
+          create,
+        }: {
+          where: { userId_workspaceId: { userId: string; workspaceId: string } };
+          update: Partial<MockUserWorkspacePreference>;
+          create: MockUserWorkspacePreference;
+        }) => {
+          const existing = userWorkspacePreferences.find(
+            (item) =>
+              item.userId === where.userId_workspaceId.userId &&
+              item.workspaceId === where.userId_workspaceId.workspaceId,
+          );
+
+          if (existing) {
+            Object.assign(existing, update);
+            return existing;
+          }
+
+          const created = {
+            userId: create.userId,
+            workspaceId: create.workspaceId,
+            sortOrder: create.sortOrder,
+          };
+          userWorkspacePreferences.push(created);
+          return created;
         },
       ),
     },
