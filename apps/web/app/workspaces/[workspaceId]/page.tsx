@@ -214,7 +214,6 @@ function WorkspaceCurrentDaySchedule({
                   {rooms.map((room) => (
                     <div key={room.id} className="border-r border-slate-200 px-3 py-2 last:border-r-0">
                       <p className="text-sm font-semibold text-slate-900">{room.name}</p>
-                      <p className="text-xs text-slate-500">{(bookingsByRoomId.get(room.id) ?? []).length} meeting{(bookingsByRoomId.get(room.id) ?? []).length === 1 ? '' : 's'}</p>
                     </div>
                   ))}
                 </div>
@@ -313,15 +312,23 @@ function WorkspaceScheduleCalendar({
     });
   }, [bookingCountByDateKey, calendarMonth, selectedDateKey, todayDateKey]);
 
+  const jumpToToday = () => {
+    onSelectDateKey(todayDateKey);
+    onSelectCalendarMonthKey(todayDateKey.slice(0, 7));
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
       <p className="mt-1 text-sm text-slate-900">{timezone}</p>
       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Previous month">{'<'}</button>
           <p className="text-sm font-semibold text-slate-900">{calendarMonth.toFormat('LLLL yyyy')}</p>
-          <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Next month">{'>'}</button>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={jumpToToday} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Today</button>
+            <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Previous month">{'<'}</button>
+            <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Next month">{'>'}</button>
+          </div>
         </div>
         <div className="grid grid-cols-7 gap-1">
           {SCHEDULE_CALENDAR_WEEKDAY_LABELS.map((label) => (

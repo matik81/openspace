@@ -93,6 +93,7 @@ function SortableWorkspaceListItem({
   runInvitationAction,
   isSavingWorkspaceOrder,
 }: SortableWorkspaceListItemProps) {
+  const router = useRouter();
   const {
     attributes,
     listeners,
@@ -109,6 +110,8 @@ function SortableWorkspaceListItem({
   const isSelected = item.id === selectedWorkspaceId;
   const hasPendingInvitation = item.invitation?.status === 'PENDING';
   const isActionInProgress = pendingInvitationAction?.invitationId === item.invitation?.id;
+  const canOpenAdminPanel = item.membership?.role === 'ADMIN';
+  const workspaceHref = `/workspaces/${item.id}`;
 
   return (
     <li
@@ -117,15 +120,22 @@ function SortableWorkspaceListItem({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('a,button')) {
+          return;
+        }
+
+        router.push(workspaceHref);
+      }}
       className={`rounded-lg border p-2 ${
         isSelected
-          ? 'border-brand bg-cyan-50'
+          ? 'border-brand bg-cyan-50 hover:bg-cyan-100'
           : hasPendingInvitation
-            ? 'border-amber-300 bg-amber-50'
-            : 'border-slate-200 bg-slate-50'
-      } ${isDragging ? 'z-10 opacity-90 shadow-lg ring-2 ring-brand/20' : ''} relative`}
+            ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+            : 'border-slate-200 bg-slate-50 hover:bg-white'
+      } ${isDragging ? 'z-10 opacity-90 shadow-lg ring-2 ring-brand/20' : ''} relative cursor-pointer transition-colors`}
     >
-      <div className="absolute right-2 top-2 flex items-center justify-end gap-2">
+      <div className="absolute bottom-2 right-2 top-2 flex flex-col items-end justify-between">
         <button
           ref={setActivatorNodeRef}
           type="button"
@@ -138,15 +148,27 @@ function SortableWorkspaceListItem({
         >
           |||
         </button>
+
+        {canOpenAdminPanel ? (
+          <Link
+            href={`/workspaces/${item.id}/admin`}
+            className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Admin
+          </Link>
+        ) : null}
       </div>
 
-      <Link
-        href={`/workspaces/${item.id}`}
-        draggable={false}
-        className="block rounded-md px-1 py-1 pr-10 transition hover:bg-white/70"
-      >
-        <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-        <p className="mt-0.5 text-xs text-slate-600">{item.timezone}</p>
+      <div className={`rounded-md px-1 py-1 ${canOpenAdminPanel ? 'pr-20' : 'pr-10'}`}>
+        <Link
+          href={workspaceHref}
+          draggable={false}
+          className="block rounded-md"
+        >
+          <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+          <p className="mt-0.5 text-xs text-slate-600">{item.timezone}</p>
+        </Link>
+
         <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">
           {item.membership
             ? `${item.membership.role} / ${item.membership.status}`
@@ -154,7 +176,7 @@ function SortableWorkspaceListItem({
               ? `Invitation ${item.invitation.status}`
               : 'Unknown'}
         </p>
-      </Link>
+      </div>
 
       {item.invitation?.status === 'PENDING' ? (
         <div className="mt-2 flex gap-2">
@@ -180,6 +202,7 @@ function SortableWorkspaceListItem({
           </button>
         </div>
       ) : null}
+
     </li>
   );
 }
@@ -230,6 +253,16 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
     });
   }, [calendarMonth, selectedDateKey, todayDateKey]);
 
+  const jumpToToday = () => {
+    const now = DateTime.now().setZone(timezone);
+    if (!now.isValid) {
+      return;
+    }
+
+    setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
+    setCalendarMonthKey(now.toFormat('yyyy-LL'));
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
@@ -237,23 +270,32 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
 
       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            aria-label="Previous month"
-          >
-            {'<'}
-          </button>
           <p className="text-sm font-semibold text-slate-900">{calendarMonth.toFormat('LLLL yyyy')}</p>
-          <button
-            type="button"
-            onClick={() => setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            aria-label="Next month"
-          >
-            {'>'}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={jumpToToday}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              aria-label="Previous month"
+            >
+              {'<'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              aria-label="Next month"
+            >
+              {'>'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-7 gap-1">
@@ -675,16 +717,6 @@ export function WorkspaceShell({
             ) : null}
             {!isLoading && items.length > 1 && isSavingWorkspaceOrder ? (
               <p className="mt-2 text-xs text-slate-500">Saving workspace order...</p>
-            ) : null}
-            {selectedWorkspace?.membership?.role === 'ADMIN' ? (
-              <div className="mt-3">
-                <Link
-                  href={`/workspaces/${selectedWorkspace.id}/admin`}
-                  className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Open Admin Panel
-                </Link>
-              </div>
             ) : null}
           </div>
 
