@@ -400,7 +400,7 @@ export function WorkspaceShell({
   );
 
   const loadWorkspaces = useCallback(async () => {
-    setIsLoading(true);
+    setIsLoading((current) => current || workspaceItemsCache === null);
     setError(null);
 
     const response = await fetch('/api/workspaces', { method: 'GET', cache: 'no-store' });
@@ -757,12 +757,9 @@ export function WorkspaceShell({
                 </SortableContext>
               </DndContext>
             ) : null}
-            {!isLoading && items.length > 1 && isSavingWorkspaceOrder ? (
-              <p className="mt-2 text-xs text-slate-500">Saving workspace order...</p>
-            ) : null}
           </div>
 
-          <div className="mt-4">
+          <div className="mt-2">
             <button
               type="button"
               onClick={() =>

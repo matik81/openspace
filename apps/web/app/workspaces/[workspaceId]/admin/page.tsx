@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
@@ -67,6 +67,7 @@ function WorkspaceAdminContent({
   const [members, setMembers] = useState<WorkspaceMemberListItem[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<WorkspaceInvitationSummary[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [hasLoadedAdminData, setHasLoadedAdminData] = useState(false);
   const [localError, setLocalError] = useState<ErrorPayload | null>(null);
   const [localBanner, setLocalBanner] = useState<string | null>(null);
   const [newRoomName, setNewRoomName] = useState('');
@@ -89,32 +90,44 @@ function WorkspaceAdminContent({
     email: '',
     password: '',
   });
+  const adminDataRequestIdRef = useRef(0);
+  const lastSelectedWorkspaceIdRef = useRef<string | null>(null);
 
   const isAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
     selectedWorkspace?.membership?.role === 'ADMIN';
+  const selectedWorkspaceId = selectedWorkspace?.id ?? null;
+  const selectedWorkspaceName = selectedWorkspace?.name ?? null;
+  const selectedWorkspaceTimezone = selectedWorkspace?.timezone ?? null;
+  const isResolvingSelectedWorkspace =
+    isLoading && (!selectedWorkspace || selectedWorkspace.id !== workspaceId);
+  const isInitialAdminDataLoading = isLoadingData && !hasLoadedAdminData;
+  const isRefreshingAdminData = isLoadingData && hasLoadedAdminData;
 
   const loadAdminData = useCallback(async () => {
-    if (!selectedWorkspace || !isAdmin) {
+    if (!selectedWorkspaceId || !isAdmin) {
       setRooms([]);
       setMembers([]);
       setPendingInvitations([]);
+      setHasLoadedAdminData(false);
+      setIsLoadingData(false);
       return;
     }
 
+    const requestId = ++adminDataRequestIdRef.current;
     setIsLoadingData(true);
     setLocalError(null);
 
     const [roomsResponse, membersResponse, invitationsResponse] = await Promise.all([
-      fetch(`/api/workspaces/${selectedWorkspace.id}/rooms`, {
+      fetch(`/api/workspaces/${selectedWorkspaceId}/rooms`, {
         method: 'GET',
         cache: 'no-store',
       }),
-      fetch(`/api/workspaces/${selectedWorkspace.id}/members`, {
+      fetch(`/api/workspaces/${selectedWorkspaceId}/members`, {
         method: 'GET',
         cache: 'no-store',
       }),
-      fetch(`/api/workspaces/${selectedWorkspace.id}/invitations`, {
+      fetch(`/api/workspaces/${selectedWorkspaceId}/invitations`, {
         method: 'GET',
         cache: 'no-store',
       }),
@@ -125,6 +138,10 @@ function WorkspaceAdminContent({
       safeReadJson(membersResponse),
       safeReadJson(invitationsResponse),
     ]);
+
+    if (adminDataRequestIdRef.current !== requestId) {
+      return;
+    }
 
     if (!roomsResponse.ok) {
       setLocalError(normalizeErrorPayload(roomsPayload, roomsResponse.status));
@@ -174,30 +191,44 @@ function WorkspaceAdminContent({
     setRooms(roomsPayload.items);
     setMembers(membersPayload.items);
     setPendingInvitations(invitationsPayload.items);
+    setHasLoadedAdminData(true);
     setIsLoadingData(false);
-  }, [selectedWorkspace, isAdmin]);
+  }, [selectedWorkspaceId, isAdmin]);
 
   useEffect(() => {
-    setLocalBanner(null);
-    setLocalError(null);
-    void loadAdminData();
-  }, [loadAdminData]);
-
-  useEffect(() => {
-    if (!selectedWorkspace) {
+    if (isResolvingSelectedWorkspace) {
       return;
     }
 
-    setWorkspaceSettingsForm({
-      name: selectedWorkspace.name,
-      timezone: selectedWorkspace.timezone,
-    });
-    setCancelWorkspaceForm((previous) => ({
-      ...previous,
-      workspaceName: '',
-      password: '',
-    }));
-  }, [selectedWorkspace]);
+    setLocalBanner(null);
+    setLocalError(null);
+    void loadAdminData();
+  }, [isResolvingSelectedWorkspace, loadAdminData]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedWorkspaceName || !selectedWorkspaceTimezone) {
+      lastSelectedWorkspaceIdRef.current = null;
+      return;
+    }
+
+    setWorkspaceSettingsForm((previous) =>
+      previous.name === selectedWorkspaceName && previous.timezone === selectedWorkspaceTimezone
+        ? previous
+        : {
+            name: selectedWorkspaceName,
+            timezone: selectedWorkspaceTimezone,
+          },
+    );
+
+    if (lastSelectedWorkspaceIdRef.current !== selectedWorkspaceId) {
+      setCancelWorkspaceForm((previous) => ({
+        ...previous,
+        workspaceName: '',
+        password: '',
+      }));
+      lastSelectedWorkspaceIdRef.current = selectedWorkspaceId;
+    }
+  }, [selectedWorkspaceId, selectedWorkspaceName, selectedWorkspaceTimezone]);
 
   const handleSaveWorkspaceSettings = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -431,7 +462,7 @@ function WorkspaceAdminContent({
     ],
   );
 
-  if (isLoading && !selectedWorkspace) {
+  if (isResolvingSelectedWorkspace) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
 
@@ -548,13 +579,19 @@ function WorkspaceAdminContent({
           </button>
         </form>
 
-        {isLoadingData ? <p className="mt-3 text-sm text-slate-600">Loading rooms...</p> : null}
+        {isInitialAdminDataLoading ? (
+          <p className="mt-3 text-sm text-slate-600">Loading rooms...</p>
+        ) : null}
 
-        {!isLoadingData && rooms.length === 0 ? (
+        {isRefreshingAdminData ? (
+          <p className="mt-3 text-xs text-slate-500">Refreshing rooms...</p>
+        ) : null}
+
+        {!isInitialAdminDataLoading && rooms.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
         ) : null}
 
-        {!isLoadingData && rooms.length > 0 ? (
+        {rooms.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {rooms.map((room) => {
               const isEditing = editingRoomId === room.id;
