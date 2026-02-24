@@ -602,6 +602,8 @@ export function WorkspaceShell({
         timezone={selectedWorkspace?.timezone ?? resolveDefaultTimezone()}
       />
     );
+  const hasPageHeader = Boolean(pageTitle || pageDescription);
+  const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
@@ -673,6 +675,16 @@ export function WorkspaceShell({
             ) : null}
             {!isLoading && items.length > 1 && isSavingWorkspaceOrder ? (
               <p className="mt-2 text-xs text-slate-500">Saving workspace order...</p>
+            ) : null}
+            {selectedWorkspace?.membership?.role === 'ADMIN' ? (
+              <div className="mt-3">
+                <Link
+                  href={`/workspaces/${selectedWorkspace.id}/admin`}
+                  className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Open Admin Panel
+                </Link>
+              </div>
             ) : null}
           </div>
 
@@ -753,10 +765,14 @@ export function WorkspaceShell({
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-6 xl:flex-row">
             <section className="min-h-[70vh] min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <header>
-                <h2 className="text-2xl font-bold text-slate-900">{pageTitle}</h2>
-                <p className="mt-2 text-sm text-slate-600">{pageDescription}</p>
-              </header>
+              {hasPageHeader ? (
+                <header>
+                  {pageTitle ? <h2 className="text-2xl font-bold text-slate-900">{pageTitle}</h2> : null}
+                  {pageDescription ? (
+                    <p className="mt-2 text-sm text-slate-600">{pageDescription}</p>
+                  ) : null}
+                </header>
+              ) : null}
 
               {banner ? (
                 <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -770,7 +786,7 @@ export function WorkspaceShell({
                 </p>
               ) : null}
 
-              <div className="mt-6">{pageMainContent}</div>
+              <div className={hasTopBlockContent ? 'mt-6' : 'mt-0'}>{pageMainContent}</div>
             </section>
 
             <aside className="w-full xl:sticky xl:top-6 xl:w-72 xl:self-start">

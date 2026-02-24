@@ -1,6 +1,5 @@
 ﻿'use client';
 
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { DateTime } from 'luxon';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -32,7 +31,6 @@ type BookingFormState = {
   roomId: string;
   subject: string;
   criticality: BookingCriticality;
-  dateLocal: string;
   startTimeLocal: string;
   endTimeLocal: string;
 };
@@ -60,7 +58,6 @@ const bookingFormInitialState: BookingFormState = {
   roomId: '',
   subject: '',
   criticality: 'MEDIUM',
-  dateLocal: '',
   startTimeLocal: '',
   endTimeLocal: '',
 };
@@ -194,34 +191,14 @@ function WorkspaceCurrentDaySchedule({
           <p className="mt-1 text-sm text-slate-600">
             {scheduleDateLabel} in {timezone}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => {
-              const nextDate = selectedDate.minus({ days: 1 });
-              onSelectDateKey(nextDate.toFormat('yyyy-LL-dd'));
-              onSelectCalendarMonthKey(nextDate.toFormat('yyyy-LL'));
-            }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Prev day</button>
-            <button type="button" onClick={() => {
-              onSelectDateKey(todayDateKey);
-              onSelectCalendarMonthKey(todayDateKey.slice(0, 7));
-            }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Today</button>
-            <button type="button" onClick={() => {
-              const nextDate = selectedDate.plus({ days: 1 });
-              onSelectDateKey(nextDate.toFormat('yyyy-LL-dd'));
-              onSelectCalendarMonthKey(nextDate.toFormat('yyyy-LL'));
-            }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Next day</button>
-            <div className="ml-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Meetings</p>
-              <p className="text-sm font-semibold text-slate-900">{totalBookingsSelectedDate}</p>
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="mt-4 min-w-0">
         {isLoading && !isReady ? (
           <div className="space-y-3" aria-hidden="true">
-            <div className="h-4 w-56 animate-pulse rounded bg-slate-100" />
-            <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="h-[320px] animate-pulse rounded-lg bg-slate-100" /></div>
+            <div className="h-4 w-56 rounded bg-slate-100" />
+            <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="h-[320px] rounded-lg bg-slate-100" /></div>
           </div>
         ) : null}
 
@@ -237,8 +214,8 @@ function WorkspaceCurrentDaySchedule({
               style={{ maxHeight: `${DAY_SCHEDULE_VIEWPORT_MAX_HEIGHT_REM}rem` }}
             >
               <div className="rounded-xl border border-slate-200 bg-white" style={{ minWidth: `${scheduleTableMinWidthPx}px` }}>
-                <div className="sticky top-0 z-20 grid border-b border-slate-200 bg-slate-50/95 backdrop-blur-sm" style={{ gridTemplateColumns }}>
-                  <div className="sticky left-0 z-30 border-r border-slate-200 bg-slate-50/95 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur-sm">Time</div>
+                <div className="sticky top-0 z-20 grid border-b border-slate-200 bg-cyan-50/95 backdrop-blur-sm" style={{ gridTemplateColumns }}>
+                  <div className="sticky left-0 z-30 border-r border-slate-200 bg-cyan-100/95 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-cyan-900 backdrop-blur-sm">Time</div>
                   {rooms.map((room) => (
                     <div key={room.id} className="border-r border-slate-200 px-3 py-2 last:border-r-0">
                       <p className="text-sm font-semibold text-slate-900">{room.name}</p>
@@ -248,14 +225,14 @@ function WorkspaceCurrentDaySchedule({
                 </div>
 
                 <div className="grid" style={{ gridTemplateColumns }}>
-                  <div className="sticky left-0 z-10 relative border-r border-slate-200 bg-slate-50" style={{ height: DAY_SCHEDULE_TRACK_HEIGHT_PX }}>
+                  <div className="sticky left-0 z-10 relative border-r border-slate-200 bg-cyan-50" style={{ height: DAY_SCHEDULE_TRACK_HEIGHT_PX }}>
                     {hourMarkers.map((marker) => {
                       const lineTopPx = Math.min(marker.offsetPx, DAY_SCHEDULE_TRACK_HEIGHT_PX - 1);
                       const labelTopPx = Math.min(Math.max(lineTopPx - 8, 0), DAY_SCHEDULE_TRACK_HEIGHT_PX - 18);
                       return (
                         <div key={marker.hour}>
                           <div className="absolute left-0 right-0 border-t border-slate-300" style={{ top: lineTopPx }} />
-                          <span className="absolute left-2 rounded bg-slate-50 px-1 text-[11px] font-medium text-slate-600" style={{ top: labelTopPx }}>{marker.label}</span>
+                          <span className="absolute left-2 rounded bg-cyan-50 px-1 text-[11px] font-medium text-slate-700" style={{ top: labelTopPx }}>{marker.label}</span>
                         </div>
                       );
                     })}
@@ -392,8 +369,8 @@ export default function WorkspacePage() {
   return (
     <WorkspaceShell
       selectedWorkspaceId={workspaceId}
-      pageTitle="Workspace"
-      pageDescription="Reservation flow for active members and invitation management for pending access."
+      pageTitle=""
+      pageDescription=""
     >
       {(context) => WorkspaceMemberContent({ context, workspaceId })}
     </WorkspaceShell>
@@ -411,6 +388,9 @@ function WorkspaceMemberContent({
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [scheduleBookings, setScheduleBookings] = useState<BookingListItem[]>([]);
+  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
+  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(null);
+  const [scheduleBookingsWorkspaceId, setScheduleBookingsWorkspaceId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<ErrorPayload | null>(null);
   const [localBanner, setLocalBanner] = useState<string | null>(null);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
@@ -429,6 +409,8 @@ function WorkspaceMemberContent({
     selectedWorkspace?.membership === null &&
     selectedWorkspace?.invitation?.status === 'PENDING';
   const isActiveMember = selectedWorkspace?.membership?.status === 'ACTIVE';
+  const selectedWorkspaceIdRef = useRef<string | null>(selectedWorkspace?.id ?? null);
+  selectedWorkspaceIdRef.current = selectedWorkspace?.id ?? null;
 
   const loadRooms = useCallback(async (workspace: WorkspaceItem) => {
     setIsLoadingRooms(true);
@@ -437,10 +419,14 @@ function WorkspaceMemberContent({
       cache: 'no-store',
     });
     const payload = await safeReadJson(response);
+    if (selectedWorkspaceIdRef.current !== workspace.id) {
+      return;
+    }
 
     if (!response.ok) {
       setLocalError(normalizeErrorPayload(payload, response.status));
       setRooms([]);
+      setRoomsWorkspaceId(workspace.id);
       setHasLoadedRoomsOnce(true);
       setIsLoadingRooms(false);
       return;
@@ -452,12 +438,14 @@ function WorkspaceMemberContent({
         message: 'Unexpected rooms payload',
       });
       setRooms([]);
+      setRoomsWorkspaceId(workspace.id);
       setHasLoadedRoomsOnce(true);
       setIsLoadingRooms(false);
       return;
     }
 
     setRooms(payload.items);
+    setRoomsWorkspaceId(workspace.id);
     setHasLoadedRoomsOnce(true);
     setIsLoadingRooms(false);
   }, []);
@@ -475,10 +463,14 @@ function WorkspaceMemberContent({
         cache: 'no-store',
       });
       const payload = await safeReadJson(response);
+      if (selectedWorkspaceIdRef.current !== workspace.id) {
+        return;
+      }
 
       if (!response.ok) {
         setLocalError(normalizeErrorPayload(payload, response.status));
         setBookings([]);
+        setBookingsWorkspaceId(workspace.id);
         setIsLoadingBookings(false);
         return;
       }
@@ -489,11 +481,13 @@ function WorkspaceMemberContent({
           message: 'Unexpected bookings payload',
         });
         setBookings([]);
+        setBookingsWorkspaceId(workspace.id);
         setIsLoadingBookings(false);
         return;
       }
 
       setBookings(payload.items);
+      setBookingsWorkspaceId(workspace.id);
       setIsLoadingBookings(false);
     },
     [],
@@ -511,10 +505,14 @@ function WorkspaceMemberContent({
       cache: 'no-store',
     });
     const payload = await safeReadJson(response);
+    if (selectedWorkspaceIdRef.current !== workspace.id) {
+      return;
+    }
 
     if (!response.ok) {
       setLocalError(normalizeErrorPayload(payload, response.status));
       setScheduleBookings([]);
+      setScheduleBookingsWorkspaceId(workspace.id);
       setHasLoadedScheduleBookingsOnce(true);
       setIsLoadingScheduleBookings(false);
       return;
@@ -526,12 +524,14 @@ function WorkspaceMemberContent({
         message: 'Unexpected bookings payload',
       });
       setScheduleBookings([]);
+      setScheduleBookingsWorkspaceId(workspace.id);
       setHasLoadedScheduleBookingsOnce(true);
       setIsLoadingScheduleBookings(false);
       return;
     }
 
     setScheduleBookings(payload.items);
+    setScheduleBookingsWorkspaceId(workspace.id);
     setHasLoadedScheduleBookingsOnce(true);
     setIsLoadingScheduleBookings(false);
   }, []);
@@ -544,11 +544,16 @@ function WorkspaceMemberContent({
       setRooms([]);
       setBookings([]);
       setScheduleBookings([]);
+      setRoomsWorkspaceId(null);
+      setBookingsWorkspaceId(null);
+      setScheduleBookingsWorkspaceId(null);
       setHasLoadedRoomsOnce(false);
       setHasLoadedScheduleBookingsOnce(false);
       return;
     }
 
+    setHasLoadedRoomsOnce(false);
+    setHasLoadedScheduleBookingsOnce(false);
     void loadRooms(selectedWorkspace);
     void loadBookings(selectedWorkspace, {
       includePast,
@@ -573,18 +578,6 @@ function WorkspaceMemberContent({
 
   useEffect(() => {
     if (!selectedWorkspace || !isActiveMember) {
-      return;
-    }
-
-    const today = workspaceTodayDateInput(selectedWorkspace.timezone);
-    setBookingForm((previous) => ({
-      ...previous,
-      dateLocal: previous.dateLocal || today,
-    }));
-  }, [selectedWorkspace, isActiveMember]);
-
-  useEffect(() => {
-    if (!selectedWorkspace || !isActiveMember) {
       setSelectedScheduleDateKey('');
       setScheduleCalendarMonthKey('');
       return;
@@ -602,10 +595,21 @@ function WorkspaceMemberContent({
         return;
       }
 
-      if (!bookingForm.dateLocal || !bookingForm.startTimeLocal || !bookingForm.endTimeLocal) {
+      const workspaceMinBookingDate = workspaceTodayDateInput(selectedWorkspace.timezone);
+      const selectedBookingDate = selectedScheduleDateKey || workspaceMinBookingDate;
+
+      if (!bookingForm.startTimeLocal || !bookingForm.endTimeLocal) {
         setLocalError({
           code: 'BAD_REQUEST',
-          message: 'date, start time, and end time are required',
+          message: 'start time and end time are required',
+        });
+        return;
+      }
+
+      if (selectedBookingDate < workspaceMinBookingDate) {
+        setLocalError({
+          code: 'BAD_REQUEST',
+          message: 'Reservations can only be created for today or future dates',
         });
         return;
       }
@@ -616,8 +620,8 @@ function WorkspaceMemberContent({
       const endTimeLocal =
         quantizeTimeInputToMinuteStep(bookingForm.endTimeLocal, BOOKING_TIME_STEP_MINUTES) ??
         bookingForm.endTimeLocal;
-      const startLocal = `${bookingForm.dateLocal}T${startTimeLocal}`;
-      const endLocal = `${bookingForm.dateLocal}T${endTimeLocal}`;
+      const startLocal = `${selectedBookingDate}T${startTimeLocal}`;
+      const endLocal = `${selectedBookingDate}T${endTimeLocal}`;
       if (endLocal <= startLocal) {
         setLocalError({
           code: 'BAD_REQUEST',
@@ -627,12 +631,12 @@ function WorkspaceMemberContent({
       }
 
       const startAt = dateAndTimeToUtcIso(
-        bookingForm.dateLocal,
+        selectedBookingDate,
         startTimeLocal,
         selectedWorkspace.timezone,
       );
       const endAt = dateAndTimeToUtcIso(
-        bookingForm.dateLocal,
+        selectedBookingDate,
         endTimeLocal,
         selectedWorkspace.timezone,
       );
@@ -674,7 +678,6 @@ function WorkspaceMemberContent({
       setBookingForm((previous) => ({
         ...previous,
         subject: '',
-        dateLocal: workspaceTodayDateInput(selectedWorkspace.timezone),
         startTimeLocal: '',
         endTimeLocal: '',
       }));
@@ -689,6 +692,7 @@ function WorkspaceMemberContent({
       isActiveMember,
       isCreatingBooking,
       bookingForm,
+      selectedScheduleDateKey,
       includePast,
       loadBookings,
       loadScheduleBookings,
@@ -741,7 +745,14 @@ function WorkspaceMemberContent({
     [rooms],
   );
   const myBookingIds = useMemo(() => new Set(bookings.map((booking) => booking.id)), [bookings]);
-  const isScheduleReady = hasLoadedRoomsOnce && hasLoadedScheduleBookingsOnce;
+  const hasCurrentScheduleRooms =
+    !!selectedWorkspace && roomsWorkspaceId === selectedWorkspace.id;
+  const hasCurrentScheduleBookings =
+    !!selectedWorkspace && scheduleBookingsWorkspaceId === selectedWorkspace.id;
+  const displayedScheduleRooms = hasCurrentScheduleRooms ? sortedRooms : [];
+  const displayedScheduleBookings = hasCurrentScheduleBookings ? scheduleBookings : [];
+  const isScheduleReady =
+    hasLoadedRoomsOnce && hasLoadedScheduleBookingsOnce && hasCurrentScheduleRooms && hasCurrentScheduleBookings;
   const isScheduleLoading =
     isLoadingRooms ||
     isLoadingScheduleBookings ||
@@ -817,23 +828,6 @@ function WorkspaceMemberContent({
   return {
     main: (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{selectedWorkspace.name}</h3>
-            <p className="mt-1 text-sm text-slate-600">Timezone: {selectedWorkspace.timezone}</p>
-          </div>
-          {selectedWorkspace.membership?.role === 'ADMIN' ? (
-            <Link
-              href={`/workspaces/${selectedWorkspace.id}/admin`}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Open Admin Panel
-            </Link>
-          ) : null}
-        </div>
-      </section>
-
       {localBanner ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {localBanner}
@@ -847,8 +841,8 @@ function WorkspaceMemberContent({
       ) : null}
 
       <WorkspaceCurrentDaySchedule
-        rooms={sortedRooms}
-        bookings={scheduleBookings}
+        rooms={displayedScheduleRooms}
+        bookings={displayedScheduleBookings}
         myBookingIds={myBookingIds}
         timezone={selectedWorkspace.timezone}
         isLoading={isScheduleLoading}
@@ -922,7 +916,7 @@ function WorkspaceMemberContent({
       <div className="space-y-4">
         <WorkspaceScheduleCalendar
           timezone={selectedWorkspace.timezone}
-          bookings={scheduleBookings}
+          bookings={displayedScheduleBookings}
           selectedDateKey={activeScheduleDateKey}
           onSelectDateKey={setSelectedScheduleDateKey}
           calendarMonthKey={activeScheduleCalendarMonthKey}
@@ -931,9 +925,6 @@ function WorkspaceMemberContent({
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">Create Reservation</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Input times in workspace local timezone ({selectedWorkspace.timezone}).
-          </p>
 
           <form className="mt-4 grid gap-4" onSubmit={(event) => void handleCreateBooking(event)}>
             <label className="block">
@@ -991,74 +982,59 @@ function WorkspaceMemberContent({
               />
             </label>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
-              <input
-                required
-                type="date"
-                min={minBookingDate}
-                value={bookingForm.dateLocal}
-                onChange={(event) =>
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    dateLocal: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
-              <select
-                required
-                value={bookingForm.startTimeLocal}
-                onChange={(event) => {
-                  const nextStartTime =
-                    quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
-                    event.target.value;
-                  const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
-
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    startTimeLocal: nextStartTime,
-                    endTimeLocal: autoEndTime ?? previous.endTimeLocal,
-                  }));
-                }}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                <option value="">Select start time</option>
-                {BOOKING_TIME_OPTIONS.map((timeValue) => (
-                  <option key={timeValue} value={timeValue}>
-                    {timeValue}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
-              <select
-                required
-                value={bookingForm.endTimeLocal}
-                onChange={(event) =>
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    endTimeLocal:
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block min-w-0">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
+                <select
+                  required
+                  value={bookingForm.startTimeLocal}
+                  onChange={(event) => {
+                    const nextStartTime =
                       quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
-                      event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                <option value="">Select end time</option>
-                {BOOKING_TIME_OPTIONS.map((timeValue) => (
-                  <option key={timeValue} value={timeValue}>
-                    {timeValue}
-                  </option>
-                ))}
-              </select>
-            </label>
+                      event.target.value;
+                    const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
+
+                    setBookingForm((previous) => ({
+                      ...previous,
+                      startTimeLocal: nextStartTime,
+                      endTimeLocal: autoEndTime ?? previous.endTimeLocal,
+                    }));
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  <option value="">Select</option>
+                  {BOOKING_TIME_OPTIONS.map((timeValue) => (
+                    <option key={timeValue} value={timeValue}>
+                      {timeValue}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block min-w-0">
+                <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
+                <select
+                  required
+                  value={bookingForm.endTimeLocal}
+                  onChange={(event) =>
+                    setBookingForm((previous) => ({
+                      ...previous,
+                      endTimeLocal:
+                        quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
+                        event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  <option value="">Select</option>
+                  {BOOKING_TIME_OPTIONS.map((timeValue) => (
+                    <option key={timeValue} value={timeValue}>
+                      {timeValue}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             <div>
               <button
