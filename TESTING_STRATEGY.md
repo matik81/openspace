@@ -19,7 +19,8 @@
 - Workspace visibility rules (active member or pending invitation only)
 - Booking creation
 - Booking overlap rejection
-- User double-booking rejection
+- User double-booking rejection (same workspace)
+- Cross-workspace overlapping bookings allowed
 - Booking hours window enforcement (07:00-22:00 workspace time)
 
 ---
@@ -37,6 +38,14 @@
 1. Create booking A in Room 1 (10:00 - 11:00)
 2. Attempt booking B in Room 2 (10:30 - 11:30) by same user
 3. Expect conflict error BOOKING_USER_OVERLAP
+
+---
+
+## Cross-Workspace User Booking Test Case
+
+1. Create workspace A and workspace B
+2. Create overlapping bookings for the same user, one in each workspace
+3. Expect both bookings to succeed
 
 ---
 

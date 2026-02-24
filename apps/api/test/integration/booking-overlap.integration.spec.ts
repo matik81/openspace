@@ -227,6 +227,74 @@ describe('Booking overlap integration', () => {
     });
   });
 
+  it('allows overlapping bookings by the same user in different workspaces', async () => {
+    const adminEmail = 'booking-user-overlap-cross-workspace@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceAResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Workspace A',
+      });
+    expect(createWorkspaceAResponse.status).toBe(201);
+    const workspaceAId = createWorkspaceAResponse.body.id as string;
+
+    const createWorkspaceBResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Workspace B',
+      });
+    expect(createWorkspaceBResponse.status).toBe(201);
+    const workspaceBId = createWorkspaceBResponse.body.id as string;
+
+    const createRoomAResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceAId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Room A',
+      });
+    expect(createRoomAResponse.status).toBe(201);
+
+    const createRoomBResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceBId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Room B',
+      });
+    expect(createRoomBResponse.status).toBe(201);
+
+    const firstBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceAId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId: createRoomAResponse.body.id as string,
+        startAt: '2099-06-02T10:00:00.000Z',
+        endAt: '2099-06-02T11:00:00.000Z',
+        subject: 'Workspace A booking',
+      });
+    expect(firstBookingResponse.status).toBe(201);
+
+    const secondBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceBId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId: createRoomBResponse.body.id as string,
+        startAt: '2099-06-02T10:30:00.000Z',
+        endAt: '2099-06-02T11:30:00.000Z',
+        subject: 'Workspace B booking',
+      });
+
+    expect(secondBookingResponse.status).toBe(201);
+    expect(secondBookingResponse.body).toMatchObject({
+      workspaceId: workspaceBId,
+      roomId: createRoomBResponse.body.id as string,
+      status: 'ACTIVE',
+    });
+  });
+
   it('hard deletes cancelled bookings and allows rebooking the same time range', async () => {
     const adminEmail = 'booking-admin-cancel@example.com';
     await registerAndVerify(adminEmail);
