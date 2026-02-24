@@ -242,6 +242,78 @@ export function WorkspaceShell({
             </button>
           </div>
 
+          <div className="mt-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your Workspaces</h2>
+            {isLoading ? <p className="mt-2 text-sm text-slate-600">Loading...</p> : null}
+
+            {!isLoading && items.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600">No visible workspaces.</p>
+            ) : null}
+
+            {!isLoading ? (
+              <ul className="mt-2 space-y-2">
+                {items.map((item) => {
+                  const isSelected = item.id === selectedWorkspaceId;
+                  const hasPendingInvitation = item.invitation?.status === 'PENDING';
+                  const isActionInProgress = pendingInvitationAction?.invitationId === item.invitation?.id;
+
+                  return (
+                    <li
+                      key={item.id}
+                      className={`rounded-lg border p-2 ${
+                        isSelected
+                          ? 'border-brand bg-cyan-50'
+                          : hasPendingInvitation
+                            ? 'border-amber-300 bg-amber-50'
+                            : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <Link
+                        href={`/workspaces/${item.id}`}
+                        className="block rounded-md px-1 py-1 transition hover:bg-white/70"
+                      >
+                        <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-600">{item.timezone}</p>
+                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">
+                          {item.membership
+                            ? `${item.membership.role} / ${item.membership.status}`
+                            : item.invitation
+                              ? `Invitation ${item.invitation.status}`
+                              : 'Unknown'}
+                        </p>
+                      </Link>
+
+                      {item.invitation?.status === 'PENDING' ? (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void runInvitationAction(item.invitation!.id, 'accept')}
+                            disabled={isActionInProgress}
+                            className="rounded-md bg-brand px-2 py-1 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isActionInProgress && pendingInvitationAction?.action === 'accept'
+                              ? 'Accepting...'
+                              : 'Accept'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void runInvitationAction(item.invitation!.id, 'reject')}
+                            disabled={isActionInProgress}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isActionInProgress && pendingInvitationAction?.action === 'reject'
+                              ? 'Rejecting...'
+                              : 'Reject'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+
           <div className="mt-4">
             <button
               type="button"
@@ -314,78 +386,6 @@ export function WorkspaceShell({
               </button>
             </form>
           ) : null}
-
-          <div className="mt-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your Workspaces</h2>
-            {isLoading ? <p className="mt-2 text-sm text-slate-600">Loading...</p> : null}
-
-            {!isLoading && items.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">No visible workspaces.</p>
-            ) : null}
-
-            {!isLoading ? (
-              <ul className="mt-2 space-y-2">
-                {items.map((item) => {
-                  const isSelected = item.id === selectedWorkspaceId;
-                  const hasPendingInvitation = item.invitation?.status === 'PENDING';
-                  const isActionInProgress = pendingInvitationAction?.invitationId === item.invitation?.id;
-
-                  return (
-                    <li
-                      key={item.id}
-                      className={`rounded-lg border p-2 ${
-                        isSelected
-                          ? 'border-brand bg-cyan-50'
-                          : hasPendingInvitation
-                            ? 'border-amber-300 bg-amber-50'
-                            : 'border-slate-200 bg-slate-50'
-                      }`}
-                    >
-                      <Link
-                        href={`/workspaces/${item.id}`}
-                        className="block rounded-md px-1 py-1 transition hover:bg-white/70"
-                      >
-                        <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-                        <p className="mt-0.5 text-xs text-slate-600">{item.timezone}</p>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">
-                          {item.membership
-                            ? `${item.membership.role} / ${item.membership.status}`
-                            : item.invitation
-                              ? `Invitation ${item.invitation.status}`
-                              : 'Unknown'}
-                        </p>
-                      </Link>
-
-                      {item.invitation?.status === 'PENDING' ? (
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void runInvitationAction(item.invitation!.id, 'accept')}
-                            disabled={isActionInProgress}
-                            className="rounded-md bg-brand px-2 py-1 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {isActionInProgress && pendingInvitationAction?.action === 'accept'
-                              ? 'Accepting...'
-                              : 'Accept'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void runInvitationAction(item.invitation!.id, 'reject')}
-                            disabled={isActionInProgress}
-                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {isActionInProgress && pendingInvitationAction?.action === 'reject'
-                              ? 'Rejecting...'
-                              : 'Reject'}
-                          </button>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
         </aside>
 
         <section className="min-h-[70vh] flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

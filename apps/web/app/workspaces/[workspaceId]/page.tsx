@@ -588,8 +588,8 @@ function WorkspaceMemberContent({
           <div>
             <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
             <p className="mt-1 text-xs text-slate-600">
-              Cancellation is permanent and allowed only for reservations on the current workspace
-              day or in the future.
+              Cancellation is permanent and allowed for reservations in the past, on the current
+              workspace day, or in the future.
             </p>
           </div>
           <div className="flex items-center gap-4">
