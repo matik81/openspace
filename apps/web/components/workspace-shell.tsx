@@ -23,7 +23,7 @@ import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { normalizeErrorPayload } from '@/lib/api-contract';
+import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
@@ -36,9 +36,17 @@ type CreateWorkspaceFormState = {
   timezone: string;
 };
 
+type AuthUserSummary = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+};
+
 export type WorkspaceShellRenderContext = {
   items: WorkspaceItem[];
   selectedWorkspace: WorkspaceItem | null;
+  currentUser: AuthUserSummary | null;
   isLoading: boolean;
   error: ErrorPayload | null;
   banner: string | null;
@@ -72,6 +80,16 @@ const createWorkspaceInitialState: CreateWorkspaceFormState = {
 };
 
 let workspaceItemsCache: WorkspaceItem[] | null = null;
+
+function isAuthUserSummary(value: unknown): value is AuthUserSummary {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.email === 'string' &&
+    typeof value.firstName === 'string' &&
+    typeof value.lastName === 'string'
+  );
+}
 
 type SortableWorkspaceListItemProps = {
   item: WorkspaceItem;
@@ -344,6 +362,7 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
   const router = useRouter();
   const [items, setItems] = useState<WorkspaceItem[]>(() => workspaceItemsCache ?? []);
+  const [currentUser, setCurrentUser] = useState<AuthUserSummary | null>(null);
   const [isLoading, setIsLoading] = useState(workspaceItemsCache === null);
   const [error, setError] = useState<ErrorPayload | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -415,6 +434,28 @@ export function WorkspaceShell({
 
     setItems(payload.items);
     workspaceItemsCache = payload.items;
+
+    const meResponse = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+    const mePayload = await safeReadJson(meResponse);
+    if (meResponse.ok && isAuthUserSummary(mePayload)) {
+      setCurrentUser(mePayload);
+    } else if (!meResponse.ok) {
+      const normalized = normalizeErrorPayload(mePayload, meResponse.status);
+      if (normalized.code === 'UNAUTHORIZED') {
+        router.replace('/login?reason=session-expired');
+        return;
+      }
+
+      if (normalized.code === 'EMAIL_NOT_VERIFIED') {
+        router.replace('/verify-email');
+        return;
+      }
+
+      setCurrentUser(null);
+    } else {
+      setCurrentUser(null);
+    }
+
     setIsLoading(false);
   }, [router]);
 
@@ -619,6 +660,7 @@ export function WorkspaceShell({
   const renderedChildren = children({
     items,
     selectedWorkspace,
+    currentUser,
     isLoading,
     error,
     banner,

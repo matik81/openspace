@@ -77,6 +77,44 @@ type DaySchedulePositionedBooking = {
   timeLabel: string;
 };
 
+type DayScheduleDraftBookingPreview = {
+  roomId: string;
+  subject: string;
+  criticality: BookingCriticality;
+  startTimeLocal: string;
+  endTimeLocal: string;
+  createdByDisplayName: string | null;
+};
+
+function parseTimeInputToMinutes(timeInput: string): number | null {
+  if (!/^\d{2}:\d{2}$/.test(timeInput)) return null;
+  const [hoursRaw, minutesRaw] = timeInput.split(':');
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+
+  return hours * 60 + minutes;
+}
+
+function formatMinutesAsTimeInput(totalMinutes: number): string {
+  const normalized = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+  const hours = Math.floor(normalized / 60)
+    .toString()
+    .padStart(2, '0');
+  const minutes = (normalized % 60).toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function timeRangesOverlap(
+  leftStartMinutes: number,
+  leftEndMinutes: number,
+  rightStartMinutes: number,
+  rightEndMinutes: number,
+): boolean {
+  return leftStartMinutes < rightEndMinutes && rightStartMinutes < leftEndMinutes;
+}
+
 function WorkspaceCurrentDaySchedule({
   rooms,
   bookings,
@@ -85,6 +123,8 @@ function WorkspaceCurrentDaySchedule({
   isLoading,
   isReady,
   selectedDateKey,
+  highlightedTimeRangeLocal,
+  draftBookingPreview,
 }: {
   rooms: RoomItem[];
   bookings: BookingListItem[];
@@ -93,6 +133,11 @@ function WorkspaceCurrentDaySchedule({
   isLoading: boolean;
   isReady: boolean;
   selectedDateKey: string;
+  highlightedTimeRangeLocal: {
+    startTimeLocal: string;
+    endTimeLocal: string;
+  } | null;
+  draftBookingPreview: DayScheduleDraftBookingPreview | null;
 }) {
   const todayDateKey = workspaceTodayDateInput(timezone);
   const bottomScheduleScrollRef = useRef<HTMLDivElement | null>(null);
@@ -119,6 +164,86 @@ function WorkspaceCurrentDaySchedule({
       }),
     [],
   );
+
+  const selectedTimeRangeHighlight = useMemo(() => {
+    const startMinutes = parseTimeInputToMinutes(highlightedTimeRangeLocal?.startTimeLocal ?? '');
+    if (startMinutes === null) return null;
+
+    const parsedEndMinutes = parseTimeInputToMinutes(highlightedTimeRangeLocal?.endTimeLocal ?? '');
+    if (parsedEndMinutes !== null && parsedEndMinutes <= startMinutes) return null;
+
+    const endMinutes = parsedEndMinutes ?? startMinutes + BOOKING_TIME_STEP_MINUTES;
+    const trackStartMinutes = BOOKING_TIME_START_HOUR * 60;
+    const clampedStartMinutes = Math.max(0, startMinutes - trackStartMinutes);
+    const clampedEndMinutes = Math.min(DAY_SCHEDULE_TOTAL_MINUTES, endMinutes - trackStartMinutes);
+    const visibleDurationMinutes = clampedEndMinutes - clampedStartMinutes;
+    if (visibleDurationMinutes <= 0) return null;
+
+    return {
+      startMinutes,
+      endMinutes,
+      topPx: clampedStartMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
+      heightPx: visibleDurationMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
+    };
+  }, [highlightedTimeRangeLocal]);
+
+  const scheduleDraftBookingPreview = useMemo(() => {
+    if (!selectedTimeRangeHighlight || !draftBookingPreview || !draftBookingPreview.roomId) return null;
+    if (!rooms.some((room) => room.id === draftBookingPreview.roomId)) return null;
+
+    let hasRoomConflict = false;
+    let hasMyBookingConflict = false;
+
+    for (const booking of bookings) {
+      if (booking.status !== 'ACTIVE') continue;
+
+      const start = DateTime.fromISO(booking.startAt, { zone: 'utc' }).setZone(timezone);
+      const end = DateTime.fromISO(booking.endAt, { zone: 'utc' }).setZone(timezone);
+      if (!start.isValid || !end.isValid) continue;
+      if (start.toFormat('yyyy-LL-dd') !== selectedDateKey) continue;
+
+      const bookingStartMinutes = start.hour * 60 + start.minute;
+      const bookingEndMinutes = end.hour * 60 + end.minute;
+      if (
+        !timeRangesOverlap(
+          selectedTimeRangeHighlight.startMinutes,
+          selectedTimeRangeHighlight.endMinutes,
+          bookingStartMinutes,
+          bookingEndMinutes,
+        )
+      ) {
+        continue;
+      }
+
+      if (booking.roomId === draftBookingPreview.roomId) {
+        hasRoomConflict = true;
+      }
+      if (myBookingIds.has(booking.id)) {
+        hasMyBookingConflict = true;
+      }
+
+      if (hasRoomConflict && hasMyBookingConflict) break;
+    }
+
+    return {
+      roomId: draftBookingPreview.roomId,
+      subject: draftBookingPreview.subject.trim() || 'New reservation',
+      criticality: draftBookingPreview.criticality,
+      createdByDisplayName: draftBookingPreview.createdByDisplayName?.trim() || null,
+      topPx: selectedTimeRangeHighlight.topPx,
+      heightPx: selectedTimeRangeHighlight.heightPx,
+      timeLabel: `${formatMinutesAsTimeInput(selectedTimeRangeHighlight.startMinutes)} - ${formatMinutesAsTimeInput(selectedTimeRangeHighlight.endMinutes)}`,
+      hasConflict: hasRoomConflict || hasMyBookingConflict,
+    };
+  }, [
+    bookings,
+    draftBookingPreview,
+    myBookingIds,
+    rooms,
+    selectedDateKey,
+    selectedTimeRangeHighlight,
+    timezone,
+  ]);
 
   const { bookingsByRoomId, totalBookingsSelectedDate, currentTimeOffsetPx } = useMemo(() => {
     const grouped = new Map<string, DaySchedulePositionedBooking[]>();
@@ -245,6 +370,33 @@ function WorkspaceCurrentDaySchedule({
                             {heightPx >= 42 ? (<p className="mt-1 truncate text-[10px] font-medium uppercase tracking-wide opacity-80">{timeLabel}</p>) : null}
                           </div>
                         ))}
+                        {scheduleDraftBookingPreview && scheduleDraftBookingPreview.roomId === room.id ? (
+                          <div
+                            className={`pointer-events-none absolute left-2 right-2 z-[11] overflow-hidden rounded-lg border border-dashed px-2 py-1 shadow-sm ${getScheduleDraftBookingPreviewCardClasses(scheduleDraftBookingPreview.hasConflict)}`}
+                            style={{
+                              top: scheduleDraftBookingPreview.topPx,
+                              height: scheduleDraftBookingPreview.heightPx,
+                              minHeight: scheduleDraftBookingPreview.heightPx,
+                            }}
+                            title={`${scheduleDraftBookingPreview.subject} • ${scheduleDraftBookingPreview.createdByDisplayName ? `${scheduleDraftBookingPreview.createdByDisplayName} • ` : ''}${scheduleDraftBookingPreview.timeLabel}`}
+                          >
+                            <p className="truncate text-xs font-semibold leading-tight">
+                              {scheduleDraftBookingPreview.subject}
+                            </p>
+                            {scheduleDraftBookingPreview.createdByDisplayName ? (
+                              <p className="mt-0.5 truncate text-[11px] leading-tight opacity-90">
+                                {scheduleDraftBookingPreview.createdByDisplayName}
+                              </p>
+                            ) : null}
+                            {scheduleDraftBookingPreview.heightPx >= 42 ? (
+                              <p
+                                className={`truncate text-[10px] font-medium uppercase tracking-wide opacity-80 ${scheduleDraftBookingPreview.createdByDisplayName ? 'mt-1' : 'mt-0.5'}`}
+                              >
+                                {scheduleDraftBookingPreview.timeLabel}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -364,6 +516,14 @@ function getScheduleBookingCardClasses(
   }
 }
 
+function getScheduleDraftBookingPreviewCardClasses(hasConflict: boolean): string {
+  if (hasConflict) {
+    return 'border-rose-500 bg-rose-100/90 text-rose-950';
+  }
+
+  return 'border-amber-400 bg-amber-100/90 text-amber-950';
+}
+
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params.workspaceId;
@@ -386,7 +546,7 @@ function WorkspaceMemberContent({
   context: WorkspaceShellRenderContext;
   workspaceId: string;
 }) {
-  const { selectedWorkspace, isLoading, runInvitationAction, pendingInvitationAction } = context;
+  const { selectedWorkspace, currentUser, isLoading, runInvitationAction, pendingInvitationAction } = context;
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [scheduleBookings, setScheduleBookings] = useState<BookingListItem[]>([]);
@@ -758,6 +918,11 @@ function WorkspaceMemberContent({
     selectedScheduleDateKey || (selectedWorkspace ? workspaceTodayDateInput(selectedWorkspace.timezone) : '');
   const activeScheduleCalendarMonthKey =
     scheduleCalendarMonthKey || (activeScheduleDateKey ? activeScheduleDateKey.slice(0, 7) : '');
+  const currentUserDisplayName = useMemo(() => {
+    const firstName = currentUser?.firstName.trim() ?? '';
+    const lastName = currentUser?.lastName.trim() ?? '';
+    return [firstName, lastName].filter(Boolean).join(' ') || null;
+  }, [currentUser]);
   if (isLoading && !selectedWorkspace) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
@@ -842,6 +1007,18 @@ function WorkspaceMemberContent({
         isLoading={isScheduleLoading}
         isReady={isScheduleReady}
         selectedDateKey={activeScheduleDateKey}
+        highlightedTimeRangeLocal={{
+          startTimeLocal: bookingForm.startTimeLocal,
+          endTimeLocal: bookingForm.endTimeLocal,
+        }}
+        draftBookingPreview={{
+          roomId: bookingForm.roomId,
+          subject: bookingForm.subject,
+          criticality: bookingForm.criticality,
+          startTimeLocal: bookingForm.startTimeLocal,
+          endTimeLocal: bookingForm.endTimeLocal,
+          createdByDisplayName: currentUserDisplayName,
+        }}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">

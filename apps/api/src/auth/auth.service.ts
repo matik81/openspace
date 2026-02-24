@@ -180,6 +180,40 @@ export class AuthService {
     };
   }
 
+  async me(authUser: { userId: string }): Promise<{
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  }> {
+    const user = await this.prismaService.user.findUnique({
+      where: { id: authUser.userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        emailVerifiedAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid access token',
+      });
+    }
+
+    this.assertEmailVerified(user.emailVerifiedAt);
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
+  }
+
   async refresh(dto: RefreshTokenDto): Promise<AuthTokenPair> {
     const refreshToken = this.requireString(dto.refreshToken, 'refreshToken');
     const payload = await this.verifyRefreshToken(refreshToken);
