@@ -431,7 +431,7 @@ function WorkspaceAdminContent({
     ],
   );
 
-  if (isLoading) {
+  if (isLoading && !selectedWorkspace) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
 
@@ -472,7 +472,7 @@ function WorkspaceAdminContent({
         </p>
 
         <form
-          className="mt-4 grid gap-4 md:grid-cols-2"
+          className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end"
           onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
         >
           <label className="block">
@@ -511,13 +511,13 @@ function WorkspaceAdminContent({
             </select>
           </label>
 
-          <div className="md:col-span-2">
+          <div>
             <button
               type="submit"
               disabled={isSubmittingWorkspaceSettings}
               className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmittingWorkspaceSettings ? 'Saving...' : 'Save Workspace Settings'}
+              {isSubmittingWorkspaceSettings ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </form>

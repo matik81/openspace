@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 type AuthUser = {
@@ -26,6 +27,23 @@ type AuthUser = {
 type VerifiedUser = {
   id: string;
   email: string;
+};
+
+type VisibleWorkspaceListItem = {
+  id: string;
+  name: string;
+  timezone: string;
+  createdAt: Date;
+  updatedAt: Date;
+  membership: { role: WorkspaceRole; status: MembershipStatus } | null;
+  invitation: {
+    id: string;
+    status: InvitationStatus;
+    email: string;
+    expiresAt: Date;
+    invitedByUserId: string;
+    createdAt: Date;
+  } | null;
 };
 
 @Injectable()
@@ -127,25 +145,7 @@ export class WorkspacesService {
       },
     });
 
-    const byWorkspaceId = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        timezone: string;
-        createdAt: Date;
-        updatedAt: Date;
-        membership: { role: WorkspaceRole; status: MembershipStatus } | null;
-        invitation: {
-          id: string;
-          status: InvitationStatus;
-          email: string;
-          expiresAt: Date;
-          invitedByUserId: string;
-          createdAt: Date;
-        } | null;
-      }
-    >();
+    const byWorkspaceId = new Map<string, VisibleWorkspaceListItem>();
 
     for (const membership of memberships) {
       byWorkspaceId.set(membership.workspace.id, {
@@ -189,10 +189,130 @@ export class WorkspacesService {
       });
     }
 
+    const items = Array.from(byWorkspaceId.values());
+    const workspaceIds = items.map((item) => item.id);
+    const preferences =
+      workspaceIds.length === 0
+        ? []
+        : await this.prismaService.userWorkspacePreference.findMany({
+            where: {
+              userId: user.id,
+              workspaceId: {
+                in: workspaceIds,
+              },
+            },
+            select: {
+              workspaceId: true,
+              sortOrder: true,
+            },
+          });
+    const sortOrderByWorkspaceId = new Map(
+      preferences.map((preference) => [preference.workspaceId, preference.sortOrder]),
+    );
+
+    items.sort((left, right) => {
+      const leftSortOrder = sortOrderByWorkspaceId.get(left.id);
+      const rightSortOrder = sortOrderByWorkspaceId.get(right.id);
+
+      if (leftSortOrder !== undefined && rightSortOrder !== undefined) {
+        if (leftSortOrder !== rightSortOrder) {
+          return leftSortOrder - rightSortOrder;
+        }
+      } else if (leftSortOrder !== undefined) {
+        return -1;
+      } else if (rightSortOrder !== undefined) {
+        return 1;
+      }
+
+      const createdAtDelta = right.createdAt.getTime() - left.createdAt.getTime();
+      if (createdAtDelta !== 0) {
+        return createdAtDelta;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+
+    return { items };
+  }
+
+  async reorderVisibleWorkspaces(authUser: AuthUser, dto: ReorderVisibleWorkspacesDto) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const workspaceIds = this.requireWorkspaceOrderList(dto.workspaceIds);
+    const now = new Date();
+
+    await this.expirePendingInvitations(now, {
+      email: user.email,
+    });
+
+    const [activeMemberships, pendingInvitations] = await Promise.all([
+      this.prismaService.workspaceMember.findMany({
+        where: {
+          userId: user.id,
+          status: MembershipStatus.ACTIVE,
+        },
+        select: {
+          workspaceId: true,
+        },
+      }),
+      this.prismaService.invitation.findMany({
+        where: {
+          email: user.email,
+          status: InvitationStatus.PENDING,
+          expiresAt: { gt: now },
+        },
+        select: {
+          workspaceId: true,
+        },
+      }),
+    ]);
+
+    const visibleWorkspaceIds = new Set<string>();
+    for (const membership of activeMemberships) {
+      visibleWorkspaceIds.add(membership.workspaceId);
+    }
+    for (const invitation of pendingInvitations) {
+      visibleWorkspaceIds.add(invitation.workspaceId);
+    }
+
+    if (workspaceIds.length !== visibleWorkspaceIds.size) {
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
+    }
+
+    for (const workspaceId of workspaceIds) {
+      if (!visibleWorkspaceIds.has(workspaceId)) {
+        throw new ForbiddenException({
+          code: 'WORKSPACE_NOT_VISIBLE',
+          message: 'Workspace not visible',
+        });
+      }
+    }
+
+    await this.prismaService.$transaction(async (tx) => {
+      for (const [sortOrder, workspaceId] of workspaceIds.entries()) {
+        await tx.userWorkspacePreference.upsert({
+          where: {
+            userId_workspaceId: {
+              userId: user.id,
+              workspaceId,
+            },
+          },
+          update: {
+            sortOrder,
+          },
+          create: {
+            userId: user.id,
+            workspaceId,
+            sortOrder,
+          },
+        });
+      }
+    });
+
     return {
-      items: Array.from(byWorkspaceId.values()).sort(
-        (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
-      ),
+      updated: true,
     };
   }
 
@@ -738,6 +858,29 @@ export class WorkspacesService {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
         message: `${fieldName} must be a valid UUID`,
+      });
+    }
+
+    return normalized;
+  }
+
+  private requireWorkspaceOrderList(value: string[] | undefined): string[] {
+    if (!Array.isArray(value)) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'workspaceIds must be an array of UUIDs',
+      });
+    }
+
+    const normalized = value.map((workspaceId) =>
+      this.requireUuid(workspaceId, 'workspaceIds[]'),
+    );
+    const uniqueIds = new Set(normalized);
+
+    if (uniqueIds.size !== normalized.length) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'workspaceIds must not contain duplicates',
       });
     }
 

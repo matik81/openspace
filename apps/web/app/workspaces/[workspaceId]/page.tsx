@@ -346,7 +346,7 @@ function WorkspaceMemberContent({
   const minBookingDate = selectedWorkspace
     ? workspaceTodayDateInput(selectedWorkspace.timezone)
     : undefined;
-  if (isLoading) {
+  if (isLoading && !selectedWorkspace) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
 
@@ -587,10 +587,6 @@ function WorkspaceMemberContent({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
-            <p className="mt-1 text-xs text-slate-600">
-              Cancellation is permanent and allowed for reservations in the past, on the current
-              workspace day, or in the future.
-            </p>
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-slate-700">

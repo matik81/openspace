@@ -14,6 +14,7 @@ import { JwtSubject } from '../auth/types/jwt-subject.type';
 import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -38,6 +39,17 @@ export class WorkspacesController {
   async listVisibleWorkspaces(@Req() request: AuthenticatedRequest) {
     return this.workspacesService.listVisibleWorkspaces(
       this.extractAuthUser(request),
+    );
+  }
+
+  @Post('order')
+  async reorderVisibleWorkspaces(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: ReorderVisibleWorkspacesDto,
+  ) {
+    return this.workspacesService.reorderVisibleWorkspaces(
+      this.extractAuthUser(request),
+      body,
     );
   }
 
