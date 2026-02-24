@@ -85,8 +85,6 @@ function WorkspaceCurrentDaySchedule({
   isLoading,
   isReady,
   selectedDateKey,
-  onSelectDateKey,
-  onSelectCalendarMonthKey,
 }: {
   rooms: RoomItem[];
   bookings: BookingListItem[];
@@ -95,9 +93,6 @@ function WorkspaceCurrentDaySchedule({
   isLoading: boolean;
   isReady: boolean;
   selectedDateKey: string;
-  onSelectDateKey: (value: string) => void;
-  calendarMonthKey: string;
-  onSelectCalendarMonthKey: (value: string) => void;
 }) {
   const todayDateKey = workspaceTodayDateInput(timezone);
   const bottomScheduleScrollRef = useRef<HTMLDivElement | null>(null);
@@ -389,7 +384,6 @@ function WorkspaceMemberContent({
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [scheduleBookings, setScheduleBookings] = useState<BookingListItem[]>([]);
   const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
-  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(null);
   const [scheduleBookingsWorkspaceId, setScheduleBookingsWorkspaceId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<ErrorPayload | null>(null);
   const [localBanner, setLocalBanner] = useState<string | null>(null);
@@ -470,7 +464,6 @@ function WorkspaceMemberContent({
       if (!response.ok) {
         setLocalError(normalizeErrorPayload(payload, response.status));
         setBookings([]);
-        setBookingsWorkspaceId(workspace.id);
         setIsLoadingBookings(false);
         return;
       }
@@ -481,13 +474,11 @@ function WorkspaceMemberContent({
           message: 'Unexpected bookings payload',
         });
         setBookings([]);
-        setBookingsWorkspaceId(workspace.id);
         setIsLoadingBookings(false);
         return;
       }
 
       setBookings(payload.items);
-      setBookingsWorkspaceId(workspace.id);
       setIsLoadingBookings(false);
     },
     [],
@@ -545,7 +536,6 @@ function WorkspaceMemberContent({
       setBookings([]);
       setScheduleBookings([]);
       setRoomsWorkspaceId(null);
-      setBookingsWorkspaceId(null);
       setScheduleBookingsWorkspaceId(null);
       setHasLoadedRoomsOnce(false);
       setHasLoadedScheduleBookingsOnce(false);
@@ -761,9 +751,6 @@ function WorkspaceMemberContent({
     selectedScheduleDateKey || (selectedWorkspace ? workspaceTodayDateInput(selectedWorkspace.timezone) : '');
   const activeScheduleCalendarMonthKey =
     scheduleCalendarMonthKey || (activeScheduleDateKey ? activeScheduleDateKey.slice(0, 7) : '');
-  const minBookingDate = selectedWorkspace
-    ? workspaceTodayDateInput(selectedWorkspace.timezone)
-    : undefined;
   if (isLoading && !selectedWorkspace) {
     return <p className="text-slate-600">Loading workspace...</p>;
   }
@@ -848,9 +835,6 @@ function WorkspaceMemberContent({
         isLoading={isScheduleLoading}
         isReady={isScheduleReady}
         selectedDateKey={activeScheduleDateKey}
-        onSelectDateKey={setSelectedScheduleDateKey}
-        calendarMonthKey={activeScheduleCalendarMonthKey}
-        onSelectCalendarMonthKey={setScheduleCalendarMonthKey}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
