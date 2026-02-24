@@ -44,6 +44,7 @@ infra/
 - Room booking overlap is blocked at DB level with `btree_gist`, `tstzrange`, and partial active-only exclusion.
 - User double-booking within the same workspace (same user, overlapping active bookings) is blocked at DB level with an active-only exclusion constraint.
 - Booking creation is restricted to `07:00`-`22:00` in the workspace timezone.
+- Booking start/end times must align to 15-minute increments in the workspace timezone.
 - Booking cancellation is allowed for past, same-day, and future reservations.
 - Booking cancellation permanently removes the reservation record (hard delete).
 
@@ -88,6 +89,7 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 
 - `POST /api/workspaces/:workspaceId/bookings` creates an `ACTIVE` booking.
   - Enforces same-local-day booking and local booking hours (`07:00`-`22:00`).
+  - Enforces 15-minute time increments in the workspace timezone.
   - Rejects overlapping active bookings for the same room.
   - Rejects overlapping active bookings for the same user across rooms within the same workspace.
   - Allows overlapping bookings by the same user in different workspaces.

@@ -900,7 +900,7 @@ describe('Booking overlap integration', () => {
     expect(boundaryResponse.body.status).toBe('ACTIVE');
   });
 
-  it('rejects bookings not aligned to 5-minute increments in the workspace timezone', async () => {
+  it('rejects bookings not aligned to 15-minute increments in the workspace timezone', async () => {
     const adminEmail = 'booking-step-admin@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -936,7 +936,7 @@ describe('Booking overlap integration', () => {
     expect(misalignedResponse.status).toBe(400);
     expect(misalignedResponse.body).toEqual({
       code: 'BOOKING_INVALID_TIME_INCREMENT',
-      message: 'Bookings must start and end on 5-minute increments in the workspace timezone',
+      message: 'Bookings must start and end on 15-minute increments in the workspace timezone',
     });
 
     const alignedResponse = await request(app.getHttpServer())
@@ -944,7 +944,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-02T09:05:00.000Z',
+        startAt: '2099-07-02T09:15:00.000Z',
         endAt: '2099-07-02T10:00:00.000Z',
         subject: 'Aligned booking',
       });

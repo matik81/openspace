@@ -35,7 +35,7 @@ type ListBookingsQuery = {
 export class BookingsService {
   private static readonly BOOKING_WINDOW_START_HOUR = 7;
   private static readonly BOOKING_WINDOW_END_HOUR = 22;
-  private static readonly BOOKING_MINUTE_STEP = 5;
+  private static readonly BOOKING_MINUTE_STEP = 15;
 
   constructor(private readonly prismaService: PrismaService) {}
 
@@ -502,7 +502,7 @@ export class BookingsService {
     if (hasInvalidMilliseconds || startNotAligned || endNotAligned) {
       throw new BadRequestException({
         code: 'BOOKING_INVALID_TIME_INCREMENT',
-        message: 'Bookings must start and end on 5-minute increments in the workspace timezone',
+        message: 'Bookings must start and end on 15-minute increments in the workspace timezone',
       });
     }
   }

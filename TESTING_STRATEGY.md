@@ -22,6 +22,7 @@
 - User double-booking rejection (same workspace)
 - Cross-workspace overlapping bookings allowed
 - Booking hours window enforcement (07:00-22:00 workspace time)
+- Booking time increment enforcement (15-minute workspace time)
 
 ---
 

@@ -37,7 +37,7 @@ type BookingFormState = {
   endTimeLocal: string;
 };
 
-const BOOKING_TIME_STEP_MINUTES = 5;
+const BOOKING_TIME_STEP_MINUTES = 15;
 const BOOKING_TIME_START_HOUR = 7;
 const BOOKING_TIME_END_HOUR = 22;
 const BOOKING_TIME_OPTIONS = Array.from(
