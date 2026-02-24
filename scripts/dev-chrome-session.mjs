@@ -278,7 +278,6 @@ async function main() {
       '--disable-translate',
       '--disable-features=Translate,TranslateUI',
       `--user-data-dir=${chromeProfileDir}`,
-      ...(PERSISTENT_PROFILE_DIR ? [] : ['--incognito']),
       DEFAULT_URL,
     ],
     {
