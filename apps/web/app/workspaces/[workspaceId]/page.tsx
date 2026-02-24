@@ -265,7 +265,7 @@ function WorkspaceCurrentDaySchedule({
                     const roomBookings = bookingsByRoomId.get(room.id) ?? [];
                     return (
                       <div key={room.id} className="relative border-r border-slate-200 last:border-r-0" style={{ height: DAY_SCHEDULE_TRACK_HEIGHT_PX }}>
-                        <div className="absolute inset-0" style={{ backgroundColor: '#f8fafc', backgroundImage: ['repeating-linear-gradient(to bottom, transparent 0, transparent 4px, rgba(148,163,184,0.1) 4px, rgba(148,163,184,0.1) 5px)','repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(148,163,184,0.18) 29px, rgba(148,163,184,0.18) 30px)','repeating-linear-gradient(to bottom, transparent 0, transparent 59px, rgba(100,116,139,0.28) 59px, rgba(100,116,139,0.28) 60px)'].join(', ') }} />
+                        <div className="absolute inset-0" style={{ backgroundColor: '#f8fafc', backgroundImage: ['repeating-linear-gradient(to bottom, transparent 0, transparent 14px, rgba(148,163,184,0.1) 14px, rgba(148,163,184,0.1) 15px)','repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(148,163,184,0.18) 29px, rgba(148,163,184,0.18) 30px)','repeating-linear-gradient(to bottom, transparent 0, transparent 59px, rgba(100,116,139,0.28) 59px, rgba(100,116,139,0.28) 60px)'].join(', ') }} />
                         {currentTimeOffsetPx !== null ? (<div className="absolute left-0 right-0 z-10 border-t border-rose-400/80" style={{ top: currentTimeOffsetPx }} />) : null}
                         {roomBookings.map(({ booking, topPx, heightPx, timeLabel }) => (
                           <div key={booking.id} title={`${booking.subject} • ${booking.createdByDisplayName} • ${timeLabel}`} className={`absolute left-2 right-2 overflow-hidden rounded-lg border px-2 py-1 shadow-sm ${myBookingIds.has(booking.id) ? 'ring-2 ring-brand/60 ring-offset-1' : ''} ${getScheduleBookingCardClasses(booking.criticality, myBookingIds.has(booking.id))}`} style={{ top: topPx, height: heightPx, minHeight: heightPx }}>
@@ -860,68 +860,137 @@ function WorkspaceMemberContent({
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="text-lg font-semibold text-slate-900">Create Reservation</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Input times in workspace local timezone ({selectedWorkspace.timezone}).
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={includePast}
+                onChange={(event) => setIncludePast(event.target.checked)}
+              />
+              Include past
+            </label>
+          </div>
+        </div>
 
-        <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={(event) => void handleCreateBooking(event)}>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Meeting Room</span>
-            <select
-              required
-              value={bookingForm.roomId}
-              onChange={(event) =>
-                setBookingForm((previous) => ({
-                  ...previous,
-                  roomId: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              {sortedRooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {isLoadingBookings ? <p className="mt-3 text-sm text-slate-600">Loading reservations...</p> : null}
 
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Criticality</span>
-            <select
-              required
-              value={bookingForm.criticality}
-              onChange={(event) =>
-                setBookingForm((previous) => ({
-                  ...previous,
-                  criticality: event.target.value as BookingCriticality,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="HIGH">HIGH</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="LOW">LOW</option>
-            </select>
-          </label>
+        {!isLoadingBookings && bookings.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">No reservations found for the current filters.</p>
+        ) : null}
 
-          <label className="block md:col-span-2">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Subject</span>
-            <input
-              required
-              value={bookingForm.subject}
-              onChange={(event) =>
-                setBookingForm((previous) => ({
-                  ...previous,
-                  subject: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+        {!isLoadingBookings && bookings.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {bookings.map((booking) => {
+              return (
+              <li key={booking.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{booking.subject}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {booking.roomName} - {booking.criticality} - {booking.status}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {formatUtcRangeInTimezone(
+                        booking.startAt,
+                        booking.endAt,
+                        selectedWorkspace.timezone,
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelBooking(booking.id)}
+                    disabled={booking.status !== 'ACTIVE' || cancellingBookingId === booking.id}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel'}
+                  </button>
+                </div>
+              </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </section>
+    </div>
+    ),
+    rightSidebar: (
+      <div className="space-y-4">
+        <WorkspaceScheduleCalendar
+          timezone={selectedWorkspace.timezone}
+          bookings={scheduleBookings}
+          selectedDateKey={activeScheduleDateKey}
+          onSelectDateKey={setSelectedScheduleDateKey}
+          calendarMonthKey={activeScheduleCalendarMonthKey}
+          onSelectCalendarMonthKey={setScheduleCalendarMonthKey}
+        />
 
-          <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">Create Reservation</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Input times in workspace local timezone ({selectedWorkspace.timezone}).
+          </p>
+
+          <form className="mt-4 grid gap-4" onSubmit={(event) => void handleCreateBooking(event)}>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Meeting Room</span>
+              <select
+                required
+                value={bookingForm.roomId}
+                onChange={(event) =>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    roomId: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                {sortedRooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Criticality</span>
+              <select
+                required
+                value={bookingForm.criticality}
+                onChange={(event) =>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    criticality: event.target.value as BookingCriticality,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Subject</span>
+              <input
+                required
+                value={bookingForm.subject}
+                onChange={(event) =>
+                  setBookingForm((previous) => ({
+                    ...previous,
+                    subject: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
               <input
@@ -990,88 +1059,19 @@ function WorkspaceMemberContent({
                 ))}
               </select>
             </label>
-          </div>
 
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={isCreatingBooking || isLoadingRooms || sortedRooms.length === 0}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isCreatingBooking ? 'Creating...' : 'Create Reservation'}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={includePast}
-                onChange={(event) => setIncludePast(event.target.checked)}
-              />
-              Include past
-            </label>
-          </div>
-        </div>
-
-        {isLoadingBookings ? <p className="mt-3 text-sm text-slate-600">Loading reservations...</p> : null}
-
-        {!isLoadingBookings && bookings.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600">No reservations found for the current filters.</p>
-        ) : null}
-
-        {!isLoadingBookings && bookings.length > 0 ? (
-          <ul className="mt-3 space-y-2">
-            {bookings.map((booking) => {
-              return (
-              <li key={booking.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{booking.subject}</p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {booking.roomName} â€¢ {booking.criticality} â€¢ {booking.status}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {formatUtcRangeInTimezone(
-                        booking.startAt,
-                        booking.endAt,
-                        selectedWorkspace.timezone,
-                      )}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleCancelBooking(booking.id)}
-                    disabled={booking.status !== 'ACTIVE' || cancellingBookingId === booking.id}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel'}
-                  </button>
-                </div>
-              </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
-    </div>
-    ),
-    rightSidebar: (
-      <WorkspaceScheduleCalendar
-        timezone={selectedWorkspace.timezone}
-        bookings={scheduleBookings}
-        selectedDateKey={activeScheduleDateKey}
-        onSelectDateKey={setSelectedScheduleDateKey}
-        calendarMonthKey={activeScheduleCalendarMonthKey}
-        onSelectCalendarMonthKey={setScheduleCalendarMonthKey}
-      />
+            <div>
+              <button
+                type="submit"
+                disabled={isCreatingBooking || isLoadingRooms || sortedRooms.length === 0}
+                className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCreatingBooking ? 'Creating...' : 'Create Reservation'}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
     ),
   };
 }
