@@ -6,7 +6,10 @@ import { join } from 'node:path';
 const PNPM_CMD = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const DEFAULT_URL = process.env.DEV_CHROME_URL ?? 'http://localhost:3000';
 const READY_TIMEOUT_MS = readPositiveIntEnv('DEV_CHROME_READY_TIMEOUT_MS', 120_000);
-const PERSISTENT_PROFILE_DIR = process.env.DEV_CHROME_PROFILE_DIR?.trim() || null;
+const USE_TEMP_PROFILE = readBooleanEnv('DEV_CHROME_TEMP_PROFILE', false);
+const PERSISTENT_PROFILE_DIR = USE_TEMP_PROFILE
+  ? null
+  : process.env.DEV_CHROME_PROFILE_DIR?.trim() || join(process.cwd(), '.chrome-dev-profile');
 
 let devProcess = null;
 let chromeProcess = null;
@@ -25,6 +28,24 @@ function readPositiveIntEnv(name, fallback) {
 
   const parsed = Number.parseInt(rawValue, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readBooleanEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function runCommand(command, args, options = {}) {
@@ -261,6 +282,7 @@ async function main() {
     log(`Using persistent Chrome profile: ${chromeProfileDir}`);
   } else {
     chromeProfileDir = mkdtempSync(join(tmpdir(), 'openspace-chrome-'));
+    log(`Using temporary Chrome profile: ${chromeProfileDir}`);
   }
 
   ensureChromePreferences(chromeProfileDir);
