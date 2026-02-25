@@ -144,11 +144,40 @@ export async function DELETE(request: NextRequest, context: RoomRouteContext): P
       );
     }
 
+    const body = await request.json().catch(() => null);
+    if (!isRecord(body)) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'BAD_REQUEST',
+          message: 'Request body must be a JSON object',
+        },
+        { status: 400 },
+      );
+    }
+
+    const roomName = getTrimmedString(body, 'roomName');
+    const email = getTrimmedString(body, 'email');
+    const password = getTrimmedString(body, 'password');
+    if (!roomName || !email || !password) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'BAD_REQUEST',
+          message: 'roomName, email, and password are required',
+        },
+        { status: 400 },
+      );
+    }
+
     const result = await proxyApiRequest({
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/rooms/${encodeURIComponent(roomId)}`,
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${accessToken}`,
+      },
+      body: {
+        roomName,
+        email,
+        password,
       },
     });
 

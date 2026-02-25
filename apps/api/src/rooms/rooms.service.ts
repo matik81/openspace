@@ -12,8 +12,10 @@ import {
   Prisma,
   WorkspaceRole,
 } from '@prisma/client';
+import { compare } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { DeleteRoomDto } from './dto/delete-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 type AuthUser = {
@@ -135,35 +137,64 @@ export class RoomsService {
     }
   }
 
-  async deleteRoom(authUser: AuthUser, workspaceId: string, roomId: string) {
+  async deleteRoom(
+    authUser: AuthUser,
+    workspaceId: string,
+    roomId: string,
+    dto: DeleteRoomDto,
+  ) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const normalizedRoomId = this.requireUuid(roomId, 'roomId');
     await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
-    await this.findWorkspaceRoom(normalizedWorkspaceId, normalizedRoomId);
+    const room = await this.findWorkspaceRoom(normalizedWorkspaceId, normalizedRoomId);
+    const roomName = this.requireString(dto.roomName, 'roomName');
+    const email = this.normalizeEmail(dto.email);
+    const password = this.requireString(dto.password, 'password');
 
-    const existingBookingsCount = await this.prismaService.booking.count({
-      where: {
-        workspaceId: normalizedWorkspaceId,
-        roomId: normalizedRoomId,
+    if (room.name !== roomName || user.email !== email) {
+      this.throwRoomDeleteConfirmationFailed();
+    }
+
+    const userCredentials = await this.prismaService.user.findUnique({
+      where: { id: user.id },
+      select: {
+        passwordHash: true,
       },
     });
 
-    if (existingBookingsCount > 0) {
-      throw new ConflictException({
-        code: 'ROOM_HAS_BOOKINGS',
-        message: 'Cannot delete a room that has bookings',
+    if (!userCredentials) {
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid access token',
       });
     }
 
-    await this.prismaService.room.delete({
-      where: {
-        id: normalizedRoomId,
-      },
+    const isPasswordValid = await compare(password, userCredentials.passwordHash);
+    if (!isPasswordValid) {
+      this.throwRoomDeleteConfirmationFailed();
+    }
+
+    const deletedBookings = await this.prismaService.$transaction(async (tx) => {
+      const bookingDeletion = await tx.booking.deleteMany({
+        where: {
+          workspaceId: normalizedWorkspaceId,
+          roomId: normalizedRoomId,
+        },
+      });
+
+      await tx.room.delete({
+        where: {
+          id: normalizedRoomId,
+        },
+      });
+
+      return bookingDeletion.count;
     });
 
     return {
       deleted: true,
+      deletedBookingsCount: deletedBookings,
     };
   }
 
@@ -336,6 +367,13 @@ export class RoomsService {
     }
 
     return error.message.includes('Room_workspaceId_name_key');
+  }
+
+  private throwRoomDeleteConfirmationFailed(): never {
+    throw new ForbiddenException({
+      code: 'ROOM_DELETE_CONFIRMATION_FAILED',
+      message: 'Room deletion confirmation failed',
+    });
   }
 
   private roomSelect() {

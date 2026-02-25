@@ -13,6 +13,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtSubject } from '../auth/types/jwt-subject.type';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { DeleteRoomDto } from './dto/delete-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 import { RoomsService } from './rooms.service';
 
@@ -79,11 +80,13 @@ export class RoomsController {
     @Req() request: AuthenticatedRequest,
     @Param('workspaceId') workspaceId: string,
     @Param('roomId') roomId: string,
+    @Body() body: DeleteRoomDto,
   ) {
     return this.roomsService.deleteRoom(
       this.extractAuthUser(request),
       workspaceId,
       roomId,
+      body,
     );
   }
 

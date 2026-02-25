@@ -39,6 +39,14 @@ type CancelWorkspaceState = {
   password: string;
 };
 
+type DeleteRoomConfirmationState = {
+  roomId: string;
+  roomName: string;
+  confirmRoomName: string;
+  email: string;
+  password: string;
+};
+
 export default function WorkspaceAdminPage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params.workspaceId;
@@ -79,6 +87,9 @@ function WorkspaceAdminContent({
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
+    useState<DeleteRoomConfirmationState | null>(null);
+  const [isDeleteRoomCredentialsUnlocked, setIsDeleteRoomCredentialsUnlocked] = useState(false);
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>({
     name: '',
     timezone: 'UTC',
@@ -226,6 +237,8 @@ function WorkspaceAdminContent({
         workspaceName: '',
         password: '',
       }));
+      setDeleteRoomConfirmation(null);
+      setIsDeleteRoomCredentialsUnlocked(false);
       lastSelectedWorkspaceIdRef.current = selectedWorkspaceId;
     }
   }, [selectedWorkspaceId, selectedWorkspaceName, selectedWorkspaceTimezone]);
@@ -350,27 +363,54 @@ function WorkspaceAdminContent({
     [selectedWorkspace, isAdmin, isSubmittingRoom, roomEditForm, loadAdminData],
   );
 
-  const handleDeleteRoom = useCallback(
-    async (roomId: string) => {
+  const handleOpenDeleteRoomConfirmation = useCallback(
+    (roomId: string) => {
       if (!selectedWorkspace || !isAdmin || deletingRoomId) {
         return;
       }
 
       const room = rooms.find((item) => item.id === roomId);
-      const confirmed = window.confirm(
-        `Delete room${room ? ` "${room.name}"` : ''}? This action cannot be undone.`,
-      );
-      if (!confirmed) {
+      if (!room) {
         return;
       }
 
-      setDeletingRoomId(roomId);
+      setIsDeleteRoomCredentialsUnlocked(false);
+      setDeleteRoomConfirmation({
+        roomId: room.id,
+        roomName: room.name,
+        confirmRoomName: '',
+        email: '',
+        password: '',
+      });
+    },
+    [selectedWorkspace, isAdmin, deletingRoomId, rooms],
+  );
+
+  const handleConfirmDeleteRoom = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedWorkspace || !isAdmin || deletingRoomId || !deleteRoomConfirmation) {
+        return;
+      }
+
+      setDeletingRoomId(deleteRoomConfirmation.roomId);
       setLocalError(null);
       setLocalBanner(null);
 
-      const response = await fetch(`/api/workspaces/${selectedWorkspace.id}/rooms/${roomId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/workspaces/${selectedWorkspace.id}/rooms/${deleteRoomConfirmation.roomId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            roomName: deleteRoomConfirmation.confirmRoomName,
+            email: deleteRoomConfirmation.email,
+            password: deleteRoomConfirmation.password,
+          }),
+        },
+      );
       const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
@@ -379,11 +419,13 @@ function WorkspaceAdminContent({
         return;
       }
 
-      setLocalBanner('Room deleted.');
+      setIsDeleteRoomCredentialsUnlocked(false);
+      setDeleteRoomConfirmation(null);
+      setLocalBanner('Room deleted. Associated reservations were permanently deleted.');
       await loadAdminData();
       setDeletingRoomId(null);
     },
-    [selectedWorkspace, isAdmin, deletingRoomId, rooms, loadAdminData],
+    [selectedWorkspace, isAdmin, deletingRoomId, deleteRoomConfirmation, loadAdminData],
   );
 
   const handleInvite = useCallback(
@@ -622,7 +664,7 @@ function WorkspaceAdminContent({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDeleteRoom(room.id)}
+                          onClick={() => handleOpenDeleteRoomConfirmation(room.id)}
                           disabled={deletingRoomId === room.id}
                           className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -861,6 +903,158 @@ function WorkspaceAdminContent({
           </form>
         ) : null}
       </section>
+
+      {deleteRoomConfirmation ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-room-dialog-title"
+        >
+          <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="delete-room-dialog-title" className="text-lg font-semibold text-rose-900">
+                  Delete Room Permanently
+                </h3>
+                <p className="mt-1 text-sm text-rose-800">
+                  This permanently deletes the room and all associated reservations.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteRoomConfirmation(null);
+                  setIsDeleteRoomCredentialsUnlocked(false);
+                }}
+                disabled={deletingRoomId === deleteRoomConfirmation.roomId}
+                className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Close
+              </button>
+            </div>
+
+            <form
+              className="mt-4 space-y-3"
+              autoComplete="off"
+              onSubmit={(event) => void handleConfirmDeleteRoom(event)}
+            >
+              {/* Decoy credentials fields reduce Chrome autofill on destructive confirmation dialogs. */}
+              <div className="hidden" aria-hidden="true">
+                <input type="text" name="username" autoComplete="username" tabIndex={-1} />
+                <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">
+                  Room Name Confirmation
+                </span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Type <span className="font-semibold">{deleteRoomConfirmation.roomName}</span> to
+                  confirm.
+                </p>
+                <input
+                  required
+                  name="delete-room-confirm-name"
+                  autoComplete="off"
+                  value={deleteRoomConfirmation.confirmRoomName}
+                  onChange={(event) =>
+                    setDeleteRoomConfirmation((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            confirmRoomName: event.target.value,
+                          }
+                        : previous,
+                    )
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">Email (username)</span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Enter your admin account email address.
+                </p>
+                <input
+                  required
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  name="delete-room-confirm-contact"
+                  autoComplete="new-password"
+                  readOnly={!isDeleteRoomCredentialsUnlocked}
+                  onFocus={() => setIsDeleteRoomCredentialsUnlocked(true)}
+                  value={deleteRoomConfirmation.email}
+                  onChange={(event) =>
+                    setDeleteRoomConfirmation((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            email: event.target.value,
+                          }
+                        : previous,
+                    )
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">Password</span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Re-enter your password to permanently delete this room and its reservations.
+                </p>
+                <input
+                  required
+                  type="password"
+                  name="delete-room-confirm-secret"
+                  autoComplete="new-password"
+                  readOnly={!isDeleteRoomCredentialsUnlocked}
+                  onFocus={() => setIsDeleteRoomCredentialsUnlocked(true)}
+                  value={deleteRoomConfirmation.password}
+                  onChange={(event) =>
+                    setDeleteRoomConfirmation((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            password: event.target.value,
+                          }
+                        : previous,
+                    )
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={deletingRoomId === deleteRoomConfirmation.roomId}
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingRoomId === deleteRoomConfirmation.roomId
+                    ? 'Deleting Room...'
+                    : 'Confirm Room Delete'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteRoomConfirmation(null);
+                    setIsDeleteRoomCredentialsUnlocked(false);
+                  }}
+                  disabled={deletingRoomId === deleteRoomConfirmation.roomId}
+                  className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Keep Room
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

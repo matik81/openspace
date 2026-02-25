@@ -68,7 +68,8 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - `GET /api/workspaces/:workspaceId/rooms` lists workspace rooms (active member read access).
 - `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room (active member read access).
 - `PATCH /api/workspaces/:workspaceId/rooms/:roomId` updates a room.
-- `DELETE /api/workspaces/:workspaceId/rooms/:roomId` deletes a room when no bookings exist.
+- `DELETE /api/workspaces/:workspaceId/rooms/:roomId` permanently deletes a room and all associated reservations.
+  - Requires admin confirmation payload: `roomName`, `email`, and `password`.
 
 ## Web Frontend (Implemented)
 
@@ -84,6 +85,7 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - Sidebar-based workspace navigation is shared across `/dashboard`, `/workspaces/[workspaceId]`, and `/workspaces/[workspaceId]/admin`.
 - `/workspaces/[workspaceId]` supports invitation acceptance/rejection for pending users and reservation management for active members.
 - `/workspaces/[workspaceId]/admin` supports room CRUD, active member listing, pending invitation listing, and invite-by-email.
+- Room deletion uses a styled confirmation modal and requires room name + admin email + password before the backend performs a permanent delete of the room and its reservations.
 
 ## Booking API (Implemented)
 
