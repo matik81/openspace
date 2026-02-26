@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -12,6 +13,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtSubject } from '../auth/types/jwt-subject.type';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 import { BookingsService } from './bookings.service';
 
 type AuthenticatedRequest = {
@@ -51,6 +53,21 @@ export class BookingsController {
     return this.bookingsService.createBooking(
       this.extractAuthUser(request),
       workspaceId,
+      body,
+    );
+  }
+
+  @Patch(':bookingId')
+  async updateBooking(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Param('bookingId') bookingId: string,
+    @Body() body: UpdateBookingDto,
+  ) {
+    return this.bookingsService.updateBooking(
+      this.extractAuthUser(request),
+      workspaceId,
+      bookingId,
       body,
     );
   }

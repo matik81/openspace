@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 
 type AuthUser = {
   userId: string;
@@ -204,6 +205,164 @@ export class BookingsService {
           subject,
           criticality,
           status: BookingStatus.ACTIVE,
+        },
+        select: this.bookingSelect(),
+      });
+    } catch (error) {
+      const bookingConflict = this.getBookingConflict(error);
+      if (bookingConflict) {
+        throw new ConflictException({
+          code: bookingConflict.code,
+          message: bookingConflict.message,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  async updateBooking(
+    authUser: AuthUser,
+    workspaceId: string,
+    bookingId: string,
+    dto: UpdateBookingDto,
+  ) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    const normalizedBookingId = this.requireUuid(bookingId, 'bookingId');
+    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+
+    const existingBooking = await this.prismaService.booking.findFirst({
+      where: {
+        id: normalizedBookingId,
+        workspaceId: normalizedWorkspaceId,
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        roomId: true,
+        createdByUserId: true,
+        startAt: true,
+        endAt: true,
+        subject: true,
+        criticality: true,
+        status: true,
+      },
+    });
+
+    if (!existingBooking) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Booking not found',
+      });
+    }
+
+    if (existingBooking.createdByUserId !== user.id) {
+      throw new ForbiddenException({
+        code: 'UNAUTHORIZED',
+        message: 'Only the booking owner can update this booking',
+      });
+    }
+
+    const hasAnyField =
+      dto.roomId !== undefined ||
+      dto.startAt !== undefined ||
+      dto.endAt !== undefined ||
+      dto.subject !== undefined ||
+      dto.criticality !== undefined;
+
+    if (!hasAnyField) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'At least one field must be provided to update booking',
+      });
+    }
+
+    const workspace = await this.prismaService.workspace.findUnique({
+      where: {
+        id: normalizedWorkspaceId,
+      },
+      select: {
+        id: true,
+        timezone: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Workspace not found',
+      });
+    }
+
+    const roomId =
+      dto.roomId !== undefined ? this.requireUuid(dto.roomId, 'roomId') : existingBooking.roomId;
+    const startAt =
+      dto.startAt !== undefined ? this.parseDate(dto.startAt, 'startAt') : existingBooking.startAt;
+    const endAt =
+      dto.endAt !== undefined ? this.parseDate(dto.endAt, 'endAt') : existingBooking.endAt;
+    const subject =
+      dto.subject !== undefined ? this.requireString(dto.subject, 'subject') : existingBooking.subject;
+    const criticality =
+      dto.criticality !== undefined
+        ? this.parseCriticality(dto.criticality)
+        : existingBooking.criticality;
+
+    if (endAt <= startAt) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'endAt must be after startAt',
+      });
+    }
+
+    const startDateKey = this.toLocalDateKey(startAt, workspace.timezone);
+    const endDateKey = this.toLocalDateKey(endAt, workspace.timezone);
+    if (startDateKey !== endDateKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
+        message: 'Booking must start and end on the same date in the workspace timezone',
+      });
+    }
+
+    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
+    if (startDateKey < todayDateKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
+        message: 'Booking date cannot be in the past',
+      });
+    }
+
+    const room = await this.prismaService.room.findFirst({
+      where: {
+        id: roomId,
+        workspaceId: normalizedWorkspaceId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!room) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Room not found',
+      });
+    }
+
+    this.assertBookingWithinAllowedHours(startAt, endAt, workspace.timezone);
+    this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
+
+    try {
+      return await this.prismaService.booking.update({
+        where: {
+          id: existingBooking.id,
+        },
+        data: {
+          roomId: room.id,
+          startAt,
+          endAt,
+          subject,
+          criticality,
         },
         select: this.bookingSelect(),
       });
