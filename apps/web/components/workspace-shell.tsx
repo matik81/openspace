@@ -1,28 +1,12 @@
 'use client';
 
 import { DateTime } from 'luxon';
-import {
-  DndContext,
-  DragEndEvent,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers';
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import { LeftSidebar } from '@/components/layout/LeftSidebar';
+import { RightSidebar } from '@/components/layout/RightSidebar';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
@@ -62,6 +46,7 @@ export type WorkspaceShellRenderContext = {
 
 type WorkspaceShellPageLayout = {
   main: ReactNode;
+  leftSidebar?: ReactNode;
   rightSidebar?: ReactNode;
 };
 
@@ -69,6 +54,9 @@ type WorkspaceShellProps = {
   selectedWorkspaceId?: string;
   pageTitle: string;
   pageDescription: string;
+  pageBackHref?: string;
+  pageBackLabel?: string;
+  pageBackAriaLabel?: string;
   children: (context: WorkspaceShellRenderContext) => ReactNode | WorkspaceShellPageLayout;
 };
 
@@ -88,140 +76,6 @@ function isAuthUserSummary(value: unknown): value is AuthUserSummary {
     typeof value.email === 'string' &&
     typeof value.firstName === 'string' &&
     typeof value.lastName === 'string'
-  );
-}
-
-type SortableWorkspaceListItemProps = {
-  item: WorkspaceItem;
-  selectedWorkspaceId?: string;
-  pendingInvitationAction:
-    | {
-        invitationId: string;
-        action: InvitationAction;
-      }
-    | null;
-  runInvitationAction: (invitationId: string, action: InvitationAction) => Promise<void>;
-  isSavingWorkspaceOrder: boolean;
-};
-
-function SortableWorkspaceListItem({
-  item,
-  selectedWorkspaceId,
-  pendingInvitationAction,
-  runInvitationAction,
-  isSavingWorkspaceOrder,
-}: SortableWorkspaceListItemProps) {
-  const router = useRouter();
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: item.id,
-    disabled: isSavingWorkspaceOrder,
-  });
-
-  const isSelected = item.id === selectedWorkspaceId;
-  const hasPendingInvitation = item.invitation?.status === 'PENDING';
-  const isActionInProgress = pendingInvitationAction?.invitationId === item.invitation?.id;
-  const canOpenAdminPanel = item.membership?.role === 'ADMIN';
-  const workspaceHref = `/workspaces/${item.id}`;
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest('a,button')) {
-          return;
-        }
-
-        router.push(workspaceHref);
-      }}
-      className={`rounded-lg border p-2 ${
-        isSelected
-          ? 'border-brand bg-cyan-50 hover:bg-cyan-100'
-          : hasPendingInvitation
-            ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
-            : 'border-slate-200 bg-slate-50 hover:bg-white'
-      } ${isDragging ? 'z-10 opacity-90 shadow-lg ring-2 ring-brand/20' : ''} relative cursor-pointer transition-colors`}
-    >
-      <div className="absolute bottom-2 right-2 top-2 flex flex-col items-end justify-between">
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          disabled={isSavingWorkspaceOrder}
-          aria-label={`Drag ${item.name} to reorder`}
-          title="Drag to reorder"
-          className="cursor-grab touch-none rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold tracking-widest text-slate-700 transition hover:bg-slate-50 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60"
-          {...attributes}
-          {...listeners}
-        >
-          |||
-        </button>
-
-        {canOpenAdminPanel ? (
-          <Link
-            href={`/workspaces/${item.id}/admin`}
-            className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Admin
-          </Link>
-        ) : null}
-      </div>
-
-      <div className={`rounded-md px-1 py-1 ${canOpenAdminPanel ? 'pr-20' : 'pr-10'}`}>
-        <Link
-          href={workspaceHref}
-          draggable={false}
-          className="block rounded-md"
-        >
-          <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-          <p className="mt-0.5 text-xs text-slate-600">{item.timezone}</p>
-        </Link>
-
-        <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">
-          {item.membership
-            ? `${item.membership.role} / ${item.membership.status}`
-            : item.invitation
-              ? `Invitation ${item.invitation.status}`
-              : 'Unknown'}
-        </p>
-      </div>
-
-      {item.invitation?.status === 'PENDING' ? (
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => void runInvitationAction(item.invitation!.id, 'accept')}
-            disabled={isActionInProgress}
-            className="rounded-md bg-brand px-2 py-1 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isActionInProgress && pendingInvitationAction?.action === 'accept'
-              ? 'Accepting...'
-              : 'Accept'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void runInvitationAction(item.invitation!.id, 'reject')}
-            disabled={isActionInProgress}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isActionInProgress && pendingInvitationAction?.action === 'reject'
-              ? 'Rejecting...'
-              : 'Reject'}
-          </button>
-        </div>
-      ) : null}
-
-    </li>
   );
 }
 
@@ -358,6 +212,9 @@ export function WorkspaceShell({
   selectedWorkspaceId,
   pageTitle,
   pageDescription,
+  pageBackHref,
+  pageBackLabel,
+  pageBackAriaLabel,
   children,
 }: WorkspaceShellProps) {
   const router = useRouter();
@@ -371,34 +228,18 @@ export function WorkspaceShell({
     action: InvitationAction;
   } | null>(null);
   const [isSavingWorkspaceOrder, setIsSavingWorkspaceOrder] = useState(false);
-  const [activeSortWorkspaceId, setActiveSortWorkspaceId] = useState<string | null>(null);
   const [isCreateWorkspaceFormVisible, setIsCreateWorkspaceFormVisible] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [createWorkspaceForm, setCreateWorkspaceForm] = useState<CreateWorkspaceFormState>(
     createWorkspaceInitialState,
   );
+  const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
+  const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
 
   const selectedWorkspace = useMemo(
     () => items.find((item) => item.id === selectedWorkspaceId) ?? null,
     [items, selectedWorkspaceId],
   );
-  const workspaceSortSensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 6,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 150,
-        tolerance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
   const loadWorkspaces = useCallback(async () => {
     setIsLoading((current) => current || workspaceItemsCache === null);
     setError(null);
@@ -466,6 +307,11 @@ export function WorkspaceShell({
   useEffect(() => {
     workspaceItemsCache = items;
   }, [items]);
+
+  useEffect(() => {
+    setIsLeftSidebarOpenMobile(false);
+    setIsRightSidebarOpenMobile(false);
+  }, [selectedWorkspaceId]);
 
   const resetCreateWorkspaceForm = useCallback(() => {
     setCreateWorkspaceForm({
@@ -544,10 +390,17 @@ export function WorkspaceShell({
           return;
         }
 
+        const createdWorkspaceId =
+          isRecord(payload) && typeof payload.id === 'string' ? payload.id : null;
+
         setBanner('Workspace created.');
         setIsCreateWorkspaceFormVisible(false);
         resetCreateWorkspaceForm();
         await loadWorkspaces();
+        if (createdWorkspaceId) {
+          router.push(`/workspaces/${createdWorkspaceId}/admin`);
+          return;
+        }
       } catch {
         setError({
           code: 'SERVICE_UNAVAILABLE',
@@ -559,6 +412,13 @@ export function WorkspaceShell({
     },
     [createWorkspaceForm, isCreatingWorkspace, loadWorkspaces, resetCreateWorkspaceForm, router],
   );
+
+  const handleLogout = useCallback(async () => {
+    workspaceItemsCache = null;
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  }, [router]);
 
   const persistWorkspaceOrder = useCallback(
     async (nextItems: WorkspaceItem[]) => {
@@ -583,12 +443,10 @@ export function WorkspaceShell({
             router.replace('/login?reason=session-expired');
             return false;
           }
-
           if (normalized.code === 'EMAIL_NOT_VERIFIED') {
             router.replace('/verify-email');
             return false;
           }
-
           setError(normalized);
           return false;
         }
@@ -607,55 +465,38 @@ export function WorkspaceShell({
     [router],
   );
 
-  const handleWorkspaceSortStart = useCallback(
-    (event: { active: { id: string | number } }) => {
-      setActiveSortWorkspaceId(String(event.active.id));
-    },
-    [],
-  );
-
-  const handleWorkspaceSortCancel = useCallback(() => {
-    setActiveSortWorkspaceId(null);
-  }, []);
-
-  const handleWorkspaceSortEnd = useCallback(
-    async (event: DragEndEvent) => {
-      setActiveSortWorkspaceId(null);
-
+  const handleReorderWorkspaces = useCallback(
+    async (workspaceIds: string[]) => {
       if (isSavingWorkspaceOrder) {
         return;
       }
 
-      const { active, over } = event;
-      if (!over || active.id === over.id) {
-        return;
-      }
-
       const currentItems = items;
-      const oldIndex = currentItems.findIndex((item) => item.id === String(active.id));
-      const newIndex = currentItems.findIndex((item) => item.id === String(over.id));
+      const byId = new Map(currentItems.map((item) => [item.id, item]));
+      const nextItems = workspaceIds
+        .map((id) => byId.get(id) ?? null)
+        .filter((item): item is WorkspaceItem => item !== null);
 
-      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      if (nextItems.length !== currentItems.length) {
         return;
       }
 
-      const nextItems = arrayMove(currentItems, oldIndex, newIndex);
-      setItems(nextItems);
+      const unchanged = nextItems.every((item, index) => item.id === currentItems[index]?.id);
+      if (unchanged) {
+        return;
+      }
 
-      const isSaved = await persistWorkspaceOrder(nextItems);
-      if (!isSaved) {
+      setItems(nextItems);
+      workspaceItemsCache = nextItems;
+
+      const saved = await persistWorkspaceOrder(nextItems);
+      if (!saved) {
         setItems(currentItems);
+        workspaceItemsCache = currentItems;
       }
     },
     [isSavingWorkspaceOrder, items, persistWorkspaceOrder],
   );
-
-  const handleLogout = useCallback(async () => {
-    workspaceItemsCache = null;
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-    router.refresh();
-  }, [router]);
 
   const renderedChildren = children({
     items,
@@ -676,6 +517,9 @@ export function WorkspaceShell({
   const pageMainContent = hasCustomLayout
     ? (renderedChildren as WorkspaceShellPageLayout).main
     : renderedChildren;
+  const pageLeftSidebar = hasCustomLayout
+    ? (renderedChildren as WorkspaceShellPageLayout).leftSidebar ?? null
+    : null;
   const pageRightSidebar = hasCustomLayout
     ? (renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null
     : null;
@@ -688,184 +532,207 @@ export function WorkspaceShell({
     );
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
+  const leftSidebarActions = selectedWorkspace
+    ? [
+        ...(selectedWorkspace.invitation?.status === 'PENDING' && !selectedWorkspace.membership
+          ? ([
+              {
+                key: 'accept-invitation',
+                label: 'Accept invitation',
+                kind: 'primary' as const,
+                loading:
+                  pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id &&
+                  pendingInvitationAction.action === 'accept',
+                disabled: pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id,
+                onClick: () => void runInvitationAction(selectedWorkspace.invitation!.id, 'accept'),
+              },
+              {
+                key: 'reject-invitation',
+                label: 'Reject invitation',
+                kind: 'default' as const,
+                loading:
+                  pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id &&
+                  pendingInvitationAction.action === 'reject',
+                disabled: pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id,
+                onClick: () => void runInvitationAction(selectedWorkspace.invitation!.id, 'reject'),
+              },
+            ] as const)
+          : []),
+        ...(selectedWorkspace.membership?.status === 'ACTIVE' &&
+        selectedWorkspace.membership.role === 'MEMBER'
+          ? ([
+              {
+                key: 'leave-workspace',
+                label: 'Leave workspace',
+                kind: 'danger' as const,
+                disabled: true,
+                onClick: () => undefined,
+              },
+            ] as const)
+          : []),
+      ]
+    : [];
+
+  const createWorkspaceContent = (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() =>
+          setIsCreateWorkspaceFormVisible((current) => {
+            const next = !current;
+            if (next) {
+              resetCreateWorkspaceForm();
+            }
+            return next;
+          })
+        }
+        className="w-full rounded-lg border border-transparent bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95"
+      >
+        {isCreateWorkspaceFormVisible ? 'Close create form' : 'Create new workspace'}
+      </button>
+
+      {isCreateWorkspaceFormVisible ? (
+        <form
+          className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
+          onSubmit={(event) => void handleCreateWorkspace(event)}
+        >
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Name
+            </span>
+            <input
+              required
+              value={createWorkspaceForm.name}
+              onChange={(event) =>
+                setCreateWorkspaceForm((previous) => ({
+                  ...previous,
+                  name: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Timezone
+            </span>
+            <select
+              required
+              value={createWorkspaceForm.timezone}
+              onChange={(event) =>
+                setCreateWorkspaceForm((previous) => ({
+                  ...previous,
+                  timezone: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              {IANA_TIMEZONES.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {timezone}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="submit"
+            disabled={isCreatingWorkspace}
+            className="w-full rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isCreatingWorkspace ? 'Creating...' : 'Create workspace'}
+          </button>
+        </form>
+      ) : null}
+    </div>
+  );
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <aside className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6 lg:w-72 lg:self-start">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">OpenSpace</p>
-          </div>
+    <div className="h-screen overflow-hidden bg-slate-100">
+      <Header
+        user={currentUser}
+        onLogout={() => void handleLogout()}
+        onToggleLeftSidebar={() => setIsLeftSidebarOpenMobile(true)}
+        onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
+      />
 
-          <div className="mt-4 flex items-center gap-2">
-            <Link
-              href="/dashboard"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Dashboard
-            </Link>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Logout
-            </button>
-          </div>
+      <div className="flex h-full pt-16">
+        <LeftSidebar
+          isOpenOnMobile={isLeftSidebarOpenMobile}
+          onCloseMobile={() => setIsLeftSidebarOpenMobile(false)}
+          workspaces={items}
+          selectedWorkspaceId={selectedWorkspaceId}
+          onSelectWorkspace={(workspaceId) => router.push(`/workspaces/${workspaceId}`)}
+          onReorderWorkspaces={(workspaceIds) => void handleReorderWorkspaces(workspaceIds)}
+          isSavingWorkspaceOrder={isSavingWorkspaceOrder}
+          actions={leftSidebarActions}
+          createWorkspaceContent={createWorkspaceContent}
+          extraContent={pageLeftSidebar}
+        />
 
-          <div className="mt-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Your Workspaces
-            </h2>
-            {isLoading && items.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">Loading...</p>
-            ) : null}
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto">
+            <div className="h-full p-3 sm:p-4">
+              <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {hasPageHeader ? (
+                  <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
+                    {pageTitle ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                          {pageTitle}
+                        </h2>
+                        {pageBackHref ? (
+                          <Link
+                            href={pageBackHref}
+                            aria-label={pageBackAriaLabel ?? 'Close'}
+                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                          >
+                            {pageBackLabel ?? 'Close'}
+                          </Link>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {pageDescription ? (
+                      <p className="mt-1 text-sm text-slate-600">{pageDescription}</p>
+                    ) : null}
+                  </header>
+                ) : null}
 
-            {!isLoading && items.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">No visible workspaces.</p>
-            ) : null}
+                {(banner || error) ? (
+                  <div className="space-y-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+                    {banner ? (
+                      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                        {banner}
+                      </p>
+                    ) : null}
+                    {error ? (
+                      <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                        {error.code}: {error.message}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
 
-            {!isLoading || items.length > 0 ? (
-              <DndContext
-                sensors={workspaceSortSensors}
-                collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
-                onDragStart={handleWorkspaceSortStart}
-                onDragCancel={handleWorkspaceSortCancel}
-                onDragEnd={(event) => void handleWorkspaceSortEnd(event)}
-              >
-                <SortableContext
-                  items={items.map((item) => item.id)}
-                  strategy={verticalListSortingStrategy}
+                <div
+                  className={`min-h-0 flex-1 overflow-y-auto ${
+                    hasTopBlockContent ? 'p-4 sm:p-5' : 'p-3 sm:p-4'
+                  }`}
                 >
-                  <ul
-                    className={`mt-2 space-y-2 ${
-                      activeSortWorkspaceId ? 'select-none' : ''
-                    }`}
-                  >
-                    {items.map((item) => (
-                      <SortableWorkspaceListItem
-                        key={item.id}
-                        item={item}
-                        selectedWorkspaceId={selectedWorkspaceId}
-                        pendingInvitationAction={pendingInvitationAction}
-                        runInvitationAction={runInvitationAction}
-                        isSavingWorkspaceOrder={isSavingWorkspaceOrder}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-              </DndContext>
-            ) : null}
+                  {pageMainContent}
+                </div>
+              </section>
+            </div>
           </div>
 
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() =>
-                setIsCreateWorkspaceFormVisible((current) => {
-                  const next = !current;
-                  if (next) {
-                    resetCreateWorkspaceForm();
-                  }
-                  return next;
-                })
-              }
-              className="w-full rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95"
-            >
-              {isCreateWorkspaceFormVisible ? 'Close Create Workspace' : 'Create Workspace'}
-            </button>
-          </div>
-
-          {isCreateWorkspaceFormVisible ? (
-            <form
-              className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
-              onSubmit={(event) => void handleCreateWorkspace(event)}
-            >
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Name
-                </span>
-                <input
-                  required
-                  value={createWorkspaceForm.name}
-                  onChange={(event) =>
-                    setCreateWorkspaceForm((previous) => ({
-                      ...previous,
-                      name: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Timezone
-                </span>
-                <select
-                  required
-                  value={createWorkspaceForm.timezone}
-                  onChange={(event) =>
-                    setCreateWorkspaceForm((previous) => ({
-                      ...previous,
-                      timezone: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                >
-                  {IANA_TIMEZONES.map((timezone) => (
-                    <option key={timezone} value={timezone}>
-                      {timezone}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="submit"
-                disabled={isCreatingWorkspace}
-                className="w-full rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isCreatingWorkspace ? 'Creating...' : 'Create'}
-              </button>
-            </form>
-          ) : null}
-        </aside>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-6 xl:flex-row">
-            <section className="min-h-[70vh] min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              {hasPageHeader ? (
-                <header>
-                  {pageTitle ? <h2 className="text-2xl font-bold text-slate-900">{pageTitle}</h2> : null}
-                  {pageDescription ? (
-                    <p className="mt-2 text-sm text-slate-600">{pageDescription}</p>
-                  ) : null}
-                </header>
-              ) : null}
-
-              {banner ? (
-                <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {banner}
-                </p>
-              ) : null}
-
-              {error ? (
-                <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {error.code}: {error.message}
-                </p>
-              ) : null}
-
-              <div className={hasTopBlockContent ? 'mt-6' : 'mt-0'}>{pageMainContent}</div>
-            </section>
-
-            <aside className="w-full xl:sticky xl:top-6 xl:w-72 xl:self-start">
-              {effectiveRightSidebar}
-            </aside>
-          </div>
+          <RightSidebar
+            isOpenOnMobile={isRightSidebarOpenMobile}
+            onCloseMobile={() => setIsRightSidebarOpenMobile(false)}
+          >
+            {effectiveRightSidebar}
+          </RightSidebar>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

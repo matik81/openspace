@@ -18,22 +18,9 @@ export default function DashboardPage() {
         const pendingInvitations = items.filter(
           (item) => item.invitation?.status === 'PENDING',
         );
-        const activeMemberships = items.filter(
-          (item) => item.membership?.status === 'ACTIVE',
-        );
 
         return (
           <div className="space-y-5">
-            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-lg font-semibold text-slate-900">Summary</h3>
-              <p className="mt-2 text-sm text-slate-700">
-                Active workspaces: <span className="font-semibold">{activeMemberships.length}</span>
-              </p>
-              <p className="mt-1 text-sm text-slate-700">
-                Pending invitations: <span className="font-semibold">{pendingInvitations.length}</span>
-              </p>
-            </section>
-
             {pendingInvitations.length > 0 ? (
               <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
                 <h3 className="text-lg font-semibold text-slate-900">Invitation Inbox</h3>

@@ -1,60 +1,61 @@
-﻿'use client';
+'use client';
 
-import { useParams } from 'next/navigation';
 import { DateTime } from 'luxon';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
+import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DaySchedule } from '@/components/calendar/DaySchedule';
+import {
+  BookingModal,
+  type BookingModalAnchorPoint,
+  type BookingModalDraft,
+} from '@/components/bookings/BookingModal';
+import { WorkspaceShell, type WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
-import type {
-  BookingCriticality,
-  BookingListItem,
-  ErrorPayload,
-  RoomItem,
-  WorkspaceItem,
-} from '@/lib/types';
-import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
 import {
-  addHoursToTimeInput,
-  dateAndTimeToUtcIso,
-  formatUtcInTimezone,
-  formatUtcRangeInTimezone,
-  quantizeTimeInputToMinuteStep,
-  workspaceTodayDateInput,
-} from '@/lib/workspace-time';
+  addDaysToDateKey,
+  bookingToLocalRange,
+  buildMarkerCountByDateKey,
+  buildMiniCalendarCells,
+  formatBookingDateAndTimeInTimezone,
+  groupMyBookingsForSidebar,
+  hasRoomOverlap,
+  minutesToTimeInput,
+  parseDateKey,
+  SCHEDULE_END_MINUTES,
+  SCHEDULE_INTERVAL_MINUTES,
+  SCHEDULE_START_MINUTES,
+  workspaceTodayDateKey,
+} from '@/lib/time';
+import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
+import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
+import { dateAndTimeToUtcIso, formatUtcInTimezone } from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
   workspaceId: string;
 };
 
-type BookingFormState = {
-  roomId: string;
-  subject: string;
-  criticality: BookingCriticality;
-  startTimeLocal: string;
-  endTimeLocal: string;
-};
+type BookingDialogState =
+  | {
+      open: false;
+      mode: 'create' | 'edit';
+      bookingId: string | null;
+      draft: BookingModalDraft;
+      error: ErrorPayload | null;
+      isSubmitting: boolean;
+      anchorPoint: BookingModalAnchorPoint | null;
+    }
+  | {
+      open: true;
+      mode: 'create' | 'edit';
+      bookingId: string | null;
+      draft: BookingModalDraft;
+      error: ErrorPayload | null;
+      isSubmitting: boolean;
+      anchorPoint: BookingModalAnchorPoint | null;
+    };
 
-const BOOKING_TIME_STEP_MINUTES = 15;
-const BOOKING_TIME_START_HOUR = 7;
-const BOOKING_TIME_END_HOUR = 22;
-const BOOKING_TIME_OPTIONS = Array.from(
-  {
-    length:
-      ((BOOKING_TIME_END_HOUR - BOOKING_TIME_START_HOUR) * 60) / BOOKING_TIME_STEP_MINUTES + 1,
-  },
-  (_, index) => {
-    const totalMinutes = BOOKING_TIME_START_HOUR * 60 + index * BOOKING_TIME_STEP_MINUTES;
-    const hours = Math.floor(totalMinutes / 60)
-      .toString()
-      .padStart(2, '0');
-    const minutes = (totalMinutes % 60).toString().padStart(2, '0');
-
-    return `${hours}:${minutes}`;
-  },
-);
-
-const bookingFormInitialState: BookingFormState = {
+const emptyBookingDraft: BookingModalDraft = {
   roomId: '',
   subject: '',
   criticality: 'MEDIUM',
@@ -62,484 +63,18 @@ const bookingFormInitialState: BookingFormState = {
   endTimeLocal: '',
 };
 
-const DAY_SCHEDULE_PIXELS_PER_MINUTE = 1;
-const DAY_SCHEDULE_TOTAL_MINUTES = (BOOKING_TIME_END_HOUR - BOOKING_TIME_START_HOUR) * 60;
-const DAY_SCHEDULE_TRACK_HEIGHT_PX = DAY_SCHEDULE_TOTAL_MINUTES * DAY_SCHEDULE_PIXELS_PER_MINUTE;
-const DAY_SCHEDULE_TIME_COLUMN_PX = 72;
-const DAY_SCHEDULE_ROOM_COLUMN_MIN_PX = 220;
-const DAY_SCHEDULE_VIEWPORT_MAX_HEIGHT_REM = 30;
-const SCHEDULE_CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-type DaySchedulePositionedBooking = {
-  booking: BookingListItem;
-  topPx: number;
-  heightPx: number;
-  timeLabel: string;
-};
-
-type DayScheduleDraftBookingPreview = {
-  roomId: string;
-  subject: string;
-  criticality: BookingCriticality;
-  startTimeLocal: string;
-  endTimeLocal: string;
-  createdByDisplayName: string | null;
-};
-
-function parseTimeInputToMinutes(timeInput: string): number | null {
-  if (!/^\d{2}:\d{2}$/.test(timeInput)) return null;
-  const [hoursRaw, minutesRaw] = timeInput.split(':');
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-
-  return hours * 60 + minutes;
-}
-
-function formatMinutesAsTimeInput(totalMinutes: number): string {
-  const normalized = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
-  const hours = Math.floor(normalized / 60)
-    .toString()
-    .padStart(2, '0');
-  const minutes = (normalized % 60).toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function timeRangesOverlap(
-  leftStartMinutes: number,
-  leftEndMinutes: number,
-  rightStartMinutes: number,
-  rightEndMinutes: number,
-): boolean {
-  return leftStartMinutes < rightEndMinutes && rightStartMinutes < leftEndMinutes;
-}
-
-function WorkspaceCurrentDaySchedule({
-  rooms,
-  bookings,
-  myBookingIds,
-  timezone,
-  isLoading,
-  isReady,
-  selectedDateKey,
-  highlightedTimeRangeLocal,
-  draftBookingPreview,
-}: {
-  rooms: RoomItem[];
-  bookings: BookingListItem[];
-  myBookingIds: ReadonlySet<string>;
-  timezone: string;
-  isLoading: boolean;
-  isReady: boolean;
-  selectedDateKey: string;
-  highlightedTimeRangeLocal: {
-    startTimeLocal: string;
-    endTimeLocal: string;
-  } | null;
-  draftBookingPreview: DayScheduleDraftBookingPreview | null;
-}) {
-  const todayDateKey = workspaceTodayDateInput(timezone);
-  const bottomScheduleScrollRef = useRef<HTMLDivElement | null>(null);
-
-  const selectedDate = useMemo(() => {
-    const parsed = DateTime.fromISO(selectedDateKey, { zone: timezone });
-    return parsed.isValid ? parsed : DateTime.now().setZone(timezone);
-  }, [selectedDateKey, timezone]);
-
-  const scheduleDateLabel = useMemo(
-    () => (selectedDate.isValid ? selectedDate.toFormat('cccc, dd LLL yyyy') : selectedDateKey),
-    [selectedDate, selectedDateKey],
-  );
-
-  const hourMarkers = useMemo(
-    () =>
-      Array.from({ length: BOOKING_TIME_END_HOUR - BOOKING_TIME_START_HOUR + 1 }, (_, index) => {
-        const hour = BOOKING_TIME_START_HOUR + index;
-        return {
-          hour,
-          label: `${hour.toString().padStart(2, '0')}:00`,
-          offsetPx: (hour - BOOKING_TIME_START_HOUR) * 60 * DAY_SCHEDULE_PIXELS_PER_MINUTE,
-        };
-      }),
-    [],
-  );
-
-  const selectedTimeRangeHighlight = useMemo(() => {
-    const startMinutes = parseTimeInputToMinutes(highlightedTimeRangeLocal?.startTimeLocal ?? '');
-    if (startMinutes === null) return null;
-
-    const parsedEndMinutes = parseTimeInputToMinutes(highlightedTimeRangeLocal?.endTimeLocal ?? '');
-    if (parsedEndMinutes !== null && parsedEndMinutes <= startMinutes) return null;
-
-    const endMinutes = parsedEndMinutes ?? startMinutes + BOOKING_TIME_STEP_MINUTES;
-    const trackStartMinutes = BOOKING_TIME_START_HOUR * 60;
-    const clampedStartMinutes = Math.max(0, startMinutes - trackStartMinutes);
-    const clampedEndMinutes = Math.min(DAY_SCHEDULE_TOTAL_MINUTES, endMinutes - trackStartMinutes);
-    const visibleDurationMinutes = clampedEndMinutes - clampedStartMinutes;
-    if (visibleDurationMinutes <= 0) return null;
-
-    return {
-      startMinutes,
-      endMinutes,
-      topPx: clampedStartMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
-      heightPx: visibleDurationMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
-    };
-  }, [highlightedTimeRangeLocal]);
-
-  const scheduleDraftBookingPreview = useMemo(() => {
-    if (!selectedTimeRangeHighlight || !draftBookingPreview || !draftBookingPreview.roomId) return null;
-    if (!rooms.some((room) => room.id === draftBookingPreview.roomId)) return null;
-
-    let hasRoomConflict = false;
-    let hasMyBookingConflict = false;
-
-    for (const booking of bookings) {
-      if (booking.status !== 'ACTIVE') continue;
-
-      const start = DateTime.fromISO(booking.startAt, { zone: 'utc' }).setZone(timezone);
-      const end = DateTime.fromISO(booking.endAt, { zone: 'utc' }).setZone(timezone);
-      if (!start.isValid || !end.isValid) continue;
-      if (start.toFormat('yyyy-LL-dd') !== selectedDateKey) continue;
-
-      const bookingStartMinutes = start.hour * 60 + start.minute;
-      const bookingEndMinutes = end.hour * 60 + end.minute;
-      if (
-        !timeRangesOverlap(
-          selectedTimeRangeHighlight.startMinutes,
-          selectedTimeRangeHighlight.endMinutes,
-          bookingStartMinutes,
-          bookingEndMinutes,
-        )
-      ) {
-        continue;
-      }
-
-      if (booking.roomId === draftBookingPreview.roomId) {
-        hasRoomConflict = true;
-      }
-      if (myBookingIds.has(booking.id)) {
-        hasMyBookingConflict = true;
-      }
-
-      if (hasRoomConflict && hasMyBookingConflict) break;
-    }
-
-    return {
-      roomId: draftBookingPreview.roomId,
-      subject: draftBookingPreview.subject.trim() || 'New reservation',
-      criticality: draftBookingPreview.criticality,
-      createdByDisplayName: draftBookingPreview.createdByDisplayName?.trim() || null,
-      topPx: selectedTimeRangeHighlight.topPx,
-      heightPx: selectedTimeRangeHighlight.heightPx,
-      timeLabel: `${formatMinutesAsTimeInput(selectedTimeRangeHighlight.startMinutes)} - ${formatMinutesAsTimeInput(selectedTimeRangeHighlight.endMinutes)}`,
-      hasConflict: hasRoomConflict || hasMyBookingConflict,
-    };
-  }, [
-    bookings,
-    draftBookingPreview,
-    myBookingIds,
-    rooms,
-    selectedDateKey,
-    selectedTimeRangeHighlight,
-    timezone,
-  ]);
-
-  const { bookingsByRoomId, totalBookingsSelectedDate, currentTimeOffsetPx } = useMemo(() => {
-    const grouped = new Map<string, DaySchedulePositionedBooking[]>();
-    for (const room of rooms) grouped.set(room.id, []);
-
-    let total = 0;
-    for (const booking of bookings) {
-      if (booking.status !== 'ACTIVE') continue;
-
-      const start = DateTime.fromISO(booking.startAt, { zone: 'utc' }).setZone(timezone);
-      const end = DateTime.fromISO(booking.endAt, { zone: 'utc' }).setZone(timezone);
-      if (!start.isValid || !end.isValid) continue;
-      if (start.toFormat('yyyy-LL-dd') !== selectedDateKey) continue;
-
-      const trackStartMinutes = BOOKING_TIME_START_HOUR * 60;
-      const startMinutes = start.hour * 60 + start.minute;
-      const endMinutes = end.hour * 60 + end.minute;
-      const clampedStartMinutes = Math.max(0, startMinutes - trackStartMinutes);
-      const clampedEndMinutes = Math.min(DAY_SCHEDULE_TOTAL_MINUTES, endMinutes - trackStartMinutes);
-      const visibleDurationMinutes = clampedEndMinutes - clampedStartMinutes;
-      if (visibleDurationMinutes <= 0) continue;
-
-      const roomBookings = grouped.get(booking.roomId);
-      if (!roomBookings) continue;
-
-      roomBookings.push({
-        booking,
-        topPx: clampedStartMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
-        heightPx: visibleDurationMinutes * DAY_SCHEDULE_PIXELS_PER_MINUTE,
-        timeLabel: `${start.toFormat('HH:mm')} - ${end.toFormat('HH:mm')}`,
-      });
-      total += 1;
-    }
-
-    for (const roomBookings of grouped.values()) {
-      roomBookings.sort((left, right) => left.topPx - right.topPx);
-    }
-
-    const now = DateTime.now().setZone(timezone);
-    let nowOffsetPx: number | null = null;
-    if (now.isValid && selectedDateKey === todayDateKey) {
-      const minutesFromMidnight = now.hour * 60 + now.minute + now.second / 60;
-      const trackStartMinutes = BOOKING_TIME_START_HOUR * 60;
-      const trackEndMinutes = BOOKING_TIME_END_HOUR * 60;
-      if (minutesFromMidnight >= trackStartMinutes && minutesFromMidnight <= trackEndMinutes) {
-        nowOffsetPx = (minutesFromMidnight - trackStartMinutes) * DAY_SCHEDULE_PIXELS_PER_MINUTE;
-      }
-    }
-
-    return { bookingsByRoomId: grouped, totalBookingsSelectedDate: total, currentTimeOffsetPx: nowOffsetPx };
-  }, [bookings, rooms, selectedDateKey, timezone, todayDateKey]);
-
-  const gridTemplateColumns = `${DAY_SCHEDULE_TIME_COLUMN_PX}px repeat(${Math.max(
-    rooms.length,
-    1,
-  )}, minmax(${DAY_SCHEDULE_ROOM_COLUMN_MIN_PX}px, 1fr))`;
-  const scheduleTableMinWidthPx =
-    DAY_SCHEDULE_TIME_COLUMN_PX + rooms.length * DAY_SCHEDULE_ROOM_COLUMN_MIN_PX;
-
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-slate-900">Room Schedule</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            {scheduleDateLabel} in {timezone}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 min-w-0">
-        {isLoading && !isReady ? (
-          <div className="space-y-3" aria-hidden="true">
-            <div className="h-4 w-56 rounded bg-slate-100" />
-            <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="h-[320px] rounded-lg bg-slate-100" /></div>
-          </div>
-        ) : null}
-
-        {!isLoading && isReady && rooms.length === 0 ? (
-          <p className="text-sm text-slate-600">No rooms available for this workspace yet.</p>
-        ) : null}
-
-        {isReady && rooms.length > 0 ? (
-          <div className="min-w-0 space-y-3">
-            <div
-              ref={bottomScheduleScrollRef}
-              className="max-w-full overflow-auto pb-1"
-              style={{ maxHeight: `${DAY_SCHEDULE_VIEWPORT_MAX_HEIGHT_REM}rem` }}
-            >
-              <div className="rounded-xl border border-slate-200 bg-white" style={{ minWidth: `${scheduleTableMinWidthPx}px` }}>
-                <div className="sticky top-0 z-20 grid border-b border-slate-200 bg-cyan-50/95 backdrop-blur-sm" style={{ gridTemplateColumns }}>
-                  <div className="sticky left-0 z-30 border-r border-slate-200 bg-cyan-100/95 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-cyan-900 backdrop-blur-sm">Time</div>
-                  {rooms.map((room) => (
-                    <div key={room.id} className="border-r border-slate-200 px-3 py-2 last:border-r-0">
-                      <p className="text-sm font-semibold text-slate-900">{room.name}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid" style={{ gridTemplateColumns }}>
-                  <div className="sticky left-0 z-10 relative border-r border-slate-200 bg-cyan-50" style={{ height: DAY_SCHEDULE_TRACK_HEIGHT_PX }}>
-                    {hourMarkers.map((marker) => {
-                      const lineTopPx = Math.min(marker.offsetPx, DAY_SCHEDULE_TRACK_HEIGHT_PX - 1);
-                      const labelTopPx = Math.min(Math.max(lineTopPx - 8, 0), DAY_SCHEDULE_TRACK_HEIGHT_PX - 18);
-                      return (
-                        <div key={marker.hour}>
-                          <div className="absolute left-0 right-0 border-t border-slate-300" style={{ top: lineTopPx }} />
-                          <span className="absolute left-2 rounded bg-cyan-50 px-1 text-[11px] font-medium text-slate-700" style={{ top: labelTopPx }}>{marker.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {rooms.map((room) => {
-                    const roomBookings = bookingsByRoomId.get(room.id) ?? [];
-                    return (
-                      <div key={room.id} className="relative border-r border-slate-200 last:border-r-0" style={{ height: DAY_SCHEDULE_TRACK_HEIGHT_PX }}>
-                        <div className="absolute inset-0" style={{ backgroundColor: '#f8fafc', backgroundImage: ['repeating-linear-gradient(to bottom, transparent 0, transparent 14px, rgba(148,163,184,0.1) 14px, rgba(148,163,184,0.1) 15px)','repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(148,163,184,0.18) 29px, rgba(148,163,184,0.18) 30px)','repeating-linear-gradient(to bottom, transparent 0, transparent 59px, rgba(100,116,139,0.28) 59px, rgba(100,116,139,0.28) 60px)'].join(', ') }} />
-                        {currentTimeOffsetPx !== null ? (<div className="absolute left-0 right-0 z-10 border-t border-rose-400/80" style={{ top: currentTimeOffsetPx }} />) : null}
-                        {roomBookings.map(({ booking, topPx, heightPx, timeLabel }) => (
-                          <div key={booking.id} title={`${booking.subject} • ${booking.createdByDisplayName} • ${timeLabel}`} className={`absolute left-2 right-2 overflow-hidden rounded-lg border px-2 py-1 shadow-sm ${myBookingIds.has(booking.id) ? 'ring-2 ring-brand/60 ring-offset-1' : ''} ${getScheduleBookingCardClasses(booking.criticality, myBookingIds.has(booking.id))}`} style={{ top: topPx, height: heightPx, minHeight: heightPx }}>
-                            <p className="truncate text-xs font-semibold leading-tight">{booking.subject}</p>
-                            <p className="mt-0.5 truncate text-[11px] leading-tight opacity-90">{booking.createdByDisplayName}</p>
-                            {heightPx >= 42 ? (<p className="mt-1 truncate text-[10px] font-medium uppercase tracking-wide opacity-80">{timeLabel}</p>) : null}
-                          </div>
-                        ))}
-                        {scheduleDraftBookingPreview && scheduleDraftBookingPreview.roomId === room.id ? (
-                          <div
-                            className={`pointer-events-none absolute left-2 right-2 z-[11] overflow-hidden rounded-lg border border-dashed px-2 py-1 shadow-sm ${getScheduleDraftBookingPreviewCardClasses(scheduleDraftBookingPreview.hasConflict)}`}
-                            style={{
-                              top: scheduleDraftBookingPreview.topPx,
-                              height: scheduleDraftBookingPreview.heightPx,
-                              minHeight: scheduleDraftBookingPreview.heightPx,
-                            }}
-                            title={`${scheduleDraftBookingPreview.subject} • ${scheduleDraftBookingPreview.createdByDisplayName ? `${scheduleDraftBookingPreview.createdByDisplayName} • ` : ''}${scheduleDraftBookingPreview.timeLabel}`}
-                          >
-                            <p className="truncate text-xs font-semibold leading-tight">
-                              {scheduleDraftBookingPreview.subject}
-                            </p>
-                            {scheduleDraftBookingPreview.createdByDisplayName ? (
-                              <p className="mt-0.5 truncate text-[11px] leading-tight opacity-90">
-                                {scheduleDraftBookingPreview.createdByDisplayName}
-                              </p>
-                            ) : null}
-                            {scheduleDraftBookingPreview.heightPx >= 42 ? (
-                              <p
-                                className={`truncate text-[10px] font-medium uppercase tracking-wide opacity-80 ${scheduleDraftBookingPreview.createdByDisplayName ? 'mt-1' : 'mt-0.5'}`}
-                              >
-                                {scheduleDraftBookingPreview.timeLabel}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {!isLoading && isReady && rooms.length > 0 && totalBookingsSelectedDate === 0 ? (
-          <p className="mt-3 text-sm text-slate-600">No meetings scheduled for {selectedDateKey}.</p>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function WorkspaceScheduleCalendar({
-  timezone,
-  bookings,
-  selectedDateKey,
-  onSelectDateKey,
-  calendarMonthKey,
-  onSelectCalendarMonthKey,
-}: {
-  timezone: string;
-  bookings: BookingListItem[];
-  selectedDateKey: string;
-  onSelectDateKey: (value: string) => void;
-  calendarMonthKey: string;
-  onSelectCalendarMonthKey: (value: string) => void;
-}) {
-  const todayDateKey = workspaceTodayDateInput(timezone);
-  const calendarMonth = useMemo(() => {
-    const parsed = DateTime.fromISO(`${calendarMonthKey}-01`, { zone: timezone });
-    return parsed.isValid ? parsed.startOf('month') : DateTime.now().setZone(timezone).startOf('month');
-  }, [calendarMonthKey, timezone]);
-
-  const bookingCountByDateKey = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const booking of bookings) {
-      if (booking.status !== 'ACTIVE') continue;
-      const start = DateTime.fromISO(booking.startAt, { zone: 'utc' }).setZone(timezone);
-      if (!start.isValid) continue;
-      const dateKey = start.toFormat('yyyy-LL-dd');
-      counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
-    }
-    return counts;
-  }, [bookings, timezone]);
-
-  const calendarDayCells = useMemo(() => {
-    const monthStart = calendarMonth.startOf('month');
-    const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
-    return Array.from({ length: 42 }, (_, index) => {
-      const day = gridStart.plus({ days: index });
-      const dateKey = day.toFormat('yyyy-LL-dd');
-      return {
-        dateKey,
-        dayNumber: day.day,
-        isCurrentMonth: day.month === monthStart.month,
-        isToday: dateKey === todayDateKey,
-        isSelected: dateKey === selectedDateKey,
-        meetingCount: bookingCountByDateKey.get(dateKey) ?? 0,
-      };
-    });
-  }, [bookingCountByDateKey, calendarMonth, selectedDateKey, todayDateKey]);
-
-  const jumpToToday = () => {
-    onSelectDateKey(todayDateKey);
-    onSelectCalendarMonthKey(todayDateKey.slice(0, 7));
-  };
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
-      <p className="mt-1 text-sm text-slate-900">{timezone}</p>
-      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-900">{calendarMonth.toFormat('LLLL yyyy')}</p>
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={jumpToToday} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Today</button>
-            <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Previous month">{'<'}</button>
-            <button type="button" onClick={() => onSelectCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Next month">{'>'}</button>
-          </div>
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {SCHEDULE_CALENDAR_WEEKDAY_LABELS.map((label) => (
-            <div key={label} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-          ))}
-          {calendarDayCells.map((cell) => (
-            <button key={cell.dateKey} type="button" onClick={() => { onSelectDateKey(cell.dateKey); onSelectCalendarMonthKey(cell.dateKey.slice(0, 7)); }} className={`relative h-8 rounded-md border text-xs font-medium transition ${cell.isSelected ? 'border-brand bg-cyan-100 text-cyan-900' : cell.isToday ? 'border-slate-400 bg-white text-slate-900' : cell.isCurrentMonth ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100' : 'border-transparent bg-transparent text-slate-400 hover:bg-white/60'}`} aria-label={`Select ${cell.dateKey}`}>
-              <span>{cell.dayNumber}</span>
-              {cell.meetingCount > 0 ? (<span className={`absolute bottom-0.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${cell.isSelected ? 'bg-cyan-700' : 'bg-slate-500'}`} />) : null}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-function getScheduleBookingCardClasses(
-  criticality: BookingCriticality,
-  isMine: boolean,
-): string {
-  if (isMine) {
-    return 'border-amber-300 bg-amber-100 text-amber-950';
-  }
-
-  switch (criticality) {
-    case 'HIGH':
-      return 'border-rose-300 bg-rose-100 text-rose-900';
-    case 'LOW':
-      return 'border-emerald-300 bg-emerald-100 text-emerald-900';
-    case 'MEDIUM':
-    default:
-      return 'border-cyan-300 bg-cyan-100 text-cyan-900';
-  }
-}
-
-function getScheduleDraftBookingPreviewCardClasses(hasConflict: boolean): string {
-  if (hasConflict) {
-    return 'border-rose-500 bg-rose-100/90 text-rose-950';
-  }
-
-  return 'border-amber-400 bg-amber-100/90 text-amber-950';
-}
-
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params.workspaceId;
 
   return (
-    <WorkspaceShell
-      selectedWorkspaceId={workspaceId}
-      pageTitle=""
-      pageDescription=""
-    >
-      {(context) => WorkspaceMemberContent({ context, workspaceId })}
+    <WorkspaceShell selectedWorkspaceId={workspaceId} pageTitle="" pageDescription="">
+      {(context) => WorkspacePageContent({ context, workspaceId })}
     </WorkspaceShell>
   );
 }
 
-function WorkspaceMemberContent({
+function WorkspacePageContent({
   context,
   workspaceId,
 }: {
@@ -547,384 +82,9 @@ function WorkspaceMemberContent({
   workspaceId: string;
 }) {
   const { selectedWorkspace, currentUser, isLoading, runInvitationAction, pendingInvitationAction } = context;
-  const [rooms, setRooms] = useState<RoomItem[]>([]);
-  const [bookings, setBookings] = useState<BookingListItem[]>([]);
-  const [scheduleBookings, setScheduleBookings] = useState<BookingListItem[]>([]);
-  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
-  const [scheduleBookingsWorkspaceId, setScheduleBookingsWorkspaceId] = useState<string | null>(null);
-  const [localError, setLocalError] = useState<ErrorPayload | null>(null);
-  const [localBanner, setLocalBanner] = useState<string | null>(null);
-  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
-  const [isLoadingScheduleBookings, setIsLoadingScheduleBookings] = useState(false);
-  const [hasLoadedRoomsOnce, setHasLoadedRoomsOnce] = useState(false);
-  const [hasLoadedScheduleBookingsOnce, setHasLoadedScheduleBookingsOnce] = useState(false);
-  const [selectedScheduleDateKey, setSelectedScheduleDateKey] = useState('');
-  const [scheduleCalendarMonthKey, setScheduleCalendarMonthKey] = useState('');
-  const [isCreatingBooking, setIsCreatingBooking] = useState(false);
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
-  const [includePast, setIncludePast] = useState(false);
-  const [bookingForm, setBookingForm] = useState<BookingFormState>(bookingFormInitialState);
 
-  const isPendingInvitationOnly =
-    selectedWorkspace?.membership === null &&
-    selectedWorkspace?.invitation?.status === 'PENDING';
-  const isActiveMember = selectedWorkspace?.membership?.status === 'ACTIVE';
-  const selectedWorkspaceIdRef = useRef<string | null>(selectedWorkspace?.id ?? null);
-  selectedWorkspaceIdRef.current = selectedWorkspace?.id ?? null;
-
-  const loadRooms = useCallback(async (workspace: WorkspaceItem) => {
-    setIsLoadingRooms(true);
-    const response = await fetch(`/api/workspaces/${workspace.id}/rooms`, {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    const payload = await safeReadJson(response);
-    if (selectedWorkspaceIdRef.current !== workspace.id) {
-      return;
-    }
-
-    if (!response.ok) {
-      setLocalError(normalizeErrorPayload(payload, response.status));
-      setRooms([]);
-      setRoomsWorkspaceId(workspace.id);
-      setHasLoadedRoomsOnce(true);
-      setIsLoadingRooms(false);
-      return;
-    }
-
-    if (!isRoomListPayload(payload)) {
-      setLocalError({
-        code: 'BAD_GATEWAY',
-        message: 'Unexpected rooms payload',
-      });
-      setRooms([]);
-      setRoomsWorkspaceId(workspace.id);
-      setHasLoadedRoomsOnce(true);
-      setIsLoadingRooms(false);
-      return;
-    }
-
-    setRooms(payload.items);
-    setRoomsWorkspaceId(workspace.id);
-    setHasLoadedRoomsOnce(true);
-    setIsLoadingRooms(false);
-  }, []);
-
-  const loadBookings = useCallback(
-    async (workspace: WorkspaceItem, options: { includePast: boolean }) => {
-      setIsLoadingBookings(true);
-      const query = new URLSearchParams({
-        mine: 'true',
-        includePast: String(options.includePast),
-      });
-
-      const response = await fetch(`/api/workspaces/${workspace.id}/bookings?${query.toString()}`, {
-        method: 'GET',
-        cache: 'no-store',
-      });
-      const payload = await safeReadJson(response);
-      if (selectedWorkspaceIdRef.current !== workspace.id) {
-        return;
-      }
-
-      if (!response.ok) {
-        setLocalError(normalizeErrorPayload(payload, response.status));
-        setBookings([]);
-        setIsLoadingBookings(false);
-        return;
-      }
-
-      if (!isBookingListPayload(payload)) {
-        setLocalError({
-          code: 'BAD_GATEWAY',
-          message: 'Unexpected bookings payload',
-        });
-        setBookings([]);
-        setIsLoadingBookings(false);
-        return;
-      }
-
-      setBookings(payload.items);
-      setIsLoadingBookings(false);
-    },
-    [],
-  );
-
-  const loadScheduleBookings = useCallback(async (workspace: WorkspaceItem) => {
-    setIsLoadingScheduleBookings(true);
-    const query = new URLSearchParams({
-      mine: 'false',
-      includePast: 'true',
-    });
-
-    const response = await fetch(`/api/workspaces/${workspace.id}/bookings?${query.toString()}`, {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    const payload = await safeReadJson(response);
-    if (selectedWorkspaceIdRef.current !== workspace.id) {
-      return;
-    }
-
-    if (!response.ok) {
-      setLocalError(normalizeErrorPayload(payload, response.status));
-      setScheduleBookings([]);
-      setScheduleBookingsWorkspaceId(workspace.id);
-      setHasLoadedScheduleBookingsOnce(true);
-      setIsLoadingScheduleBookings(false);
-      return;
-    }
-
-    if (!isBookingListPayload(payload)) {
-      setLocalError({
-        code: 'BAD_GATEWAY',
-        message: 'Unexpected bookings payload',
-      });
-      setScheduleBookings([]);
-      setScheduleBookingsWorkspaceId(workspace.id);
-      setHasLoadedScheduleBookingsOnce(true);
-      setIsLoadingScheduleBookings(false);
-      return;
-    }
-
-    setScheduleBookings(payload.items);
-    setScheduleBookingsWorkspaceId(workspace.id);
-    setHasLoadedScheduleBookingsOnce(true);
-    setIsLoadingScheduleBookings(false);
-  }, []);
-
-  useEffect(() => {
-    setLocalBanner(null);
-    setLocalError(null);
-
-    if (!selectedWorkspace || !isActiveMember) {
-      setRooms([]);
-      setBookings([]);
-      setScheduleBookings([]);
-      setRoomsWorkspaceId(null);
-      setScheduleBookingsWorkspaceId(null);
-      setHasLoadedRoomsOnce(false);
-      setHasLoadedScheduleBookingsOnce(false);
-      return;
-    }
-
-    setHasLoadedRoomsOnce(false);
-    setHasLoadedScheduleBookingsOnce(false);
-    void loadRooms(selectedWorkspace);
-    void loadBookings(selectedWorkspace, {
-      includePast,
-    });
-    void loadScheduleBookings(selectedWorkspace);
-  }, [selectedWorkspace, isActiveMember, includePast, loadBookings, loadRooms, loadScheduleBookings]);
-
-  useEffect(() => {
-    if (!rooms.length) {
-      setBookingForm((previous) => ({
-        ...previous,
-        roomId: '',
-      }));
-      return;
-    }
-
-    setBookingForm((previous) => ({
-      ...previous,
-      roomId: previous.roomId || rooms[0].id,
-    }));
-  }, [rooms]);
-
-  useEffect(() => {
-    if (!selectedWorkspace || !isActiveMember) {
-      setSelectedScheduleDateKey('');
-      setScheduleCalendarMonthKey('');
-      return;
-    }
-
-    const today = workspaceTodayDateInput(selectedWorkspace.timezone);
-    setSelectedScheduleDateKey(today);
-    setScheduleCalendarMonthKey(today.slice(0, 7));
-  }, [selectedWorkspace, isActiveMember]);
-
-  const handleCreateBooking = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!selectedWorkspace || !isActiveMember || isCreatingBooking) {
-        return;
-      }
-
-      const workspaceMinBookingDate = workspaceTodayDateInput(selectedWorkspace.timezone);
-      const selectedBookingDate = selectedScheduleDateKey || workspaceMinBookingDate;
-
-      if (!bookingForm.startTimeLocal || !bookingForm.endTimeLocal) {
-        setLocalError({
-          code: 'BAD_REQUEST',
-          message: 'start time and end time are required',
-        });
-        return;
-      }
-
-      if (selectedBookingDate < workspaceMinBookingDate) {
-        setLocalError({
-          code: 'BAD_REQUEST',
-          message: 'Reservations can only be created for today or future dates',
-        });
-        return;
-      }
-
-      const startTimeLocal =
-        quantizeTimeInputToMinuteStep(bookingForm.startTimeLocal, BOOKING_TIME_STEP_MINUTES) ??
-        bookingForm.startTimeLocal;
-      const endTimeLocal =
-        quantizeTimeInputToMinuteStep(bookingForm.endTimeLocal, BOOKING_TIME_STEP_MINUTES) ??
-        bookingForm.endTimeLocal;
-      const startLocal = `${selectedBookingDate}T${startTimeLocal}`;
-      const endLocal = `${selectedBookingDate}T${endTimeLocal}`;
-      if (endLocal <= startLocal) {
-        setLocalError({
-          code: 'BAD_REQUEST',
-          message: 'End time must be after start time on the selected date',
-        });
-        return;
-      }
-
-      const startAt = dateAndTimeToUtcIso(
-        selectedBookingDate,
-        startTimeLocal,
-        selectedWorkspace.timezone,
-      );
-      const endAt = dateAndTimeToUtcIso(
-        selectedBookingDate,
-        endTimeLocal,
-        selectedWorkspace.timezone,
-      );
-
-      if (!startAt || !endAt) {
-        setLocalError({
-          code: 'BAD_REQUEST',
-          message: 'Date and time values must be valid in the workspace timezone',
-        });
-        return;
-      }
-
-      setIsCreatingBooking(true);
-      setLocalError(null);
-      setLocalBanner(null);
-
-      const response = await fetch(`/api/workspaces/${selectedWorkspace.id}/bookings`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          roomId: bookingForm.roomId,
-          subject: bookingForm.subject,
-          criticality: bookingForm.criticality,
-          startAt,
-          endAt,
-        }),
-      });
-      const payload = await safeReadJson(response);
-
-      if (!response.ok) {
-        setLocalError(normalizeErrorPayload(payload, response.status));
-        setIsCreatingBooking(false);
-        return;
-      }
-
-      setLocalBanner('Reservation created.');
-      setBookingForm((previous) => ({
-        ...previous,
-        subject: '',
-        startTimeLocal: '',
-        endTimeLocal: '',
-      }));
-      await Promise.all([
-        loadBookings(selectedWorkspace, { includePast }),
-        loadScheduleBookings(selectedWorkspace),
-      ]);
-      setIsCreatingBooking(false);
-    },
-    [
-      selectedWorkspace,
-      isActiveMember,
-      isCreatingBooking,
-      bookingForm,
-      selectedScheduleDateKey,
-      includePast,
-      loadBookings,
-      loadScheduleBookings,
-    ],
-  );
-
-  const handleCancelBooking = useCallback(
-    async (bookingId: string) => {
-      if (!selectedWorkspace || !isActiveMember || cancellingBookingId) {
-        return;
-      }
-
-      setCancellingBookingId(bookingId);
-      setLocalError(null);
-      setLocalBanner(null);
-
-      const response = await fetch(
-        `/api/workspaces/${selectedWorkspace.id}/bookings/${bookingId}/cancel`,
-        {
-          method: 'POST',
-        },
-      );
-      const payload = await safeReadJson(response);
-
-      if (!response.ok) {
-        setLocalError(normalizeErrorPayload(payload, response.status));
-        setCancellingBookingId(null);
-        return;
-      }
-
-      setLocalBanner('Reservation cancelled and removed.');
-      await Promise.all([
-        loadBookings(selectedWorkspace, { includePast }),
-        loadScheduleBookings(selectedWorkspace),
-      ]);
-      setCancellingBookingId(null);
-    },
-    [
-      selectedWorkspace,
-      isActiveMember,
-      cancellingBookingId,
-      includePast,
-      loadBookings,
-      loadScheduleBookings,
-    ],
-  );
-
-  const sortedRooms = useMemo(
-    () => [...rooms].sort((left, right) => left.name.localeCompare(right.name)),
-    [rooms],
-  );
-  const myBookingIds = useMemo(() => new Set(bookings.map((booking) => booking.id)), [bookings]);
-  const hasCurrentScheduleRooms =
-    !!selectedWorkspace && roomsWorkspaceId === selectedWorkspace.id;
-  const hasCurrentScheduleBookings =
-    !!selectedWorkspace && scheduleBookingsWorkspaceId === selectedWorkspace.id;
-  const displayedScheduleRooms = hasCurrentScheduleRooms ? sortedRooms : [];
-  const displayedScheduleBookings = hasCurrentScheduleBookings ? scheduleBookings : [];
-  const isScheduleReady =
-    hasLoadedRoomsOnce && hasLoadedScheduleBookingsOnce && hasCurrentScheduleRooms && hasCurrentScheduleBookings;
-  const isScheduleLoading =
-    isLoadingRooms ||
-    isLoadingScheduleBookings ||
-    !isScheduleReady;
-  const activeScheduleDateKey =
-    selectedScheduleDateKey || (selectedWorkspace ? workspaceTodayDateInput(selectedWorkspace.timezone) : '');
-  const activeScheduleCalendarMonthKey =
-    scheduleCalendarMonthKey || (activeScheduleDateKey ? activeScheduleDateKey.slice(0, 7) : '');
-  const currentUserDisplayName = useMemo(() => {
-    const firstName = currentUser?.firstName.trim() ?? '';
-    const lastName = currentUser?.lastName.trim() ?? '';
-    return [firstName, lastName].filter(Boolean).join(' ') || null;
-  }, [currentUser]);
   if (isLoading && !selectedWorkspace) {
-    return <p className="text-slate-600">Loading workspace...</p>;
+    return <p className="text-sm text-slate-600">Loading workspace...</p>;
   }
 
   if (!selectedWorkspace || selectedWorkspace.id !== workspaceId) {
@@ -935,41 +95,44 @@ function WorkspaceMemberContent({
     );
   }
 
+  const isPendingInvitationOnly =
+    selectedWorkspace.membership === null && selectedWorkspace.invitation?.status === 'PENDING';
+  const isActiveMember = selectedWorkspace.membership?.status === 'ACTIVE';
+
   if (isPendingInvitationOnly && selectedWorkspace.invitation) {
     const isActionInProgress =
       pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id;
 
     return (
-      <section className="rounded-xl border border-amber-300 bg-amber-50 p-5">
-        <h3 className="text-lg font-semibold text-slate-900">Pending Invitation</h3>
+      <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+        <h2 className="text-lg font-semibold text-slate-900">Pending Invitation</h2>
         <p className="mt-2 text-sm text-slate-700">
-          Workspace <span className="font-semibold">{selectedWorkspace.name}</span> is visible as a
+          Workspace <span className="font-semibold">{selectedWorkspace.name}</span> is visible via a
           pending invitation.
         </p>
         <p className="mt-1 text-sm text-slate-700">
-          Expires{' '}
-          {formatUtcInTimezone(selectedWorkspace.invitation.expiresAt, selectedWorkspace.timezone)}.
+          Expires {formatUtcInTimezone(selectedWorkspace.invitation.expiresAt, selectedWorkspace.timezone)}.
         </p>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => void runInvitationAction(selectedWorkspace.invitation!.id, 'accept')}
             disabled={isActionInProgress}
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isActionInProgress && pendingInvitationAction?.action === 'accept'
               ? 'Accepting...'
-              : 'Accept Invitation'}
+              : 'Accept invitation'}
           </button>
           <button
             type="button"
             onClick={() => void runInvitationAction(selectedWorkspace.invitation!.id, 'reject')}
             disabled={isActionInProgress}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isActionInProgress && pendingInvitationAction?.action === 'reject'
               ? 'Rejecting...'
-              : 'Reject Invitation'}
+              : 'Reject invitation'}
           </button>
         </div>
       </section>
@@ -984,240 +147,795 @@ function WorkspaceMemberContent({
     );
   }
 
+  return WorkspaceBookingDashboard({ workspace: selectedWorkspace, currentUser });
+}
+
+function WorkspaceBookingDashboard({
+  workspace,
+  currentUser,
+}: {
+  workspace: WorkspaceItem;
+  currentUser: WorkspaceShellRenderContext['currentUser'];
+}) {
+  const timezone = workspace.timezone;
+  const [dateKey, setDateKey] = useState(() => workspaceTodayDateKey(timezone));
+  const [monthKey, setMonthKey] = useState(() => workspaceTodayDateKey(timezone).slice(0, 7));
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [bookings, setBookings] = useState<BookingListItem[]>([]);
+  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
+  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(null);
+  const [hasLoadedRooms, setHasLoadedRooms] = useState(false);
+  const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [pageBanner, setPageBanner] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<ErrorPayload | null>(null);
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<BookingDialogState>({
+    open: false,
+    mode: 'create',
+    bookingId: null,
+    draft: emptyBookingDraft,
+    error: null,
+    isSubmitting: false,
+    anchorPoint: null,
+  });
+  const workspaceIdRef = useRef<string | null>(workspace.id);
+
+  workspaceIdRef.current = workspace.id;
+
+  useEffect(() => {
+    const today = workspaceTodayDateKey(timezone);
+    setDateKey(today);
+    setMonthKey(today.slice(0, 7));
+    setSelectedBookingId(null);
+    setDialog({
+      open: false,
+      mode: 'create',
+      bookingId: null,
+      draft: emptyBookingDraft,
+      error: null,
+      isSubmitting: false,
+      anchorPoint: null,
+    });
+  }, [workspace.id, timezone]);
+
+  const loadRooms = useCallback(async (selected: WorkspaceItem) => {
+    setIsLoadingRooms(true);
+    const response = await fetch(`/api/workspaces/${selected.id}/rooms`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    const payload = await safeReadJson(response);
+
+    if (workspaceIdRef.current !== selected.id) {
+      return;
+    }
+
+    if (!response.ok) {
+      setPageError(normalizeErrorPayload(payload, response.status));
+      setRooms([]);
+      setRoomsWorkspaceId(selected.id);
+      setHasLoadedRooms(true);
+      setIsLoadingRooms(false);
+      return;
+    }
+
+    if (!isRoomListPayload(payload)) {
+      setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected rooms payload' });
+      setRooms([]);
+      setRoomsWorkspaceId(selected.id);
+      setHasLoadedRooms(true);
+      setIsLoadingRooms(false);
+      return;
+    }
+
+    setRooms(payload.items.slice().sort((a, b) => a.name.localeCompare(b.name)));
+    setRoomsWorkspaceId(selected.id);
+    setHasLoadedRooms(true);
+    setIsLoadingRooms(false);
+  }, []);
+
+  const loadBookings = useCallback(async (selected: WorkspaceItem) => {
+    setIsLoadingBookings(true);
+    const query = new URLSearchParams({
+      mine: 'false',
+      includePast: 'true',
+    });
+
+    const response = await fetch(`/api/workspaces/${selected.id}/bookings?${query.toString()}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    const payload = await safeReadJson(response);
+
+    if (workspaceIdRef.current !== selected.id) {
+      return;
+    }
+
+    if (!response.ok) {
+      setPageError(normalizeErrorPayload(payload, response.status));
+      setBookings([]);
+      setBookingsWorkspaceId(selected.id);
+      setHasLoadedBookings(true);
+      setIsLoadingBookings(false);
+      return;
+    }
+
+    if (!isBookingListPayload(payload)) {
+      setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected bookings payload' });
+      setBookings([]);
+      setBookingsWorkspaceId(selected.id);
+      setHasLoadedBookings(true);
+      setIsLoadingBookings(false);
+      return;
+    }
+
+    setBookings(payload.items);
+    setBookingsWorkspaceId(selected.id);
+    setHasLoadedBookings(true);
+    setIsLoadingBookings(false);
+  }, []);
+
+  const refreshData = useCallback(async () => {
+    setPageError(null);
+    await Promise.all([loadRooms(workspace), loadBookings(workspace)]);
+  }, [loadBookings, loadRooms, workspace]);
+
+  useEffect(() => {
+    setPageBanner(null);
+    setPageError(null);
+    setHasLoadedRooms(false);
+    setHasLoadedBookings(false);
+    void refreshData();
+  }, [refreshData]);
+
+  useEffect(() => {
+    if (rooms.length === 0) {
+      setDialog((previous) =>
+        previous.open && previous.draft.roomId
+          ? { ...previous, draft: { ...previous.draft, roomId: '' } }
+          : previous,
+      );
+      return;
+    }
+
+    setDialog((previous) => {
+      if (!previous.open) {
+        return previous;
+      }
+      if (previous.draft.roomId && rooms.some((room) => room.id === previous.draft.roomId)) {
+        return previous;
+      }
+      return {
+        ...previous,
+        draft: {
+          ...previous.draft,
+          roomId: rooms[0].id,
+        },
+      };
+    });
+  }, [rooms]);
+
+  const hasCurrentRooms = roomsWorkspaceId === workspace.id;
+  const hasCurrentBookings = bookingsWorkspaceId === workspace.id;
+  const isReady = hasLoadedRooms && hasLoadedBookings && hasCurrentRooms && hasCurrentBookings;
+  const isLoading = isLoadingRooms || isLoadingBookings || !isReady;
+
+  const currentUserId = currentUser?.id ?? '';
+  const editableBookingIds = useMemo(
+    () =>
+      new Set(
+        bookings
+          .filter((booking) => booking.createdByUserId === currentUserId && booking.status === 'ACTIVE')
+          .map((booking) => booking.id),
+      ),
+    [bookings, currentUserId],
+  );
+
+  const markerCountsByDate = useMemo(
+    () => buildMarkerCountByDateKey(bookings, timezone, currentUserId || undefined),
+    [bookings, timezone, currentUserId],
+  );
+  const miniCalendarCells = useMemo(
+    () =>
+      buildMiniCalendarCells({
+        timezone,
+        monthKey,
+        selectedDateKey: dateKey,
+        markerCountByDateKey: markerCountsByDate,
+      }),
+    [timezone, monthKey, dateKey, markerCountsByDate],
+  );
+
+  const myBookingGroups = useMemo(
+    () => (currentUserId ? groupMyBookingsForSidebar(bookings, timezone, currentUserId) : []),
+    [bookings, timezone, currentUserId],
+  );
+
+  const selectedBookingForDialog = useMemo(
+    () => (dialog.bookingId ? bookings.find((booking) => booking.id === dialog.bookingId) ?? null : null),
+    [dialog.bookingId, bookings],
+  );
+
+  const setDialogError = (error: ErrorPayload | null) => {
+    setDialog((previous) => (previous.open ? { ...previous, error } : previous));
+  };
+
+  const closeDialog = () => {
+    setDialog({
+      open: false,
+      mode: 'create',
+      bookingId: null,
+      draft: emptyBookingDraft,
+      error: null,
+      isSubmitting: false,
+      anchorPoint: null,
+    });
+    setSelectedBookingId(null);
+  };
+
+  const goToToday = useCallback(() => {
+    const today = workspaceTodayDateKey(timezone);
+    setDateKey(today);
+    setMonthKey(today.slice(0, 7));
+  }, [timezone]);
+
+  const goToPreviousDay = useCallback(() => {
+    setDateKey((previous) => {
+      const next = addDaysToDateKey(previous, -1, timezone);
+      setMonthKey(next.slice(0, 7));
+      return next;
+    });
+  }, [timezone]);
+
+  const goToNextDay = useCallback(() => {
+    setDateKey((previous) => {
+      const next = addDaysToDateKey(previous, 1, timezone);
+      setMonthKey(next.slice(0, 7));
+      return next;
+    });
+  }, [timezone]);
+
+  const openCreateDialog = useCallback(
+    ({
+      roomId,
+      startMinutes,
+      endMinutes,
+      anchorPoint,
+    }: {
+      roomId: string;
+      startMinutes: number;
+      endMinutes: number;
+      anchorPoint: BookingModalAnchorPoint;
+    }) => {
+      if (!rooms.some((room) => room.id === roomId)) {
+        return;
+      }
+
+      setPageError(null);
+      setPageBanner(null);
+      setSelectedBookingId(null);
+      setDialog({
+        open: true,
+        mode: 'create',
+        bookingId: null,
+        error: null,
+        isSubmitting: false,
+        anchorPoint,
+        draft: {
+          roomId,
+          subject: '',
+          criticality: 'MEDIUM',
+          startTimeLocal: minutesToTimeInput(startMinutes),
+          endTimeLocal: minutesToTimeInput(endMinutes),
+        },
+      });
+    },
+    [rooms],
+  );
+
+  const openEditDialog = useCallback(
+    (booking: BookingListItem) => {
+      const local = bookingToLocalRange(booking, timezone);
+      if (!local) {
+        return;
+      }
+
+      setPageError(null);
+      setPageBanner(null);
+      setSelectedBookingId(booking.id);
+      setDialog({
+        open: true,
+        mode: 'edit',
+        bookingId: booking.id,
+        error: null,
+        isSubmitting: false,
+        anchorPoint: null,
+        draft: {
+          roomId: booking.roomId,
+          subject: booking.subject,
+          criticality: booking.criticality,
+          startTimeLocal: minutesToTimeInput(local.startMinutes),
+          endTimeLocal: minutesToTimeInput(local.endMinutes),
+        },
+      });
+      setDateKey(local.dateKey);
+      setMonthKey(local.dateKey.slice(0, 7));
+    },
+    [timezone],
+  );
+
+  const createDraftPreview = useMemo(() => {
+    if (!dialog.open || dialog.mode !== 'create') {
+      return null;
+    }
+    if (!dialog.draft.roomId) {
+      return null;
+    }
+    if (!rooms.some((item) => item.id === dialog.draft.roomId)) {
+      return null;
+    }
+    const startMinutes = parseTimeInputStrict(dialog.draft.startTimeLocal);
+    const endMinutes = parseTimeInputStrict(dialog.draft.endTimeLocal);
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      return null;
+    }
+    if (startMinutes < SCHEDULE_START_MINUTES || endMinutes > SCHEDULE_END_MINUTES) {
+      return null;
+    }
+    const hasConflict =
+      endMinutes <= startMinutes ||
+      hasRoomOverlap({
+        bookings,
+        timezone,
+        dateKey,
+        roomId: dialog.draft.roomId,
+        startMinutes,
+        endMinutes,
+      });
+
+    return {
+      roomId: dialog.draft.roomId,
+      startMinutes,
+      endMinutes,
+      title: dialog.draft.subject.trim() || 'New booking',
+      subtitle: [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim() || null,
+      hasConflict,
+    };
+  }, [dialog, rooms, currentUser, bookings, timezone, dateKey]);
+
+  const validateDraft = useCallback(
+    (draft: BookingModalDraft, opts: { mode: 'create' | 'edit'; bookingId: string | null }) => {
+      if (!draft.subject.trim()) {
+        return { code: 'BAD_REQUEST', message: 'Title is required' } satisfies ErrorPayload;
+      }
+      const parsedStart = parseTimeInputStrict(draft.startTimeLocal);
+      const parsedEnd = parseTimeInputStrict(draft.endTimeLocal);
+      if (parsedStart === null || parsedEnd === null) {
+        return { code: 'BAD_REQUEST', message: 'Start and end time are required' } satisfies ErrorPayload;
+      }
+      if (!draft.roomId) {
+        return { code: 'BAD_REQUEST', message: 'Room is required' } satisfies ErrorPayload;
+      }
+      if (parsedEnd <= parsedStart) {
+        return { code: 'BAD_REQUEST', message: 'End time must be after start time' } satisfies ErrorPayload;
+      }
+      if (parsedStart < SCHEDULE_START_MINUTES || parsedEnd > SCHEDULE_END_MINUTES) {
+        return {
+          code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
+          message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+        } satisfies ErrorPayload;
+      }
+
+      const today = workspaceTodayDateKey(timezone);
+      if (dateKey < today) {
+        return {
+          code: 'BAD_REQUEST',
+          message: 'Reservations can only be created or moved on the current workspace day or later',
+        } satisfies ErrorPayload;
+      }
+
+      if (
+        hasRoomOverlap({
+          bookings,
+          timezone,
+          dateKey,
+          roomId: draft.roomId,
+          startMinutes: parsedStart,
+          endMinutes: parsedEnd,
+          ignoreBookingId: opts.bookingId ?? undefined,
+        })
+      ) {
+        return { code: 'BOOKING_OVERLAP', message: 'Booking overlaps with an existing active booking' } satisfies ErrorPayload;
+      }
+
+      return null;
+    },
+    [bookings, timezone, dateKey],
+  );
+
+  const submitDialog = async () => {
+    if (!dialog.open) {
+      return;
+    }
+    const validationError = validateDraft(dialog.draft, {
+      mode: dialog.mode,
+      bookingId: dialog.bookingId,
+    });
+    if (validationError) {
+      setDialogError(validationError);
+      return;
+    }
+
+    const startAt = dateAndTimeToUtcIso(dateKey, dialog.draft.startTimeLocal, timezone);
+    const endAt = dateAndTimeToUtcIso(dateKey, dialog.draft.endTimeLocal, timezone);
+    if (!startAt || !endAt) {
+      setDialogError({
+        code: 'BAD_REQUEST',
+        message: 'Date and time values must be valid in the workspace timezone',
+      });
+      return;
+    }
+
+    setDialog((previous) => (previous.open ? { ...previous, isSubmitting: true, error: null } : previous));
+    setPageError(null);
+    setPageBanner(null);
+
+    const isEdit = dialog.mode === 'edit' && dialog.bookingId;
+    const url = isEdit
+      ? `/api/workspaces/${workspace.id}/bookings/${dialog.bookingId}`
+      : `/api/workspaces/${workspace.id}/bookings`;
+    const method = isEdit ? 'PATCH' : 'POST';
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        roomId: dialog.draft.roomId,
+        subject: dialog.draft.subject.trim(),
+        criticality: dialog.draft.criticality,
+        startAt,
+        endAt,
+      }),
+    });
+    const payload = await safeReadJson(response);
+
+    if (!response.ok) {
+      setDialog((previous) =>
+        previous.open
+          ? { ...previous, isSubmitting: false, error: normalizeErrorPayload(payload, response.status) }
+          : previous,
+      );
+      return;
+    }
+
+    await loadBookings(workspace);
+    setPageBanner(isEdit ? 'Booking updated.' : 'Booking created.');
+    closeDialog();
+  };
+
+  const deleteDialogBooking = async () => {
+    if (!dialog.open || dialog.mode !== 'edit' || !dialog.bookingId) {
+      return;
+    }
+
+    setDialog((previous) => (previous.open ? { ...previous, isSubmitting: true, error: null } : previous));
+    setPageError(null);
+    setPageBanner(null);
+
+    const response = await fetch(`/api/workspaces/${workspace.id}/bookings/${dialog.bookingId}/cancel`, {
+      method: 'POST',
+    });
+    const payload = await safeReadJson(response);
+
+    if (!response.ok) {
+      setDialog((previous) =>
+        previous.open
+          ? { ...previous, isSubmitting: false, error: normalizeErrorPayload(payload, response.status) }
+          : previous,
+      );
+      return;
+    }
+
+    await loadBookings(workspace);
+    setPageBanner('Reservation cancelled and removed.');
+    closeDialog();
+  };
+
+  const handleInteractiveUpdate = useCallback(
+    async (update: { bookingId: string; roomId: string; startMinutes: number; endMinutes: number }) => {
+      const booking = bookings.find((item) => item.id === update.bookingId);
+      if (!booking) {
+        setPageError({ code: 'NOT_FOUND', message: 'Booking not found' });
+        return;
+      }
+
+      const startAt = dateAndTimeToUtcIso(dateKey, minutesToTimeInput(update.startMinutes), timezone);
+      const endAt = dateAndTimeToUtcIso(dateKey, minutesToTimeInput(update.endMinutes), timezone);
+      if (!startAt || !endAt) {
+        setPageError({ code: 'BAD_REQUEST', message: 'Unable to compute booking time in workspace timezone' });
+        return;
+      }
+
+      setPageError(null);
+      setPageBanner(null);
+
+      const response = await fetch(`/api/workspaces/${workspace.id}/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          roomId: update.roomId,
+          subject: booking.subject,
+          criticality: booking.criticality,
+          startAt,
+          endAt,
+        }),
+      });
+      const payload = await safeReadJson(response);
+
+      if (!response.ok) {
+        setPageError(normalizeErrorPayload(payload, response.status));
+        return;
+      }
+
+      await loadBookings(workspace);
+      setPageBanner('Booking updated.');
+    },
+    [bookings, dateKey, timezone, workspace, loadBookings],
+  );
+
+  const rightSidebar = (
+    <WorkspaceRightSidebar
+      timezone={timezone}
+      dateKey={dateKey}
+      monthKey={monthKey}
+      onSelectDateKey={setDateKey}
+      onSelectMonthKey={setMonthKey}
+      onToday={goToToday}
+      miniCalendarCells={miniCalendarCells}
+      bookingGroups={myBookingGroups}
+      onOpenBooking={(booking) => openEditDialog(booking)}
+    />
+  );
+  const leftSidebar = pageBanner || pageError ? (
+    <div className="space-y-2">
+      {pageBanner ? (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {pageBanner}
+        </p>
+      ) : null}
+      {pageError ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {pageError.code}: {pageError.message}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
+  const canEditDialogBooking =
+    dialog.open &&
+    dialog.mode === 'create'
+      ? true
+      : Boolean(selectedBookingForDialog && editableBookingIds.has(selectedBookingForDialog.id));
+
   return {
+    leftSidebar,
     main: (
-    <div className="space-y-6">
-      {localBanner ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {localBanner}
-        </p>
-      ) : null}
-
-      {localError ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {localError.code}: {localError.message}
-        </p>
-      ) : null}
-
-      <WorkspaceCurrentDaySchedule
-        rooms={displayedScheduleRooms}
-        bookings={displayedScheduleBookings}
-        myBookingIds={myBookingIds}
-        timezone={selectedWorkspace.timezone}
-        isLoading={isScheduleLoading}
-        isReady={isScheduleReady}
-        selectedDateKey={activeScheduleDateKey}
-        highlightedTimeRangeLocal={{
-          startTimeLocal: bookingForm.startTimeLocal,
-          endTimeLocal: bookingForm.endTimeLocal,
-        }}
-        draftBookingPreview={{
-          roomId: bookingForm.roomId,
-          subject: bookingForm.subject,
-          criticality: bookingForm.criticality,
-          startTimeLocal: bookingForm.startTimeLocal,
-          endTimeLocal: bookingForm.endTimeLocal,
-          createdByDisplayName: currentUserDisplayName,
-        }}
-      />
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">My Reservations</h3>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={includePast}
-                onChange={(event) => setIncludePast(event.target.checked)}
-              />
-              Include past
-            </label>
-          </div>
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="min-h-0 flex-1">
+          {isLoading && !isReady ? (
+            <div className="h-full rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="h-5 w-48 rounded bg-slate-100" />
+              <div className="mt-4 h-[480px] rounded-xl bg-slate-100" />
+            </div>
+          ) : (
+            <DaySchedule
+              rooms={hasCurrentRooms ? rooms : []}
+              bookings={hasCurrentBookings ? bookings : []}
+              timezone={timezone}
+              selectedDateKey={dateKey}
+              editableBookingIds={editableBookingIds}
+              selectedBookingId={selectedBookingId}
+              isMutating={dialog.open && dialog.isSubmitting}
+              onPrevDay={goToPreviousDay}
+              onNextDay={goToNextDay}
+              onToday={goToToday}
+              createDraftPreview={createDraftPreview}
+              onCreateSlot={openCreateDialog}
+              onOpenBooking={openEditDialog}
+              onUpdateBooking={handleInteractiveUpdate}
+              onInlineError={(message) => setPageError({ code: 'BOOKING_OVERLAP', message })}
+            />
+          )}
         </div>
 
-        {isLoadingBookings ? <p className="mt-3 text-sm text-slate-600">Loading reservations...</p> : null}
-
-        {!isLoadingBookings && bookings.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600">No reservations found for the current filters.</p>
-        ) : null}
-
-        {!isLoadingBookings && bookings.length > 0 ? (
-          <ul className="mt-3 space-y-2">
-            {bookings.map((booking) => {
-              return (
-              <li key={booking.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{booking.subject}</p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {booking.roomName} - {booking.criticality} - {booking.status}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {formatUtcRangeInTimezone(
-                        booking.startAt,
-                        booking.endAt,
-                        selectedWorkspace.timezone,
-                      )}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleCancelBooking(booking.id)}
-                    disabled={booking.status !== 'ACTIVE' || cancellingBookingId === booking.id}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel'}
-                  </button>
-                </div>
-              </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
-    </div>
-    ),
-    rightSidebar: (
-      <div className="space-y-4">
-        <WorkspaceScheduleCalendar
-          timezone={selectedWorkspace.timezone}
-          bookings={displayedScheduleBookings}
-          selectedDateKey={activeScheduleDateKey}
-          onSelectDateKey={setSelectedScheduleDateKey}
-          calendarMonthKey={activeScheduleCalendarMonthKey}
-          onSelectCalendarMonthKey={setScheduleCalendarMonthKey}
+        <BookingModal
+          open={dialog.open}
+          mode={dialog.mode}
+          rooms={rooms}
+          draft={dialog.draft}
+          error={dialog.error}
+          isSubmitting={dialog.isSubmitting}
+          canEdit={Boolean(canEditDialogBooking)}
+          canDelete={Boolean(dialog.mode === 'edit' && canEditDialogBooking)}
+          anchorPoint={dialog.open && dialog.mode === 'create' ? dialog.anchorPoint : null}
+          onChange={(next) => setDialog((previous) => (previous.open ? { ...previous, draft: next, error: null } : previous))}
+          onClose={closeDialog}
+          onSubmit={() => void submitDialog()}
+          onDelete={() => void deleteDialogBooking()}
         />
-
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Create Reservation</h3>
-
-          <form className="mt-4 grid gap-4" onSubmit={(event) => void handleCreateBooking(event)}>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Meeting Room</span>
-              <select
-                required
-                value={bookingForm.roomId}
-                onChange={(event) =>
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    roomId: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                {sortedRooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Criticality</span>
-              <select
-                required
-                value={bookingForm.criticality}
-                onChange={(event) =>
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    criticality: event.target.value as BookingCriticality,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Subject</span>
-              <input
-                required
-                value={bookingForm.subject}
-                onChange={(event) =>
-                  setBookingForm((previous) => ({
-                    ...previous,
-                    subject: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block min-w-0">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Start Time</span>
-                <select
-                  required
-                  value={bookingForm.startTimeLocal}
-                  onChange={(event) => {
-                    const nextStartTime =
-                      quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
-                      event.target.value;
-                    const autoEndTime = addHoursToTimeInput(nextStartTime, 1);
-
-                    setBookingForm((previous) => ({
-                      ...previous,
-                      startTimeLocal: nextStartTime,
-                      endTimeLocal: autoEndTime ?? previous.endTimeLocal,
-                    }));
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                >
-                  <option value="">Select</option>
-                  {BOOKING_TIME_OPTIONS.map((timeValue) => (
-                    <option key={timeValue} value={timeValue}>
-                      {timeValue}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block min-w-0">
-                <span className="mb-1 block text-sm font-medium text-slate-700">End Time</span>
-                <select
-                  required
-                  value={bookingForm.endTimeLocal}
-                  onChange={(event) =>
-                    setBookingForm((previous) => ({
-                      ...previous,
-                      endTimeLocal:
-                        quantizeTimeInputToMinuteStep(event.target.value, BOOKING_TIME_STEP_MINUTES) ??
-                        event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                >
-                  <option value="">Select</option>
-                  {BOOKING_TIME_OPTIONS.map((timeValue) => (
-                    <option key={timeValue} value={timeValue}>
-                      {timeValue}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={isCreatingBooking || isLoadingRooms || sortedRooms.length === 0}
-                className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isCreatingBooking ? 'Creating...' : 'Create Reservation'}
-              </button>
-            </div>
-          </form>
-        </section>
       </div>
     ),
+    rightSidebar,
   };
 }
 
+function WorkspaceRightSidebar({
+  timezone,
+  dateKey,
+  monthKey,
+  onSelectDateKey,
+  onSelectMonthKey,
+  onToday,
+  miniCalendarCells,
+  bookingGroups,
+  onOpenBooking,
+}: {
+  timezone: string;
+  dateKey: string;
+  monthKey: string;
+  onSelectDateKey: (value: string) => void;
+  onSelectMonthKey: (value: string) => void;
+  onToday: () => void;
+  miniCalendarCells: ReturnType<typeof buildMiniCalendarCells>;
+  bookingGroups: ReturnType<typeof groupMyBookingsForSidebar>;
+  onOpenBooking: (booking: BookingListItem) => void;
+}) {
+  const monthLabel = useMemo(() => parseDateKey(`${monthKey}-01`.slice(0, 10), timezone).toFormat('LLLL yyyy'), [monthKey, timezone]);
 
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
+            <p className="text-sm font-semibold text-slate-900">{monthLabel}</p>
+            <p className="text-xs text-slate-500">{timezone}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onToday}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).minus({ months: 1 });
+                onSelectMonthKey(next.toFormat('yyyy-LL'));
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              aria-label="Previous month"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).plus({ months: 1 });
+                onSelectMonthKey(next.toFormat('yyyy-LL'));
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              aria-label="Next month"
+            >
+              →
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
+            <div key={label} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              {label}
+            </div>
+          ))}
+
+          {miniCalendarCells.map((cell) => (
+            <button
+              key={cell.dateKey}
+              type="button"
+              onClick={() => {
+                onSelectDateKey(cell.dateKey);
+                onSelectMonthKey(cell.dateKey.slice(0, 7));
+              }}
+              className={`relative h-8 rounded-md border text-xs font-medium transition ${
+                cell.isSelected
+                  ? 'border-brand bg-cyan-100 text-cyan-900'
+                  : cell.isToday
+                    ? 'border-slate-400 bg-white text-slate-900'
+                    : cell.isCurrentMonth
+                      ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      : 'border-transparent bg-transparent text-slate-400 hover:bg-white'
+              }`}
+              aria-label={`Select ${cell.dateKey}`}
+            >
+              <span>{cell.dayNumber}</span>
+              {cell.markerCount > 0 ? (
+                <span
+                  className={`absolute bottom-0.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${
+                    cell.isSelected ? 'bg-cyan-700' : 'bg-slate-500'
+                  }`}
+                />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-900">My bookings</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {parseDateKey(dateKey, timezone).toFormat('cccc, dd LLL yyyy')}
+          </p>
+        </div>
+
+        <div className="max-h-[calc(100vh-280px)] space-y-4 overflow-y-auto p-4">
+          {bookingGroups.length === 0 ? (
+            <p className="text-sm text-slate-600">No bookings yet in this workspace.</p>
+          ) : null}
+
+          {bookingGroups.map((group) => (
+            <div key={group.key}>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {group.label}
+              </h4>
+              <ul className="space-y-2">
+                {group.items.map((booking) => (
+                  <li key={booking.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenBooking(booking)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
+                    >
+                      <p className="truncate text-xs font-semibold text-slate-900">
+                        {booking.roomName}
+                      </p>
+                      <p className="truncate text-sm text-slate-800">{booking.subject}</p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {formatBookingDateAndTimeInTimezone(booking, timezone)}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function parseTimeInputStrict(value: string): number | null {
+  if (!value) {
+    return null;
+  }
+  const [hourText, minuteText] = value.split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return null;
+  }
+  const total = hour * 60 + minute;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  if (minute % SCHEDULE_INTERVAL_MINUTES !== 0) {
+    return null;
+  }
+  return total;
+}

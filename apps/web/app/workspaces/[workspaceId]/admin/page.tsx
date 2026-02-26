@@ -56,6 +56,9 @@ export default function WorkspaceAdminPage() {
       selectedWorkspaceId={workspaceId}
       pageTitle="Workspace Admin"
       pageDescription="Manage meeting rooms, members, and invitations."
+      pageBackHref={`/workspaces/${workspaceId}`}
+      pageBackLabel="Close"
+      pageBackAriaLabel="Close admin panel"
     >
       {(context) => <WorkspaceAdminContent context={context} workspaceId={workspaceId} />}
     </WorkspaceShell>
@@ -96,6 +99,8 @@ function WorkspaceAdminContent({
   });
   const [isCancelWorkspaceFormVisible, setIsCancelWorkspaceFormVisible] = useState(false);
   const [isCancellingWorkspace, setIsCancellingWorkspace] = useState(false);
+  const [isCancelWorkspaceCredentialsUnlocked, setIsCancelWorkspaceCredentialsUnlocked] =
+    useState(false);
   const [cancelWorkspaceForm, setCancelWorkspaceForm] = useState<CancelWorkspaceState>({
     workspaceName: '',
     email: '',
@@ -237,6 +242,8 @@ function WorkspaceAdminContent({
         workspaceName: '',
         password: '',
       }));
+      setIsCancelWorkspaceFormVisible(false);
+      setIsCancelWorkspaceCredentialsUnlocked(false);
       setDeleteRoomConfirmation(null);
       setIsDeleteRoomCredentialsUnlocked(false);
       lastSelectedWorkspaceIdRef.current = selectedWorkspaceId;
@@ -545,7 +552,7 @@ function WorkspaceAdminContent({
         </p>
 
         <form
-          className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end"
+          className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_240px_auto_auto] lg:items-end"
           onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
         >
           <label className="block">
@@ -584,7 +591,7 @@ function WorkspaceAdminContent({
             </select>
           </label>
 
-          <div>
+          <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 lg:col-span-2 lg:flex-nowrap">
             <button
               type="submit"
               disabled={isSubmittingWorkspaceSettings}
@@ -592,10 +599,27 @@ function WorkspaceAdminContent({
             >
               {isSubmittingWorkspaceSettings ? 'Saving...' : 'Save Settings'}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCancelWorkspaceFormVisible(true);
+                setIsCancelWorkspaceCredentialsUnlocked(false);
+                setCancelWorkspaceForm((previous) => ({
+                  ...previous,
+                  workspaceName: '',
+                  email: '',
+                  password: '',
+                }));
+              }}
+              className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            >
+              Delete Workspace
+            </button>
           </div>
         </form>
       </section>
 
+      <div className="grid items-start gap-6 xl:grid-cols-2 xl:gap-y-0">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="text-lg font-semibold text-slate-900">Meeting Rooms</h3>
         <form className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => void handleCreateRoom(event)}>
@@ -799,110 +823,143 @@ function WorkspaceAdminContent({
           </div>
         </div>
       </section>
+      </div>
 
-      <section className="rounded-xl border border-rose-300 bg-rose-50 p-4">
-        <h3 className="text-lg font-semibold text-rose-900">Danger Zone</h3>
-        <p className="mt-1 text-sm text-rose-800">
-          Canceling a workspace permanently deletes rooms, reservations, memberships, and invitations.
-        </p>
-
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => {
-              setIsCancelWorkspaceFormVisible((current) => !current);
-              setCancelWorkspaceForm((previous) => ({
-                ...previous,
-                workspaceName: '',
-                password: '',
-              }));
-            }}
-            className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-          >
-            {isCancelWorkspaceFormVisible ? 'Close Workspace Cancel' : 'Cancel Workspace'}
-          </button>
-        </div>
-
-        {isCancelWorkspaceFormVisible ? (
-          <form className="mt-4 space-y-3" onSubmit={(event) => void handleCancelWorkspace(event)}>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-rose-900">
-                Workspace Name Confirmation
-              </span>
-              <p className="mb-2 text-xs text-rose-800">
-                Type <span className="font-semibold">{selectedWorkspace.name}</span> to confirm.
-              </p>
-              <input
-                required
-                value={cancelWorkspaceForm.workspaceName}
-                onChange={(event) =>
-                  setCancelWorkspaceForm((previous) => ({
-                    ...previous,
-                    workspaceName: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-rose-900">Email (username)</span>
-              <p className="mb-2 text-xs text-rose-800">
-                Enter your admin account email address.
-              </p>
-              <input
-                required
-                type="email"
-                value={cancelWorkspaceForm.email}
-                onChange={(event) =>
-                  setCancelWorkspaceForm((previous) => ({
-                    ...previous,
-                    email: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-rose-900">Password</span>
-              <p className="mb-2 text-xs text-rose-800">
-                Re-enter your password to complete the workspace cancellation.
-              </p>
-              <input
-                required
-                type="password"
-                value={cancelWorkspaceForm.password}
-                onChange={(event) =>
-                  setCancelWorkspaceForm((previous) => ({
-                    ...previous,
-                    password: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
-              />
-            </label>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="submit"
-                disabled={isCancellingWorkspace}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isCancellingWorkspace ? 'Cancelling Workspace...' : 'Confirm Workspace Cancel'}
-              </button>
+      {isCancelWorkspaceFormVisible ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-workspace-dialog-title"
+        >
+          <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="cancel-workspace-dialog-title" className="text-lg font-semibold text-rose-900">
+                  Delete Workspace Permanently
+                </h3>
+                <p className="mt-1 text-sm text-rose-800">
+                  This permanently deletes rooms, reservations, memberships, and invitations.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setIsCancelWorkspaceFormVisible(false)}
+                onClick={() => {
+                  setIsCancelWorkspaceFormVisible(false);
+                  setIsCancelWorkspaceCredentialsUnlocked(false);
+                }}
                 disabled={isCancellingWorkspace}
-                className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Keep Workspace
+                Close
               </button>
             </div>
-          </form>
-        ) : null}
-      </section>
+
+            <form
+              className="mt-4 space-y-3"
+              autoComplete="off"
+              onSubmit={(event) => void handleCancelWorkspace(event)}
+            >
+              <div className="hidden" aria-hidden="true">
+                <input type="text" name="username" autoComplete="username" tabIndex={-1} />
+                <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">
+                  Workspace Name Confirmation
+                </span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Type <span className="font-semibold">{selectedWorkspace.name}</span> to confirm.
+                </p>
+                <input
+                  required
+                  name="cancel-workspace-confirm-name"
+                  autoComplete="off"
+                  value={cancelWorkspaceForm.workspaceName}
+                  onChange={(event) =>
+                    setCancelWorkspaceForm((previous) => ({
+                      ...previous,
+                      workspaceName: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">Email</span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Enter your admin account email address.
+                </p>
+                <input
+                  required
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  name="cancel-workspace-confirm-contact"
+                  autoComplete="new-password"
+                  readOnly={!isCancelWorkspaceCredentialsUnlocked}
+                  onFocus={() => setIsCancelWorkspaceCredentialsUnlocked(true)}
+                  value={cancelWorkspaceForm.email}
+                  onChange={(event) =>
+                    setCancelWorkspaceForm((previous) => ({
+                      ...previous,
+                      email: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-rose-900">Password</span>
+                <p className="mb-2 text-xs text-rose-800">
+                  Re-enter your password to complete the workspace deletion.
+                </p>
+                <input
+                  required
+                  type="password"
+                  name="cancel-workspace-confirm-secret"
+                  autoComplete="new-password"
+                  readOnly={!isCancelWorkspaceCredentialsUnlocked}
+                  onFocus={() => setIsCancelWorkspaceCredentialsUnlocked(true)}
+                  value={cancelWorkspaceForm.password}
+                  onChange={(event) =>
+                    setCancelWorkspaceForm((previous) => ({
+                      ...previous,
+                      password: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                />
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={isCancellingWorkspace}
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isCancellingWorkspace ? 'Deleting Workspace...' : 'Confirm Workspace Delete'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCancelWorkspaceFormVisible(false);
+                    setIsCancelWorkspaceCredentialsUnlocked(false);
+                  }}
+                  disabled={isCancellingWorkspace}
+                  className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Keep Workspace
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {deleteRoomConfirmation ? (
         <div
@@ -973,7 +1030,7 @@ function WorkspaceAdminContent({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-rose-900">Email (username)</span>
+                <span className="mb-1 block text-sm font-medium text-rose-900">Email</span>
                 <p className="mb-2 text-xs text-rose-800">
                   Enter your admin account email address.
                 </p>
