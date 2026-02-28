@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  type CSSProperties,
-  FormEvent,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-} from 'react';
+import { type CSSProperties, FormEvent, useEffect, useId, useMemo, useRef } from 'react';
 import {
   SCHEDULE_END_MINUTES,
   SCHEDULE_INTERVAL_MINUTES,
@@ -37,6 +30,7 @@ export function BookingModal({
   draft,
   error,
   isSubmitting,
+  isSubmitDisabled = false,
   canEdit,
   canDelete,
   anchorPoint,
@@ -51,6 +45,7 @@ export function BookingModal({
   draft: BookingModalDraft;
   error: ErrorPayload | null;
   isSubmitting: boolean;
+  isSubmitDisabled?: boolean;
   canEdit: boolean;
   canDelete: boolean;
   anchorPoint?: BookingModalAnchorPoint | null;
@@ -151,7 +146,7 @@ export function BookingModal({
     return items;
   }, [startMinutes]);
   const anchoredDialogStyle = useMemo<CSSProperties | null>(() => {
-    if (!open || mode !== 'create' || !anchorPoint) {
+    if (!open || !anchorPoint) {
       return null;
     }
     if (typeof window === 'undefined' || window.innerWidth < 1024) {
@@ -181,7 +176,7 @@ export function BookingModal({
       width: `min(${dialogWidth}px, calc(100vw - ${margin * 2}px))`,
       maxHeight: `calc(100vh - ${margin * 2}px)`,
     };
-  }, [open, mode, anchorPoint]);
+  }, [open, anchorPoint]);
 
   if (!open) {
     return null;
@@ -202,18 +197,13 @@ export function BookingModal({
     </option>
   ));
   const isAnchored = Boolean(anchoredDialogStyle);
-  const isAnchoredCreate = isAnchored && mode === 'create';
 
   return (
     <div
-      className={`fixed inset-0 z-[60] p-4 ${isAnchoredCreate ? 'bg-slate-950/10' : 'bg-slate-950/40'} ${isAnchored ? '' : 'flex items-center justify-center'}`}
+      className={`fixed inset-0 z-[60] p-4 ${isAnchored ? 'bg-slate-950/10' : 'bg-slate-950/40'} ${isAnchored ? '' : 'flex items-center justify-center'}`}
       role="presentation"
     >
-      <div
-        className="absolute inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <div
         ref={dialogRef}
         role="dialog"
@@ -378,7 +368,7 @@ export function BookingModal({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (canEdit && isSubmitDisabled)}
                 className="rounded-lg border border-transparent bg-brand px-3 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitLabel}

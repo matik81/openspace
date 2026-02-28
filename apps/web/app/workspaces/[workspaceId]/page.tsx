@@ -1,7 +1,7 @@
 'use client';
 
 import { DateTime } from 'luxon';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DaySchedule } from '@/components/calendar/DaySchedule';
 import {
@@ -9,6 +9,7 @@ import {
   type BookingModalAnchorPoint,
   type BookingModalDraft,
 } from '@/components/bookings/BookingModal';
+import { WorkspaceRightSidebar as SharedWorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, type WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
@@ -18,8 +19,8 @@ import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   formatBookingDateAndTimeInTimezone,
+  getBookingConflictMessage,
   groupMyBookingsForSidebar,
-  hasRoomOverlap,
   minutesToTimeInput,
   parseDateKey,
   SCHEDULE_END_MINUTES,
@@ -63,6 +64,14 @@ const emptyBookingDraft: BookingModalDraft = {
   endTimeLocal: '',
 };
 
+type WorkspaceSidebarState = {
+  dateKey: string;
+  monthKey: string;
+  bookings: BookingListItem[];
+};
+
+const workspaceSidebarStateCache = new Map<string, WorkspaceSidebarState>();
+
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params.workspaceId;
@@ -81,7 +90,13 @@ function WorkspacePageContent({
   context: WorkspaceShellRenderContext;
   workspaceId: string;
 }) {
-  const { selectedWorkspace, currentUser, isLoading, runInvitationAction, pendingInvitationAction } = context;
+  const {
+    selectedWorkspace,
+    currentUser,
+    isLoading,
+    runInvitationAction,
+    pendingInvitationAction,
+  } = context;
 
   if (isLoading && !selectedWorkspace) {
     return <p className="text-sm text-slate-600">Loading workspace...</p>;
@@ -111,7 +126,8 @@ function WorkspacePageContent({
           pending invitation.
         </p>
         <p className="mt-1 text-sm text-slate-700">
-          Expires {formatUtcInTimezone(selectedWorkspace.invitation.expiresAt, selectedWorkspace.timezone)}.
+          Expires{' '}
+          {formatUtcInTimezone(selectedWorkspace.invitation.expiresAt, selectedWorkspace.timezone)}.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
@@ -157,11 +173,20 @@ function WorkspaceBookingDashboard({
   workspace: WorkspaceItem;
   currentUser: WorkspaceShellRenderContext['currentUser'];
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const timezone = workspace.timezone;
-  const [dateKey, setDateKey] = useState(() => workspaceTodayDateKey(timezone));
-  const [monthKey, setMonthKey] = useState(() => workspaceTodayDateKey(timezone).slice(0, 7));
+  const cachedSidebarState = workspaceSidebarStateCache.get(workspace.id);
+  const [dateKey, setDateKey] = useState(
+    () => cachedSidebarState?.dateKey ?? workspaceTodayDateKey(timezone),
+  );
+  const [monthKey, setMonthKey] = useState(
+    () => cachedSidebarState?.monthKey ?? workspaceTodayDateKey(timezone).slice(0, 7),
+  );
   const [rooms, setRooms] = useState<RoomItem[]>([]);
-  const [bookings, setBookings] = useState<BookingListItem[]>([]);
+  const [bookings, setBookings] = useState<BookingListItem[]>(
+    () => cachedSidebarState?.bookings ?? [],
+  );
   const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
   const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(null);
   const [hasLoadedRooms, setHasLoadedRooms] = useState(false);
@@ -181,13 +206,40 @@ function WorkspaceBookingDashboard({
     anchorPoint: null,
   });
   const workspaceIdRef = useRef<string | null>(workspace.id);
+  const requestedBookingId = searchParams.get('bookingId');
+
+  const getBookingAnchorPoint = useCallback((bookingId: string): BookingModalAnchorPoint | null => {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+
+    const escapedBookingId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(bookingId)
+        : bookingId.replace(/"/g, '\\"');
+    const bookingElement = document.querySelector<HTMLElement>(
+      `[data-booking-id="${escapedBookingId}"]`,
+    );
+
+    if (!bookingElement) {
+      return null;
+    }
+
+    const rect = bookingElement.getBoundingClientRect();
+    return {
+      clientX: rect.right,
+      clientY: rect.top + rect.height / 2,
+    };
+  }, []);
 
   workspaceIdRef.current = workspace.id;
 
   useEffect(() => {
     const today = workspaceTodayDateKey(timezone);
-    setDateKey(today);
-    setMonthKey(today.slice(0, 7));
+    const cachedState = workspaceSidebarStateCache.get(workspace.id);
+    setDateKey(cachedState?.dateKey ?? today);
+    setMonthKey(cachedState?.monthKey ?? today.slice(0, 7));
+    setBookings(cachedState?.bookings ?? []);
     setSelectedBookingId(null);
     setDialog({
       open: false,
@@ -199,6 +251,14 @@ function WorkspaceBookingDashboard({
       anchorPoint: null,
     });
   }, [workspace.id, timezone]);
+
+  useEffect(() => {
+    workspaceSidebarStateCache.set(workspace.id, {
+      dateKey,
+      monthKey,
+      bookings,
+    });
+  }, [workspace.id, dateKey, monthKey, bookings]);
 
   const loadRooms = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingRooms(true);
@@ -327,7 +387,9 @@ function WorkspaceBookingDashboard({
     () =>
       new Set(
         bookings
-          .filter((booking) => booking.createdByUserId === currentUserId && booking.status === 'ACTIVE')
+          .filter(
+            (booking) => booking.createdByUserId === currentUserId && booking.status === 'ACTIVE',
+          )
           .map((booking) => booking.id),
       ),
     [bookings, currentUserId],
@@ -354,7 +416,10 @@ function WorkspaceBookingDashboard({
   );
 
   const selectedBookingForDialog = useMemo(
-    () => (dialog.bookingId ? bookings.find((booking) => booking.id === dialog.bookingId) ?? null : null),
+    () =>
+      dialog.bookingId
+        ? (bookings.find((booking) => booking.id === dialog.bookingId) ?? null)
+        : null,
     [dialog.bookingId, bookings],
   );
 
@@ -451,7 +516,7 @@ function WorkspaceBookingDashboard({
         bookingId: booking.id,
         error: null,
         isSubmitting: false,
-        anchorPoint: null,
+        anchorPoint: getBookingAnchorPoint(booking.id),
         draft: {
           roomId: booking.roomId,
           subject: booking.subject,
@@ -463,11 +528,57 @@ function WorkspaceBookingDashboard({
       setDateKey(local.dateKey);
       setMonthKey(local.dateKey.slice(0, 7));
     },
-    [timezone],
+    [getBookingAnchorPoint, timezone],
   );
 
-  const createDraftPreview = useMemo(() => {
-    if (!dialog.open || dialog.mode !== 'create') {
+  useEffect(() => {
+    if (!requestedBookingId || !hasCurrentBookings || dialog.open) {
+      return;
+    }
+
+    const requestedBooking = bookings.find((booking) => booking.id === requestedBookingId);
+    if (!requestedBooking) {
+      return;
+    }
+
+    openEditDialog(requestedBooking);
+    router.replace(`/workspaces/${workspace.id}`, { scroll: false });
+  }, [
+    requestedBookingId,
+    hasCurrentBookings,
+    dialog.open,
+    bookings,
+    openEditDialog,
+    router,
+    workspace.id,
+  ]);
+
+  useEffect(() => {
+    if (!dialog.open || dialog.mode !== 'edit' || !dialog.bookingId || dialog.anchorPoint) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const anchorPoint = getBookingAnchorPoint(dialog.bookingId!);
+      if (!anchorPoint) {
+        return;
+      }
+
+      setDialog((previous) =>
+        previous.open &&
+        previous.mode === 'edit' &&
+        previous.bookingId === dialog.bookingId &&
+        !previous.anchorPoint
+          ? { ...previous, anchorPoint }
+          : previous,
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [dateKey, dialog, getBookingAnchorPoint, rooms, bookings]);
+
+  const dialogDraftPreview = useMemo(() => {
+    if (!dialog.open) {
       return null;
     }
     if (!dialog.draft.roomId) {
@@ -486,24 +597,30 @@ function WorkspaceBookingDashboard({
     }
     const hasConflict =
       endMinutes <= startMinutes ||
-      hasRoomOverlap({
-        bookings,
-        timezone,
-        dateKey,
-        roomId: dialog.draft.roomId,
-        startMinutes,
-        endMinutes,
-      });
+      Boolean(
+        getBookingConflictMessage({
+          bookings,
+          timezone,
+          dateKey,
+          roomId: dialog.draft.roomId,
+          startMinutes,
+          endMinutes,
+          userId: currentUserId || undefined,
+          ignoreBookingId: dialog.mode === 'edit' ? (dialog.bookingId ?? undefined) : undefined,
+        }),
+      );
 
     return {
+      bookingId: dialog.mode === 'edit' ? dialog.bookingId : null,
       roomId: dialog.draft.roomId,
       startMinutes,
       endMinutes,
-      title: dialog.draft.subject.trim() || 'New booking',
-      subtitle: [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim() || null,
+      title: dialog.draft.subject.trim() || (dialog.mode === 'create' ? 'New booking' : 'Booking'),
+      subtitle:
+        [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim() || null,
       hasConflict,
     };
-  }, [dialog, rooms, currentUser, bookings, timezone, dateKey]);
+  }, [dialog, rooms, currentUser, currentUserId, bookings, timezone, dateKey]);
 
   const validateDraft = useCallback(
     (draft: BookingModalDraft, opts: { mode: 'create' | 'edit'; bookingId: string | null }) => {
@@ -513,13 +630,19 @@ function WorkspaceBookingDashboard({
       const parsedStart = parseTimeInputStrict(draft.startTimeLocal);
       const parsedEnd = parseTimeInputStrict(draft.endTimeLocal);
       if (parsedStart === null || parsedEnd === null) {
-        return { code: 'BAD_REQUEST', message: 'Start and end time are required' } satisfies ErrorPayload;
+        return {
+          code: 'BAD_REQUEST',
+          message: 'Start and end time are required',
+        } satisfies ErrorPayload;
       }
       if (!draft.roomId) {
         return { code: 'BAD_REQUEST', message: 'Room is required' } satisfies ErrorPayload;
       }
       if (parsedEnd <= parsedStart) {
-        return { code: 'BAD_REQUEST', message: 'End time must be after start time' } satisfies ErrorPayload;
+        return {
+          code: 'BAD_REQUEST',
+          message: 'End time must be after start time',
+        } satisfies ErrorPayload;
       }
       if (parsedStart < SCHEDULE_START_MINUTES || parsedEnd > SCHEDULE_END_MINUTES) {
         return {
@@ -532,37 +655,46 @@ function WorkspaceBookingDashboard({
       if (dateKey < today) {
         return {
           code: 'BAD_REQUEST',
-          message: 'Reservations can only be created or moved on the current workspace day or later',
+          message:
+            'Reservations can only be created or moved on the current workspace day or later',
         } satisfies ErrorPayload;
       }
 
-      if (
-        hasRoomOverlap({
-          bookings,
-          timezone,
-          dateKey,
-          roomId: draft.roomId,
-          startMinutes: parsedStart,
-          endMinutes: parsedEnd,
-          ignoreBookingId: opts.bookingId ?? undefined,
-        })
-      ) {
-        return { code: 'BOOKING_OVERLAP', message: 'Booking overlaps with an existing active booking' } satisfies ErrorPayload;
+      const conflictMessage = getBookingConflictMessage({
+        bookings,
+        timezone,
+        dateKey,
+        roomId: draft.roomId,
+        startMinutes: parsedStart,
+        endMinutes: parsedEnd,
+        userId: currentUserId || undefined,
+        ignoreBookingId: opts.bookingId ?? undefined,
+      });
+      if (conflictMessage) {
+        return { code: 'BOOKING_OVERLAP', message: conflictMessage } satisfies ErrorPayload;
       }
 
       return null;
     },
-    [bookings, timezone, dateKey],
+    [bookings, currentUserId, timezone, dateKey],
+  );
+
+  const dialogValidationError = useMemo(
+    () =>
+      dialog.open
+        ? validateDraft(dialog.draft, {
+            mode: dialog.mode,
+            bookingId: dialog.bookingId,
+          })
+        : null,
+    [dialog, validateDraft],
   );
 
   const submitDialog = async () => {
     if (!dialog.open) {
       return;
     }
-    const validationError = validateDraft(dialog.draft, {
-      mode: dialog.mode,
-      bookingId: dialog.bookingId,
-    });
+    const validationError = dialogValidationError;
     if (validationError) {
       setDialogError(validationError);
       return;
@@ -578,7 +710,9 @@ function WorkspaceBookingDashboard({
       return;
     }
 
-    setDialog((previous) => (previous.open ? { ...previous, isSubmitting: true, error: null } : previous));
+    setDialog((previous) =>
+      previous.open ? { ...previous, isSubmitting: true, error: null } : previous,
+    );
     setPageError(null);
     setPageBanner(null);
 
@@ -604,7 +738,11 @@ function WorkspaceBookingDashboard({
     if (!response.ok) {
       setDialog((previous) =>
         previous.open
-          ? { ...previous, isSubmitting: false, error: normalizeErrorPayload(payload, response.status) }
+          ? {
+              ...previous,
+              isSubmitting: false,
+              error: normalizeErrorPayload(payload, response.status),
+            }
           : previous,
       );
       return;
@@ -620,19 +758,28 @@ function WorkspaceBookingDashboard({
       return;
     }
 
-    setDialog((previous) => (previous.open ? { ...previous, isSubmitting: true, error: null } : previous));
+    setDialog((previous) =>
+      previous.open ? { ...previous, isSubmitting: true, error: null } : previous,
+    );
     setPageError(null);
     setPageBanner(null);
 
-    const response = await fetch(`/api/workspaces/${workspace.id}/bookings/${dialog.bookingId}/cancel`, {
-      method: 'POST',
-    });
+    const response = await fetch(
+      `/api/workspaces/${workspace.id}/bookings/${dialog.bookingId}/cancel`,
+      {
+        method: 'POST',
+      },
+    );
     const payload = await safeReadJson(response);
 
     if (!response.ok) {
       setDialog((previous) =>
         previous.open
-          ? { ...previous, isSubmitting: false, error: normalizeErrorPayload(payload, response.status) }
+          ? {
+              ...previous,
+              isSubmitting: false,
+              error: normalizeErrorPayload(payload, response.status),
+            }
           : previous,
       );
       return;
@@ -644,17 +791,29 @@ function WorkspaceBookingDashboard({
   };
 
   const handleInteractiveUpdate = useCallback(
-    async (update: { bookingId: string; roomId: string; startMinutes: number; endMinutes: number }) => {
+    async (update: {
+      bookingId: string;
+      roomId: string;
+      startMinutes: number;
+      endMinutes: number;
+    }) => {
       const booking = bookings.find((item) => item.id === update.bookingId);
       if (!booking) {
         setPageError({ code: 'NOT_FOUND', message: 'Booking not found' });
         return;
       }
 
-      const startAt = dateAndTimeToUtcIso(dateKey, minutesToTimeInput(update.startMinutes), timezone);
+      const startAt = dateAndTimeToUtcIso(
+        dateKey,
+        minutesToTimeInput(update.startMinutes),
+        timezone,
+      );
       const endAt = dateAndTimeToUtcIso(dateKey, minutesToTimeInput(update.endMinutes), timezone);
       if (!startAt || !endAt) {
-        setPageError({ code: 'BAD_REQUEST', message: 'Unable to compute booking time in workspace timezone' });
+        setPageError({
+          code: 'BAD_REQUEST',
+          message: 'Unable to compute booking time in workspace timezone',
+        });
         return;
       }
 
@@ -686,7 +845,7 @@ function WorkspaceBookingDashboard({
   );
 
   const rightSidebar = (
-    <WorkspaceRightSidebar
+    <SharedWorkspaceRightSidebar
       timezone={timezone}
       dateKey={dateKey}
       monthKey={monthKey}
@@ -698,24 +857,24 @@ function WorkspaceBookingDashboard({
       onOpenBooking={(booking) => openEditDialog(booking)}
     />
   );
-  const leftSidebar = pageBanner || pageError ? (
-    <div className="space-y-2">
-      {pageBanner ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          {pageBanner}
-        </p>
-      ) : null}
-      {pageError ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {pageError.code}: {pageError.message}
-        </p>
-      ) : null}
-    </div>
-  ) : null;
+  const leftSidebar =
+    pageBanner || pageError ? (
+      <div className="space-y-2">
+        {pageBanner ? (
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            {pageBanner}
+          </p>
+        ) : null}
+        {pageError ? (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {pageError.code}: {pageError.message}
+          </p>
+        ) : null}
+      </div>
+    ) : null;
 
   const canEditDialogBooking =
-    dialog.open &&
-    dialog.mode === 'create'
+    dialog.open && dialog.mode === 'create'
       ? true
       : Boolean(selectedBookingForDialog && editableBookingIds.has(selectedBookingForDialog.id));
 
@@ -741,7 +900,7 @@ function WorkspaceBookingDashboard({
               onPrevDay={goToPreviousDay}
               onNextDay={goToNextDay}
               onToday={goToToday}
-              createDraftPreview={createDraftPreview}
+              draftPreview={dialogDraftPreview}
               onCreateSlot={openCreateDialog}
               onOpenBooking={openEditDialog}
               onUpdateBooking={handleInteractiveUpdate}
@@ -757,10 +916,15 @@ function WorkspaceBookingDashboard({
           draft={dialog.draft}
           error={dialog.error}
           isSubmitting={dialog.isSubmitting}
+          isSubmitDisabled={Boolean(dialogValidationError)}
           canEdit={Boolean(canEditDialogBooking)}
           canDelete={Boolean(dialog.mode === 'edit' && canEditDialogBooking)}
-          anchorPoint={dialog.open && dialog.mode === 'create' ? dialog.anchorPoint : null}
-          onChange={(next) => setDialog((previous) => (previous.open ? { ...previous, draft: next, error: null } : previous))}
+          anchorPoint={dialog.open ? dialog.anchorPoint : null}
+          onChange={(next) =>
+            setDialog((previous) =>
+              previous.open ? { ...previous, draft: next, error: null } : previous,
+            )
+          }
           onClose={closeDialog}
           onSubmit={() => void submitDialog()}
           onDelete={() => void deleteDialogBooking()}
@@ -771,6 +935,7 @@ function WorkspaceBookingDashboard({
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WorkspaceRightSidebar({
   timezone,
   dateKey,
@@ -792,7 +957,10 @@ function WorkspaceRightSidebar({
   bookingGroups: ReturnType<typeof groupMyBookingsForSidebar>;
   onOpenBooking: (booking: BookingListItem) => void;
 }) {
-  const monthLabel = useMemo(() => parseDateKey(`${monthKey}-01`.slice(0, 10), timezone).toFormat('LLLL yyyy'), [monthKey, timezone]);
+  const monthLabel = useMemo(
+    () => parseDateKey(`${monthKey}-01`.slice(0, 10), timezone).toFormat('LLLL yyyy'),
+    [monthKey, timezone],
+  );
 
   return (
     <div className="space-y-4">
@@ -814,7 +982,9 @@ function WorkspaceRightSidebar({
             <button
               type="button"
               onClick={() => {
-                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).minus({ months: 1 });
+                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).minus({
+                  months: 1,
+                });
                 onSelectMonthKey(next.toFormat('yyyy-LL'));
               }}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -825,7 +995,9 @@ function WorkspaceRightSidebar({
             <button
               type="button"
               onClick={() => {
-                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).plus({ months: 1 });
+                const next = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).plus({
+                  months: 1,
+                });
                 onSelectMonthKey(next.toFormat('yyyy-LL'));
               }}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -838,7 +1010,10 @@ function WorkspaceRightSidebar({
 
         <div className="grid grid-cols-7 gap-1">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
-            <div key={label} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <div
+              key={label}
+              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+            >
               {label}
             </div>
           ))}
@@ -901,11 +1076,11 @@ function WorkspaceRightSidebar({
                       onClick={() => onOpenBooking(booking)}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
                     >
-                      <p className="truncate text-xs font-semibold text-slate-900">
-                        {booking.roomName}
+                      <p className="truncate text-xs font-semibold leading-tight text-slate-900">
+                        {booking.subject}
                       </p>
-                      <p className="truncate text-sm text-slate-800">{booking.subject}</p>
-                      <p className="truncate text-[11px] text-slate-500">
+                      <p className="truncate text-[11px] text-slate-900/90">{booking.roomName}</p>
+                      <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-wide text-slate-500">
                         {formatBookingDateAndTimeInTimezone(booking, timezone)}
                       </p>
                     </button>

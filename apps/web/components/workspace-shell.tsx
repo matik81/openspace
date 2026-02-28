@@ -34,12 +34,10 @@ export type WorkspaceShellRenderContext = {
   isLoading: boolean;
   error: ErrorPayload | null;
   banner: string | null;
-  pendingInvitationAction:
-    | {
-        invitationId: string;
-        action: InvitationAction;
-      }
-    | null;
+  pendingInvitationAction: {
+    invitationId: string;
+    action: InvitationAction;
+  } | null;
   loadWorkspaces: () => Promise<void>;
   runInvitationAction: (invitationId: string, action: InvitationAction) => Promise<void>;
 };
@@ -68,6 +66,7 @@ const createWorkspaceInitialState: CreateWorkspaceFormState = {
 };
 
 let workspaceItemsCache: WorkspaceItem[] | null = null;
+let currentUserCache: AuthUserSummary | null = null;
 
 function isAuthUserSummary(value: unknown): value is AuthUserSummary {
   return (
@@ -97,7 +96,10 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
     setCalendarMonthKey(now.toFormat('yyyy-LL'));
   }, [timezone]);
 
-  const todayDateKey = useMemo(() => DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'), [timezone]);
+  const todayDateKey = useMemo(
+    () => DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'),
+    [timezone],
+  );
   const calendarMonth = useMemo(() => {
     const parsed = DateTime.fromISO(`${calendarMonthKey}-01`, { zone: timezone });
     if (parsed.isValid) {
@@ -142,7 +144,9 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
 
       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-900">{calendarMonth.toFormat('LLLL yyyy')}</p>
+          <p className="text-sm font-semibold text-slate-900">
+            {calendarMonth.toFormat('LLLL yyyy')}
+          </p>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -153,7 +157,9 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
             </button>
             <button
               type="button"
-              onClick={() => setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
+              onClick={() =>
+                setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))
+              }
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               aria-label="Previous month"
             >
@@ -161,7 +167,9 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
             </button>
             <button
               type="button"
-              onClick={() => setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
+              onClick={() =>
+                setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))
+              }
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               aria-label="Next month"
             >
@@ -219,7 +227,7 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
   const router = useRouter();
   const [items, setItems] = useState<WorkspaceItem[]>(() => workspaceItemsCache ?? []);
-  const [currentUser, setCurrentUser] = useState<AuthUserSummary | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUserSummary | null>(() => currentUserCache);
   const [isLoading, setIsLoading] = useState(workspaceItemsCache === null);
   const [error, setError] = useState<ErrorPayload | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -280,6 +288,7 @@ export function WorkspaceShell({
     const mePayload = await safeReadJson(meResponse);
     if (meResponse.ok && isAuthUserSummary(mePayload)) {
       setCurrentUser(mePayload);
+      currentUserCache = mePayload;
     } else if (!meResponse.ok) {
       const normalized = normalizeErrorPayload(mePayload, meResponse.status);
       if (normalized.code === 'UNAUTHORIZED') {
@@ -293,8 +302,10 @@ export function WorkspaceShell({
       }
 
       setCurrentUser(null);
+      currentUserCache = null;
     } else {
       setCurrentUser(null);
+      currentUserCache = null;
     }
 
     setIsLoading(false);
@@ -415,6 +426,7 @@ export function WorkspaceShell({
 
   const handleLogout = useCallback(async () => {
     workspaceItemsCache = null;
+    currentUserCache = null;
     await fetch('/api/auth/logout', { method: 'POST' });
     router.replace('/login');
     router.refresh();
@@ -518,18 +530,16 @@ export function WorkspaceShell({
     ? (renderedChildren as WorkspaceShellPageLayout).main
     : renderedChildren;
   const pageLeftSidebar = hasCustomLayout
-    ? (renderedChildren as WorkspaceShellPageLayout).leftSidebar ?? null
+    ? ((renderedChildren as WorkspaceShellPageLayout).leftSidebar ?? null)
     : null;
   const pageRightSidebar = hasCustomLayout
-    ? (renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null
+    ? ((renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null)
     : null;
-  const effectiveRightSidebar =
-    pageRightSidebar ??
-    (
-      <WorkspaceShellMiniCalendar
-        timezone={selectedWorkspace?.timezone ?? resolveDefaultTimezone()}
-      />
-    );
+  const effectiveRightSidebar = pageRightSidebar ?? (
+    <WorkspaceShellMiniCalendar
+      timezone={selectedWorkspace?.timezone ?? resolveDefaultTimezone()}
+    />
+  );
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
   const leftSidebarActions = selectedWorkspace
@@ -699,7 +709,7 @@ export function WorkspaceShell({
                   </header>
                 ) : null}
 
-                {(banner || error) ? (
+                {banner || error ? (
                   <div className="space-y-3 border-b border-slate-200 px-4 py-3 sm:px-5">
                     {banner ? (
                       <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">

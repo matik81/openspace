@@ -11,7 +11,7 @@ export function RightSidebar({
   isOpenOnMobile: boolean;
   onCloseMobile: () => void;
 }) {
-  const content = <div className="flex h-full flex-col overflow-y-auto bg-white p-4">{children}</div>;
+  const content = <div className="flex h-full min-h-0 flex-col bg-white p-4">{children}</div>;
 
   return (
     <>
@@ -45,4 +45,3 @@ export function RightSidebar({
     </>
   );
 }
-

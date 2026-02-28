@@ -82,10 +82,7 @@ export function snapMinutes(
 
 export function clampScheduleMinutes(
   value: number,
-  {
-    min = SCHEDULE_START_MINUTES,
-    max = SCHEDULE_END_MINUTES,
-  }: { min?: number; max?: number } = {},
+  { min = SCHEDULE_START_MINUTES, max = SCHEDULE_END_MINUTES }: { min?: number; max?: number } = {},
 ): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -167,10 +164,15 @@ export function hasRoomOverlap(options: {
   endMinutes: number;
   ignoreBookingId?: string;
 }): boolean {
-  const { bookings, timezone, dateKey, roomId, startMinutes, endMinutes, ignoreBookingId } = options;
+  const { bookings, timezone, dateKey, roomId, startMinutes, endMinutes, ignoreBookingId } =
+    options;
 
   return bookings.some((booking) => {
-    if (booking.status !== 'ACTIVE' || booking.roomId !== roomId || booking.id === ignoreBookingId) {
+    if (
+      booking.status !== 'ACTIVE' ||
+      booking.roomId !== roomId ||
+      booking.id === ignoreBookingId
+    ) {
       return false;
     }
 
@@ -183,6 +185,81 @@ export function hasRoomOverlap(options: {
   });
 }
 
+export function hasUserOverlap(options: {
+  bookings: BookingListItem[];
+  timezone: string;
+  dateKey: string;
+  userId: string;
+  startMinutes: number;
+  endMinutes: number;
+  ignoreBookingId?: string;
+}): boolean {
+  const { bookings, timezone, dateKey, userId, startMinutes, endMinutes, ignoreBookingId } =
+    options;
+
+  return bookings.some((booking) => {
+    if (
+      booking.status !== 'ACTIVE' ||
+      booking.createdByUserId !== userId ||
+      booking.id === ignoreBookingId
+    ) {
+      return false;
+    }
+
+    const local = bookingToLocalRange(booking, timezone);
+    if (!local || local.dateKey !== dateKey) {
+      return false;
+    }
+
+    return rangesOverlap(startMinutes, endMinutes, local.startMinutes, local.endMinutes);
+  });
+}
+
+export function getBookingConflictMessage(options: {
+  bookings: BookingListItem[];
+  timezone: string;
+  dateKey: string;
+  roomId: string;
+  startMinutes: number;
+  endMinutes: number;
+  userId?: string;
+  ignoreBookingId?: string;
+}): string | null {
+  const { bookings, timezone, dateKey, roomId, startMinutes, endMinutes, userId, ignoreBookingId } =
+    options;
+
+  if (
+    hasRoomOverlap({
+      bookings,
+      timezone,
+      dateKey,
+      roomId,
+      startMinutes,
+      endMinutes,
+      ignoreBookingId,
+    })
+  ) {
+    return 'Booking overlaps with an existing active booking';
+  }
+
+  if (
+    userId &&
+    hasUserOverlap({
+      bookings,
+      timezone,
+      dateKey,
+      userId,
+      startMinutes,
+      endMinutes,
+      ignoreBookingId,
+    })
+  ) {
+    return 'User already has an active booking in this time range';
+  }
+
+  return null;
+}
+
 export function buildMiniCalendarCells(options: {
   timezone: string;
   monthKey: string;
@@ -190,10 +267,9 @@ export function buildMiniCalendarCells(options: {
   markerCountByDateKey?: ReadonlyMap<string, number>;
 }): CalendarDayCell[] {
   const { timezone, monthKey, selectedDateKey, markerCountByDateKey } = options;
-  const monthStart =
-    DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month').isValid
-      ? DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month')
-      : DateTime.now().setZone(timezone).startOf('month');
+  const monthStart = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month').isValid
+    ? DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month')
+    : DateTime.now().setZone(timezone).startOf('month');
   const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
   const today = workspaceTodayDateKey(timezone);
 
@@ -244,15 +320,21 @@ export function groupMyBookingsForSidebar(
   const now = DateTime.now().setZone(timezone);
   const startOfToday = now.startOf('day');
   const startOfTomorrow = startOfToday.plus({ days: 1 });
-  const startOfNextWeek = startOfToday.plus({ days: 7 - (startOfToday.weekday - 1) }).startOf('day');
+  const startOfNextWeek = startOfToday
+    .plus({ days: 7 - (startOfToday.weekday - 1) })
+    .startOf('day');
   const startOfFollowingWeek = startOfNextWeek.plus({ days: 7 });
 
   const mine = bookings
     .filter((booking) => booking.status === 'ACTIVE' && booking.createdByUserId === currentUserId)
     .map((booking) => ({ booking, local: bookingToLocalRange(booking, timezone) }))
     .filter(
-      (item): item is { booking: BookingListItem; local: NonNullable<ReturnType<typeof bookingToLocalRange>> } =>
-        item.local !== null,
+      (
+        item,
+      ): item is {
+        booking: BookingListItem;
+        local: NonNullable<ReturnType<typeof bookingToLocalRange>>;
+      } => item.local !== null,
     )
     .sort((left, right) => left.local.start.toMillis() - right.local.start.toMillis());
 
@@ -324,4 +406,3 @@ export function formatBookingDateAndTimeInTimezone(
 
   return `${local.start.toFormat('ccc, LLL dd')} ${local.start.toFormat('HH:mm')}-${local.end.toFormat('HH:mm')}`;
 }
-

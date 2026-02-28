@@ -10,7 +10,9 @@ export type BookingBlockLayout = {
   widthPercent?: number;
 };
 
-export function getBookingBlockVariantClass(variant: 'mine' | 'default' | 'preview' | 'preview-error') {
+export function getBookingBlockVariantClass(
+  variant: 'mine' | 'default' | 'preview' | 'preview-error',
+) {
   switch (variant) {
     case 'mine':
       return 'border-amber-300 bg-amber-100 text-amber-950';
@@ -25,6 +27,7 @@ export function getBookingBlockVariantClass(variant: 'mine' | 'default' | 'previ
 }
 
 export const BookingBlock = memo(function BookingBlock({
+  bookingId,
   title,
   subtitle,
   meta,
@@ -37,6 +40,7 @@ export const BookingBlock = memo(function BookingBlock({
   onDragPointerDown,
   onResizePointerDown,
 }: {
+  bookingId?: string;
   title: string;
   subtitle?: string | null;
   meta?: string | null;
@@ -68,6 +72,7 @@ export const BookingBlock = memo(function BookingBlock({
       <div className="group relative h-full w-full">
         <button
           type="button"
+          data-booking-id={bookingId}
           onClick={onClick}
           onPointerDown={onDragPointerDown}
           className={`relative flex h-full w-full flex-col overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${getBookingBlockVariantClass(variant)} ${isInteractive ? 'cursor-grab active:cursor-grabbing hover:shadow' : 'cursor-pointer'} ${isSelected ? 'ring-2 ring-brand/40' : ''}`}

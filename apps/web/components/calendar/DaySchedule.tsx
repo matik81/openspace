@@ -10,18 +10,15 @@ import {
   useState,
 } from 'react';
 import { BookingBlock } from '@/components/bookings/BookingBlock';
-import {
-  RoomColumns,
-  ROOM_COLUMN_HEADER_HEIGHT_PX,
-} from '@/components/calendar/RoomColumns';
+import { RoomColumns, ROOM_COLUMN_HEADER_HEIGHT_PX } from '@/components/calendar/RoomColumns';
 import { TimeGutter, TIME_GUTTER_WIDTH_PX } from '@/components/calendar/TimeGutter';
 import {
   bookingToLocalRange,
   clampRangeToSchedule,
   formatSelectedDateLabel,
   formatSelectedDateSubLabel,
+  getBookingConflictMessage,
   formatTimeRangeLabel,
-  hasRoomOverlap,
   SCHEDULE_END_MINUTES,
   SCHEDULE_INTERVAL_MINUTES,
   SCHEDULE_PIXELS_PER_MINUTE,
@@ -58,9 +55,11 @@ type PreviewState = {
   startMinutes: number;
   endMinutes: number;
   hasConflict: boolean;
+  conflictMessage: string | null;
 };
 
-type CreateDraftPreview = {
+type DraftPreview = {
+  bookingId?: string | null;
   roomId: string;
   startMinutes: number;
   endMinutes: number;
@@ -80,7 +79,7 @@ export function DaySchedule({
   onPrevDay,
   onNextDay,
   onToday,
-  createDraftPreview,
+  draftPreview,
   onCreateSlot,
   onOpenBooking,
   onUpdateBooking,
@@ -96,7 +95,7 @@ export function DaySchedule({
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
-  createDraftPreview?: CreateDraftPreview | null;
+  draftPreview?: DraftPreview | null;
   onCreateSlot: (slot: {
     roomId: string;
     startMinutes: number;
@@ -184,8 +183,14 @@ export function DaySchedule({
     return (minutes - SCHEDULE_START_MINUTES) * SCHEDULE_PIXELS_PER_MINUTE;
   }, [timezone, selectedDateKey]);
 
-  const visibleDateLabel = useMemo(() => formatSelectedDateLabel(selectedDateKey, timezone), [selectedDateKey, timezone]);
-  const visibleDateYear = useMemo(() => formatSelectedDateSubLabel(selectedDateKey, timezone), [selectedDateKey, timezone]);
+  const visibleDateLabel = useMemo(
+    () => formatSelectedDateLabel(selectedDateKey, timezone),
+    [selectedDateKey, timezone],
+  );
+  const visibleDateYear = useMemo(
+    () => formatSelectedDateSubLabel(selectedDateKey, timezone),
+    [selectedDateKey, timezone],
+  );
 
   const getRoomIdFromClientX = useCallback(
     (clientX: number): string | null => {
@@ -257,27 +262,37 @@ export function DaySchedule({
       }
 
       const clamped = clampRangeToSchedule(nextStartMinutes, nextEndMinutes);
-      const hasConflict = hasRoomOverlap({
+      const booking = activeBookingsById.get(active.bookingId);
+      const conflictMessage = getBookingConflictMessage({
         bookings: activeBookings,
         timezone,
         dateKey: selectedDateKey,
         roomId: nextRoomId,
         startMinutes: clamped.startMinutes,
         endMinutes: clamped.endMinutes,
+        userId: booking?.createdByUserId,
         ignoreBookingId: active.bookingId,
       });
 
       return {
         bookingId: active.bookingId,
-        title: activeBookingsById.get(active.bookingId)?.subject ?? 'Booking',
-        subtitle: activeBookingsById.get(active.bookingId)?.createdByDisplayName ?? null,
+        title: booking?.subject ?? 'Booking',
+        subtitle: booking?.createdByDisplayName ?? null,
         roomId: nextRoomId,
         startMinutes: clamped.startMinutes,
         endMinutes: clamped.endMinutes,
-        hasConflict,
+        hasConflict: Boolean(conflictMessage),
+        conflictMessage,
       };
     },
-    [activeBookings, activeBookingsById, getRoomIdFromClientX, roomsById, selectedDateKey, timezone],
+    [
+      activeBookings,
+      activeBookingsById,
+      getRoomIdFromClientX,
+      roomsById,
+      selectedDateKey,
+      timezone,
+    ],
   );
 
   useEffect(() => {
@@ -325,7 +340,9 @@ export function DaySchedule({
       }
 
       if (finalPreview.hasConflict) {
-        onInlineError('Booking overlaps with an existing active booking.');
+        onInlineError(
+          finalPreview.conflictMessage ?? 'Booking overlaps with an existing active booking.',
+        );
         return;
       }
 
@@ -338,9 +355,7 @@ export function DaySchedule({
         endMinutes: finalPreview.endMinutes,
       }).finally(() => {
         setCommittingBookingId((current) => (current === active.bookingId ? null : current));
-        setCommitPreview((current) =>
-          current?.bookingId === active.bookingId ? null : current,
-        );
+        setCommitPreview((current) => (current?.bookingId === active.bookingId ? null : current));
       });
     };
 
@@ -388,6 +403,7 @@ export function DaySchedule({
       startMinutes: local.startMinutes,
       endMinutes: local.endMinutes,
       hasConflict: false,
+      conflictMessage: null,
     });
   };
 
@@ -408,17 +424,15 @@ export function DaySchedule({
     }
   }, [interaction]);
 
-  const handleEmptySlotClick = (
-    roomId: string,
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ) => {
+  const handleEmptySlotClick = (roomId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (isMutating || committingBookingId) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
     const relativeY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
     const rawMinutes = SCHEDULE_START_MINUTES + relativeY / SCHEDULE_PIXELS_PER_MINUTE;
-    const snappedStart = Math.round(rawMinutes / SCHEDULE_INTERVAL_MINUTES) * SCHEDULE_INTERVAL_MINUTES;
+    const snappedStart =
+      Math.round(rawMinutes / SCHEDULE_INTERVAL_MINUTES) * SCHEDULE_INTERVAL_MINUTES;
     const startMinutes = Math.max(
       SCHEDULE_START_MINUTES,
       Math.min(SCHEDULE_END_MINUTES - SCHEDULE_INTERVAL_MINUTES, snappedStart),
@@ -435,7 +449,7 @@ export function DaySchedule({
   const renderRoomLayer = (room: RoomItem) => {
     const roomBookings = dayBookingsByRoom.get(room.id) ?? [];
     const effectivePreview = preview ?? commitPreview;
-    const hiddenBookingId = effectivePreview?.bookingId ?? null;
+    const hiddenBookingId = effectivePreview?.bookingId ?? draftPreview?.bookingId ?? null;
 
     return (
       <>
@@ -454,6 +468,7 @@ export function DaySchedule({
           return (
             <BookingBlock
               key={item.booking.id}
+              bookingId={item.booking.id}
               title={item.booking.subject}
               subtitle={item.booking.createdByDisplayName}
               meta={item.timeLabel}
@@ -482,6 +497,7 @@ export function DaySchedule({
 
         {effectivePreview && effectivePreview.roomId === room.id ? (
           <BookingBlock
+            bookingId={effectivePreview.bookingId}
             title={effectivePreview.title}
             subtitle={effectivePreview.subtitle}
             meta={formatTimeRangeLabel(effectivePreview.startMinutes, effectivePreview.endMinutes)}
@@ -497,20 +513,19 @@ export function DaySchedule({
           />
         ) : null}
 
-        {!effectivePreview && createDraftPreview && createDraftPreview.roomId === room.id ? (
+        {!effectivePreview && draftPreview && draftPreview.roomId === room.id ? (
           <BookingBlock
-            title={createDraftPreview.title}
-            subtitle={createDraftPreview.subtitle ?? null}
-            meta={formatTimeRangeLabel(createDraftPreview.startMinutes, createDraftPreview.endMinutes)}
+            bookingId={draftPreview.bookingId ?? undefined}
+            title={draftPreview.title}
+            subtitle={draftPreview.subtitle ?? null}
+            meta={formatTimeRangeLabel(draftPreview.startMinutes, draftPreview.endMinutes)}
             layout={{
               topPx:
-                (createDraftPreview.startMinutes - SCHEDULE_START_MINUTES) *
-                SCHEDULE_PIXELS_PER_MINUTE,
+                (draftPreview.startMinutes - SCHEDULE_START_MINUTES) * SCHEDULE_PIXELS_PER_MINUTE,
               heightPx:
-                (createDraftPreview.endMinutes - createDraftPreview.startMinutes) *
-                SCHEDULE_PIXELS_PER_MINUTE,
+                (draftPreview.endMinutes - draftPreview.startMinutes) * SCHEDULE_PIXELS_PER_MINUTE,
             }}
-            variant={createDraftPreview.hasConflict ? 'preview-error' : 'mine'}
+            variant={draftPreview.hasConflict ? 'preview-error' : 'preview'}
           />
         ) : null}
       </>
@@ -555,11 +570,16 @@ export function DaySchedule({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {rooms.length === 0 ? (
-          <div className="p-4 text-sm text-slate-600">No rooms available for this workspace yet.</div>
+          <div className="p-4 text-sm text-slate-600">
+            No rooms available for this workspace yet.
+          </div>
         ) : (
           <div className="min-w-[720px]">
             <div className="flex">
-              <div className="sticky left-0 z-30 border-r border-slate-200 bg-white" style={{ width: TIME_GUTTER_WIDTH_PX, minWidth: TIME_GUTTER_WIDTH_PX }}>
+              <div
+                className="sticky left-0 z-30 border-r border-slate-200 bg-white"
+                style={{ width: TIME_GUTTER_WIDTH_PX, minWidth: TIME_GUTTER_WIDTH_PX }}
+              >
                 <div
                   className="sticky top-0 z-30 border-b border-slate-200 bg-white"
                   style={{ height: ROOM_COLUMN_HEADER_HEIGHT_PX }}
