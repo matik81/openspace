@@ -151,3 +151,19 @@ BOOKING_OVERLAP
 EMAIL_NOT_VERIFIED
 UNAUTHORIZED
 WORKSPACE_NOT_VISIBLE
+
+---
+
+# 6. Commit Messages
+
+Commit messages must use Conventional Commits with a mandatory scope.
+
+Format:
+
+`type(scope): summary`
+
+Examples:
+
+- `feat(api): enforce email verification on login`
+- `fix(web): hide workspace data from non-members`
+- `test(api): cover booking overlap constraint`
