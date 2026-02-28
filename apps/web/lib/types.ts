@@ -31,6 +31,8 @@ export type WorkspaceItem = {
   id: string;
   name: string;
   timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
   createdAt: string;
   updatedAt: string;
   membership: WorkspaceMembershipSummary | null;

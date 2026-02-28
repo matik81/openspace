@@ -2,13 +2,28 @@ import { DateTime } from 'luxon';
 import type { BookingListItem } from './types';
 
 export const SCHEDULE_INTERVAL_MINUTES = 15;
-export const SCHEDULE_START_HOUR = 7;
-export const SCHEDULE_END_HOUR = 22;
-export const SCHEDULE_START_MINUTES = SCHEDULE_START_HOUR * 60;
-export const SCHEDULE_END_MINUTES = SCHEDULE_END_HOUR * 60;
-export const SCHEDULE_TOTAL_MINUTES = SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES;
 export const SCHEDULE_PIXELS_PER_MINUTE = 1;
-export const SCHEDULE_ROW_MIN_HEIGHT_PX = SCHEDULE_TOTAL_MINUTES * SCHEDULE_PIXELS_PER_MINUTE;
+
+export type ScheduleWindow = {
+  startHour: number;
+  endHour: number;
+};
+
+export function scheduleStartMinutes(schedule: ScheduleWindow): number {
+  return schedule.startHour * 60;
+}
+
+export function scheduleEndMinutes(schedule: ScheduleWindow): number {
+  return schedule.endHour * 60;
+}
+
+export function scheduleTotalMinutes(schedule: ScheduleWindow): number {
+  return scheduleEndMinutes(schedule) - scheduleStartMinutes(schedule);
+}
+
+export function scheduleRowMinHeightPx(schedule: ScheduleWindow): number {
+  return scheduleTotalMinutes(schedule) * SCHEDULE_PIXELS_PER_MINUTE;
+}
 
 export type CalendarDayCell = {
   dateKey: string;
@@ -82,26 +97,32 @@ export function snapMinutes(
 
 export function clampScheduleMinutes(
   value: number,
-  { min = SCHEDULE_START_MINUTES, max = SCHEDULE_END_MINUTES }: { min?: number; max?: number } = {},
+  { min, max }: { min: number; max: number },
 ): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function clampRangeToSchedule(startMinutes: number, endMinutes: number) {
+export function clampRangeToSchedule(
+  startMinutes: number,
+  endMinutes: number,
+  schedule: ScheduleWindow,
+) {
+  const scheduleStart = scheduleStartMinutes(schedule);
+  const scheduleEnd = scheduleEndMinutes(schedule);
   const duration = Math.max(SCHEDULE_INTERVAL_MINUTES, endMinutes - startMinutes);
   let nextStart = clampScheduleMinutes(startMinutes, {
-    min: SCHEDULE_START_MINUTES,
-    max: SCHEDULE_END_MINUTES - SCHEDULE_INTERVAL_MINUTES,
+    min: scheduleStart,
+    max: scheduleEnd - SCHEDULE_INTERVAL_MINUTES,
   });
   let nextEnd = nextStart + duration;
 
-  if (nextEnd > SCHEDULE_END_MINUTES) {
-    nextEnd = SCHEDULE_END_MINUTES;
-    nextStart = Math.max(SCHEDULE_START_MINUTES, nextEnd - duration);
+  if (nextEnd > scheduleEnd) {
+    nextEnd = scheduleEnd;
+    nextStart = Math.max(scheduleStart, nextEnd - duration);
   }
 
   if (nextEnd - nextStart < SCHEDULE_INTERVAL_MINUTES) {
-    nextEnd = Math.min(SCHEDULE_END_MINUTES, nextStart + SCHEDULE_INTERVAL_MINUTES);
+    nextEnd = Math.min(scheduleEnd, nextStart + SCHEDULE_INTERVAL_MINUTES);
   }
 
   return {

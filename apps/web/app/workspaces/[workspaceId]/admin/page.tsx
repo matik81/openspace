@@ -38,6 +38,8 @@ type RoomEditState = {
 type WorkspaceSettingsState = {
   name: string;
   timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
 };
 
 type CancelWorkspaceState = {
@@ -61,6 +63,7 @@ type AdminRightSidebarState = {
 };
 
 const adminRightSidebarStateCache = new Map<string, AdminRightSidebarState>();
+const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) => index);
 
 export default function WorkspaceAdminPage() {
   const params = useParams<WorkspacePageParams>();
@@ -115,6 +118,8 @@ function WorkspaceAdminContent({
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>({
     name: '',
     timezone: 'UTC',
+    scheduleStartHour: 8,
+    scheduleEndHour: 18,
   });
   const [isCancelWorkspaceFormVisible, setIsCancelWorkspaceFormVisible] = useState(false);
   const [isCancellingWorkspace, setIsCancellingWorkspace] = useState(false);
@@ -144,6 +149,8 @@ function WorkspaceAdminContent({
   const selectedWorkspaceId = selectedWorkspace?.id ?? null;
   const selectedWorkspaceName = selectedWorkspace?.name ?? null;
   const selectedWorkspaceTimezone = selectedWorkspace?.timezone ?? null;
+  const selectedWorkspaceScheduleStartHour = selectedWorkspace?.scheduleStartHour ?? null;
+  const selectedWorkspaceScheduleEndHour = selectedWorkspace?.scheduleEndHour ?? null;
   const isResolvingSelectedWorkspace =
     isLoading && (!selectedWorkspace || selectedWorkspace.id !== workspaceId);
   const isInitialAdminDataLoading = isLoadingData && !hasLoadedAdminData;
@@ -281,11 +288,16 @@ function WorkspaceAdminContent({
     setMyBookings(cachedState?.myBookings ?? []);
 
     setWorkspaceSettingsForm((previous) =>
-      previous.name === selectedWorkspaceName && previous.timezone === selectedWorkspaceTimezone
+      previous.name === selectedWorkspaceName &&
+      previous.timezone === selectedWorkspaceTimezone &&
+      previous.scheduleStartHour === selectedWorkspaceScheduleStartHour &&
+      previous.scheduleEndHour === selectedWorkspaceScheduleEndHour
         ? previous
         : {
             name: selectedWorkspaceName,
             timezone: selectedWorkspaceTimezone,
+            scheduleStartHour: selectedWorkspaceScheduleStartHour ?? 8,
+            scheduleEndHour: selectedWorkspaceScheduleEndHour ?? 18,
           },
     );
 
@@ -301,7 +313,13 @@ function WorkspaceAdminContent({
       setIsDeleteRoomCredentialsUnlocked(false);
       lastSelectedWorkspaceIdRef.current = selectedWorkspaceId;
     }
-  }, [selectedWorkspaceId, selectedWorkspaceName, selectedWorkspaceTimezone]);
+  }, [
+    selectedWorkspaceId,
+    selectedWorkspaceName,
+    selectedWorkspaceTimezone,
+    selectedWorkspaceScheduleStartHour,
+    selectedWorkspaceScheduleEndHour,
+  ]);
 
   useEffect(() => {
     if (!selectedWorkspaceId) {
@@ -331,6 +349,8 @@ function WorkspaceAdminContent({
         body: JSON.stringify({
           name: workspaceSettingsForm.name,
           timezone: workspaceSettingsForm.timezone,
+          scheduleStartHour: workspaceSettingsForm.scheduleStartHour,
+          scheduleEndHour: workspaceSettingsForm.scheduleEndHour,
         }),
       });
       await safeReadJson(response);
@@ -617,11 +637,12 @@ function WorkspaceAdminContent({
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Update the workspace name and timezone used for booking displays and validations.
+            Update the workspace name, timezone, and daily schedule window used for booking
+            displays and validations.
           </p>
 
           <form
-            className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_240px_auto_auto] lg:items-end"
+            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_240px_160px_160px_auto_auto] xl:items-end"
             onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
           >
             <label className="block">
@@ -660,7 +681,62 @@ function WorkspaceAdminContent({
               </select>
             </label>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 lg:col-span-2 lg:flex-nowrap">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Schedule Start</span>
+              <select
+                required
+                value={workspaceSettingsForm.scheduleStartHour}
+                onChange={(event) =>
+                  setWorkspaceSettingsForm((previous) => {
+                    const nextStartHour = Number(event.target.value);
+                    const nextEndHour =
+                      previous.scheduleEndHour <= nextStartHour
+                        ? Math.min(24, nextStartHour + 1)
+                        : previous.scheduleEndHour;
+
+                    return {
+                      ...previous,
+                      scheduleStartHour: nextStartHour,
+                      scheduleEndHour: nextEndHour,
+                    };
+                  })
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
+                  (hour) => hour < workspaceSettingsForm.scheduleEndHour,
+                ).map((hour) => (
+                  <option key={`start-${hour}`} value={hour}>
+                    {hour.toString().padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Schedule End</span>
+              <select
+                required
+                value={workspaceSettingsForm.scheduleEndHour}
+                onChange={(event) =>
+                  setWorkspaceSettingsForm((previous) => ({
+                    ...previous,
+                    scheduleEndHour: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
+                  (hour) => hour > workspaceSettingsForm.scheduleStartHour,
+                ).map((hour) => (
+                  <option key={`end-${hour}`} value={hour}>
+                    {hour.toString().padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 xl:col-span-2 xl:flex-nowrap">
               <button
                 type="submit"
                 disabled={isSubmittingWorkspaceSettings}

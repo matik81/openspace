@@ -73,6 +73,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     let timezone: string | undefined;
+    let scheduleStartHour: number | undefined;
+    let scheduleEndHour: number | undefined;
     if (Object.prototype.hasOwnProperty.call(body, 'timezone')) {
       const candidate = getTrimmedString(body, 'timezone');
       if (!candidate) {
@@ -88,13 +90,60 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       timezone = candidate;
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, 'scheduleStartHour')) {
+      if (
+        typeof body.scheduleStartHour !== 'number' ||
+        !Number.isInteger(body.scheduleStartHour)
+      ) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'scheduleStartHour must be an integer when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      scheduleStartHour = body.scheduleStartHour;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'scheduleEndHour')) {
+      if (typeof body.scheduleEndHour !== 'number' || !Number.isInteger(body.scheduleEndHour)) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'scheduleEndHour must be an integer when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      scheduleEndHour = body.scheduleEndHour;
+    }
+
+    const requestBody: {
+      name: string;
+      timezone?: string;
+      scheduleStartHour?: number;
+      scheduleEndHour?: number;
+    } = { name };
+    if (timezone) {
+      requestBody.timezone = timezone;
+    }
+    if (scheduleStartHour !== undefined) {
+      requestBody.scheduleStartHour = scheduleStartHour;
+    }
+    if (scheduleEndHour !== undefined) {
+      requestBody.scheduleEndHour = scheduleEndHour;
+    }
+
     const result = await proxyApiRequest({
       path: '/api/workspaces',
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      body: timezone ? { name, timezone } : { name },
+      body: requestBody,
     });
 
     return NextResponse.json(result.payload, { status: result.status });

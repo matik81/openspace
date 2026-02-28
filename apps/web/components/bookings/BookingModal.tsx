@@ -2,10 +2,11 @@
 
 import { type CSSProperties, FormEvent, useEffect, useId, useMemo, useRef } from 'react';
 import {
-  SCHEDULE_END_MINUTES,
   SCHEDULE_INTERVAL_MINUTES,
-  SCHEDULE_START_MINUTES,
   minutesToTimeInput,
+  scheduleEndMinutes,
+  scheduleStartMinutes,
+  type ScheduleWindow,
   timeInputToMinutes,
 } from '@/lib/time';
 import type { BookingCriticality, ErrorPayload, RoomItem } from '@/lib/types';
@@ -33,6 +34,7 @@ export function BookingModal({
   isSubmitDisabled = false,
   canEdit,
   canDelete,
+  schedule,
   anchorPoint,
   onChange,
   onClose,
@@ -48,6 +50,7 @@ export function BookingModal({
   isSubmitDisabled?: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  schedule: ScheduleWindow;
   anchorPoint?: BookingModalAnchorPoint | null;
   onChange: (next: BookingModalDraft) => void;
   onClose: () => void;
@@ -59,6 +62,8 @@ export function BookingModal({
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
+  const startBoundaryMinutes = scheduleStartMinutes(schedule);
+  const endBoundaryMinutes = scheduleEndMinutes(schedule);
 
   useEffect(() => {
     if (!open) {
@@ -123,28 +128,28 @@ export function BookingModal({
   const startTimeOptions = useMemo(() => {
     const items: string[] = [];
     for (
-      let minute = SCHEDULE_START_MINUTES;
-      minute <= SCHEDULE_END_MINUTES - SCHEDULE_INTERVAL_MINUTES;
+      let minute = startBoundaryMinutes;
+      minute <= endBoundaryMinutes - SCHEDULE_INTERVAL_MINUTES;
       minute += SCHEDULE_INTERVAL_MINUTES
     ) {
       items.push(minutesToTimeInput(minute));
     }
     return items;
-  }, []);
+  }, [endBoundaryMinutes, startBoundaryMinutes]);
   const endTimeOptions = useMemo(() => {
     const minEnd =
       startMinutes !== null
         ? Math.max(
-            SCHEDULE_START_MINUTES + SCHEDULE_INTERVAL_MINUTES,
+            startBoundaryMinutes + SCHEDULE_INTERVAL_MINUTES,
             startMinutes + SCHEDULE_INTERVAL_MINUTES,
           )
-        : SCHEDULE_START_MINUTES + SCHEDULE_INTERVAL_MINUTES;
+        : startBoundaryMinutes + SCHEDULE_INTERVAL_MINUTES;
     const items: string[] = [];
-    for (let minute = minEnd; minute <= SCHEDULE_END_MINUTES; minute += SCHEDULE_INTERVAL_MINUTES) {
+    for (let minute = minEnd; minute <= endBoundaryMinutes; minute += SCHEDULE_INTERVAL_MINUTES) {
       items.push(minutesToTimeInput(minute));
     }
     return items;
-  }, [startMinutes]);
+  }, [endBoundaryMinutes, startBoundaryMinutes, startMinutes]);
   const anchoredDialogStyle = useMemo<CSSProperties | null>(() => {
     if (!open || !anchorPoint) {
       return null;
@@ -282,7 +287,7 @@ export function BookingModal({
                     (currentEndMinutes === null || currentEndMinutes <= nextStartMinutes)
                   ) {
                     nextEndTime = minutesToTimeInput(
-                      Math.min(SCHEDULE_END_MINUTES, nextStartMinutes + SCHEDULE_INTERVAL_MINUTES),
+                      Math.min(endBoundaryMinutes, nextStartMinutes + SCHEDULE_INTERVAL_MINUTES),
                     );
                   }
 

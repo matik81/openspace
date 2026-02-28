@@ -19,11 +19,12 @@ import {
   formatSelectedDateSubLabel,
   getBookingConflictMessage,
   formatTimeRangeLabel,
-  SCHEDULE_END_MINUTES,
   SCHEDULE_INTERVAL_MINUTES,
   SCHEDULE_PIXELS_PER_MINUTE,
-  SCHEDULE_ROW_MIN_HEIGHT_PX,
-  SCHEDULE_START_MINUTES,
+  scheduleEndMinutes,
+  scheduleRowMinHeightPx,
+  scheduleStartMinutes,
+  type ScheduleWindow,
 } from '@/lib/time';
 import type { BookingListItem, RoomItem } from '@/lib/types';
 
@@ -72,6 +73,7 @@ export function DaySchedule({
   rooms,
   bookings,
   timezone,
+  schedule,
   selectedDateKey,
   editableBookingIds,
   selectedBookingId,
@@ -88,6 +90,7 @@ export function DaySchedule({
   rooms: RoomItem[];
   bookings: BookingListItem[];
   timezone: string;
+  schedule: ScheduleWindow;
   selectedDateKey: string;
   editableBookingIds: ReadonlySet<string>;
   selectedBookingId: string | null;
@@ -117,6 +120,9 @@ export function DaySchedule({
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [commitPreview, setCommitPreview] = useState<PreviewState | null>(null);
   const [committingBookingId, setCommittingBookingId] = useState<string | null>(null);
+  const scheduleStart = scheduleStartMinutes(schedule);
+  const scheduleEnd = scheduleEndMinutes(schedule);
+  const trackHeightPx = scheduleRowMinHeightPx(schedule);
 
   const roomsById = useMemo(() => new Map(rooms.map((room) => [room.id, room])), [rooms]);
   const activeBookings = useMemo(
@@ -140,8 +146,8 @@ export function DaySchedule({
         continue;
       }
 
-      const visibleStart = Math.max(local.startMinutes, SCHEDULE_START_MINUTES);
-      const visibleEnd = Math.min(local.endMinutes, SCHEDULE_END_MINUTES);
+      const visibleStart = Math.max(local.startMinutes, scheduleStart);
+      const visibleEnd = Math.min(local.endMinutes, scheduleEnd);
       if (visibleEnd <= visibleStart) {
         continue;
       }
@@ -155,7 +161,7 @@ export function DaySchedule({
         booking,
         startMinutes: local.startMinutes,
         endMinutes: local.endMinutes,
-        topPx: (visibleStart - SCHEDULE_START_MINUTES) * SCHEDULE_PIXELS_PER_MINUTE,
+        topPx: (visibleStart - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE,
         heightPx: Math.max(
           (visibleEnd - visibleStart) * SCHEDULE_PIXELS_PER_MINUTE,
           SCHEDULE_INTERVAL_MINUTES * SCHEDULE_PIXELS_PER_MINUTE,
@@ -169,7 +175,7 @@ export function DaySchedule({
     }
 
     return byRoom;
-  }, [rooms, activeBookings, timezone, selectedDateKey]);
+  }, [rooms, activeBookings, timezone, selectedDateKey, scheduleEnd, scheduleStart]);
 
   const currentTimeOffsetPx = useMemo(() => {
     const now = DateTime.now().setZone(timezone);
@@ -177,11 +183,11 @@ export function DaySchedule({
       return null;
     }
     const minutes = now.hour * 60 + now.minute + now.second / 60;
-    if (minutes < SCHEDULE_START_MINUTES || minutes > SCHEDULE_END_MINUTES) {
+    if (minutes < scheduleStart || minutes > scheduleEnd) {
       return null;
     }
-    return (minutes - SCHEDULE_START_MINUTES) * SCHEDULE_PIXELS_PER_MINUTE;
-  }, [timezone, selectedDateKey]);
+    return (minutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE;
+  }, [timezone, selectedDateKey, scheduleEnd, scheduleStart]);
 
   const visibleDateLabel = useMemo(
     () => formatSelectedDateLabel(selectedDateKey, timezone),
@@ -238,10 +244,11 @@ export function DaySchedule({
         ({ startMinutes: nextStartMinutes, endMinutes: nextEndMinutes } = clampRangeToSchedule(
           active.originStartMinutes + deltaMinutes,
           active.originStartMinutes + deltaMinutes + duration,
+          schedule,
         ));
       } else if (active.kind === 'resize-start') {
         nextStartMinutes = Math.max(
-          SCHEDULE_START_MINUTES,
+          scheduleStart,
           Math.min(
             active.originEndMinutes - SCHEDULE_INTERVAL_MINUTES,
             active.originStartMinutes + deltaMinutes,
@@ -251,7 +258,7 @@ export function DaySchedule({
           Math.round(nextStartMinutes / SCHEDULE_INTERVAL_MINUTES) * SCHEDULE_INTERVAL_MINUTES;
       } else {
         nextEndMinutes = Math.min(
-          SCHEDULE_END_MINUTES,
+          scheduleEnd,
           Math.max(
             active.originStartMinutes + SCHEDULE_INTERVAL_MINUTES,
             active.originEndMinutes + deltaMinutes,
@@ -261,7 +268,7 @@ export function DaySchedule({
           Math.round(nextEndMinutes / SCHEDULE_INTERVAL_MINUTES) * SCHEDULE_INTERVAL_MINUTES;
       }
 
-      const clamped = clampRangeToSchedule(nextStartMinutes, nextEndMinutes);
+      const clamped = clampRangeToSchedule(nextStartMinutes, nextEndMinutes, schedule);
       const booking = activeBookingsById.get(active.bookingId);
       const conflictMessage = getBookingConflictMessage({
         bookings: activeBookings,
@@ -292,6 +299,9 @@ export function DaySchedule({
       roomsById,
       selectedDateKey,
       timezone,
+      schedule,
+      scheduleEnd,
+      scheduleStart,
     ],
   );
 
@@ -430,14 +440,14 @@ export function DaySchedule({
     }
     const rect = event.currentTarget.getBoundingClientRect();
     const relativeY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-    const rawMinutes = SCHEDULE_START_MINUTES + relativeY / SCHEDULE_PIXELS_PER_MINUTE;
+    const rawMinutes = scheduleStart + relativeY / SCHEDULE_PIXELS_PER_MINUTE;
     const snappedStart =
       Math.round(rawMinutes / SCHEDULE_INTERVAL_MINUTES) * SCHEDULE_INTERVAL_MINUTES;
     const startMinutes = Math.max(
-      SCHEDULE_START_MINUTES,
-      Math.min(SCHEDULE_END_MINUTES - SCHEDULE_INTERVAL_MINUTES, snappedStart),
+      scheduleStart,
+      Math.min(scheduleEnd - SCHEDULE_INTERVAL_MINUTES, snappedStart),
     );
-    const endMinutes = Math.min(SCHEDULE_END_MINUTES, startMinutes + 60);
+    const endMinutes = Math.min(scheduleEnd, startMinutes + 60);
     onCreateSlot({
       roomId,
       startMinutes,
@@ -503,7 +513,7 @@ export function DaySchedule({
             meta={formatTimeRangeLabel(effectivePreview.startMinutes, effectivePreview.endMinutes)}
             layout={{
               topPx:
-                (effectivePreview.startMinutes - SCHEDULE_START_MINUTES) *
+                (effectivePreview.startMinutes - scheduleStart) *
                 SCHEDULE_PIXELS_PER_MINUTE,
               heightPx:
                 (effectivePreview.endMinutes - effectivePreview.startMinutes) *
@@ -521,7 +531,7 @@ export function DaySchedule({
             meta={formatTimeRangeLabel(draftPreview.startMinutes, draftPreview.endMinutes)}
             layout={{
               topPx:
-                (draftPreview.startMinutes - SCHEDULE_START_MINUTES) * SCHEDULE_PIXELS_PER_MINUTE,
+                (draftPreview.startMinutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE,
               heightPx:
                 (draftPreview.endMinutes - draftPreview.startMinutes) * SCHEDULE_PIXELS_PER_MINUTE,
             }}
@@ -584,12 +594,12 @@ export function DaySchedule({
                   className="sticky top-0 z-30 border-b border-slate-200 bg-white"
                   style={{ height: ROOM_COLUMN_HEADER_HEIGHT_PX }}
                 />
-                <TimeGutter />
+                <TimeGutter schedule={schedule} heightPx={trackHeightPx} />
               </div>
               <div className="min-w-0 flex-1">
                 <RoomColumns
                   rooms={rooms}
-                  trackHeightPx={SCHEDULE_ROW_MIN_HEIGHT_PX}
+                  trackHeightPx={trackHeightPx}
                   currentTimeOffsetPx={currentTimeOffsetPx}
                   columnContainerRef={columnsRef}
                   renderRoomLayer={renderRoomLayer}

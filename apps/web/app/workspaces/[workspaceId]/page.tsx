@@ -23,9 +23,9 @@ import {
   groupMyBookingsForSidebar,
   minutesToTimeInput,
   parseDateKey,
-  SCHEDULE_END_MINUTES,
   SCHEDULE_INTERVAL_MINUTES,
-  SCHEDULE_START_MINUTES,
+  scheduleEndMinutes,
+  scheduleStartMinutes,
   workspaceTodayDateKey,
 } from '@/lib/time';
 import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
@@ -176,6 +176,15 @@ function WorkspaceBookingDashboard({
   const router = useRouter();
   const searchParams = useSearchParams();
   const timezone = workspace.timezone;
+  const schedule = useMemo(
+    () => ({
+      startHour: workspace.scheduleStartHour,
+      endHour: workspace.scheduleEndHour,
+    }),
+    [workspace.scheduleEndHour, workspace.scheduleStartHour],
+  );
+  const scheduleStart = scheduleStartMinutes(schedule);
+  const scheduleEnd = scheduleEndMinutes(schedule);
   const cachedSidebarState = workspaceSidebarStateCache.get(workspace.id);
   const [dateKey, setDateKey] = useState(
     () => cachedSidebarState?.dateKey ?? workspaceTodayDateKey(timezone),
@@ -592,7 +601,7 @@ function WorkspaceBookingDashboard({
     if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
       return null;
     }
-    if (startMinutes < SCHEDULE_START_MINUTES || endMinutes > SCHEDULE_END_MINUTES) {
+    if (startMinutes < scheduleStart || endMinutes > scheduleEnd) {
       return null;
     }
     const hasConflict =
@@ -620,7 +629,7 @@ function WorkspaceBookingDashboard({
         [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim() || null,
       hasConflict,
     };
-  }, [dialog, rooms, currentUser, currentUserId, bookings, timezone, dateKey]);
+  }, [dialog, rooms, currentUser, currentUserId, bookings, timezone, dateKey, scheduleEnd, scheduleStart]);
 
   const validateDraft = useCallback(
     (draft: BookingModalDraft, opts: { mode: 'create' | 'edit'; bookingId: string | null }) => {
@@ -644,10 +653,10 @@ function WorkspaceBookingDashboard({
           message: 'End time must be after start time',
         } satisfies ErrorPayload;
       }
-      if (parsedStart < SCHEDULE_START_MINUTES || parsedEnd > SCHEDULE_END_MINUTES) {
+      if (parsedStart < scheduleStart || parsedEnd > scheduleEnd) {
         return {
           code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-          message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+          message: `Bookings must be within ${workspace.scheduleStartHour.toString().padStart(2, '0')}:00-${workspace.scheduleEndHour.toString().padStart(2, '0')}:00 in the workspace timezone`,
         } satisfies ErrorPayload;
       }
 
@@ -676,7 +685,7 @@ function WorkspaceBookingDashboard({
 
       return null;
     },
-    [bookings, currentUserId, timezone, dateKey],
+    [bookings, currentUserId, timezone, dateKey, scheduleEnd, scheduleStart, workspace.scheduleEndHour, workspace.scheduleStartHour],
   );
 
   const dialogValidationError = useMemo(
@@ -893,6 +902,7 @@ function WorkspaceBookingDashboard({
               rooms={hasCurrentRooms ? rooms : []}
               bookings={hasCurrentBookings ? bookings : []}
               timezone={timezone}
+              schedule={schedule}
               selectedDateKey={dateKey}
               editableBookingIds={editableBookingIds}
               selectedBookingId={selectedBookingId}
@@ -919,6 +929,7 @@ function WorkspaceBookingDashboard({
           isSubmitDisabled={Boolean(dialogValidationError)}
           canEdit={Boolean(canEditDialogBooking)}
           canDelete={Boolean(dialog.mode === 'edit' && canEditDialogBooking)}
+          schedule={schedule}
           anchorPoint={dialog.open ? dialog.anchorPoint : null}
           onChange={(next) =>
             setDialog((previous) =>

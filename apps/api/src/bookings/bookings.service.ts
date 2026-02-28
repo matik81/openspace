@@ -34,8 +34,6 @@ type ListBookingsQuery = {
 
 @Injectable()
 export class BookingsService {
-  private static readonly BOOKING_WINDOW_START_HOUR = 7;
-  private static readonly BOOKING_WINDOW_END_HOUR = 22;
   private static readonly BOOKING_MINUTE_STEP = 15;
 
   constructor(private readonly prismaService: PrismaService) {}
@@ -54,6 +52,8 @@ export class BookingsService {
       },
       select: {
         timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
       },
     });
 
@@ -140,6 +140,8 @@ export class BookingsService {
       select: {
         id: true,
         timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
       },
     });
 
@@ -191,7 +193,13 @@ export class BookingsService {
       });
     }
 
-    this.assertBookingWithinAllowedHours(startAt, endAt, workspace.timezone);
+    this.assertBookingWithinAllowedHours(
+      startAt,
+      endAt,
+      workspace.timezone,
+      workspace.scheduleStartHour,
+      workspace.scheduleEndHour,
+    );
     this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
 
     try {
@@ -285,6 +293,8 @@ export class BookingsService {
       select: {
         id: true,
         timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
       },
     });
 
@@ -349,7 +359,13 @@ export class BookingsService {
       });
     }
 
-    this.assertBookingWithinAllowedHours(startAt, endAt, workspace.timezone);
+    this.assertBookingWithinAllowedHours(
+      startAt,
+      endAt,
+      workspace.timezone,
+      workspace.scheduleStartHour,
+      workspace.scheduleEndHour,
+    );
     this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
 
     try {
@@ -624,21 +640,21 @@ export class BookingsService {
     startAt: Date,
     endAt: Date,
     timezone: string,
+    scheduleStartHour: number,
+    scheduleEndHour: number,
   ): void {
     const startTime = this.toLocalTimeParts(startAt, timezone);
     const endTime = this.toLocalTimeParts(endAt, timezone);
 
-    const startsTooEarly =
-      startTime.hour < BookingsService.BOOKING_WINDOW_START_HOUR;
+    const startsTooEarly = startTime.hour < scheduleStartHour;
     const endsTooLate =
-      endTime.hour > BookingsService.BOOKING_WINDOW_END_HOUR ||
-      (endTime.hour === BookingsService.BOOKING_WINDOW_END_HOUR &&
-        (endTime.minute > 0 || endTime.second > 0));
+      endTime.hour > scheduleEndHour ||
+      (endTime.hour === scheduleEndHour && (endTime.minute > 0 || endTime.second > 0));
 
     if (startsTooEarly || endsTooLate) {
       throw new BadRequestException({
         code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-        message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+        message: `Bookings must be within ${this.formatHourLabel(scheduleStartHour)}-${this.formatHourLabel(scheduleEndHour)} in the workspace timezone`,
       });
     }
   }
@@ -769,6 +785,10 @@ export class BookingsService {
 
   private normalizeEmail(value: string | undefined | null): string {
     return this.requireString(value, 'email').toLowerCase();
+  }
+
+  private formatHourLabel(hour: number): string {
+    return `${hour.toString().padStart(2, '0')}:00`;
   }
 
   private toDisplayName(firstName: string, lastName: string): string {

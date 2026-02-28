@@ -51,6 +51,8 @@ export async function PATCH(
     const updatePayload: {
       name?: string;
       timezone?: string;
+      scheduleStartHour?: number;
+      scheduleEndHour?: number;
     } = {};
 
     if (Object.prototype.hasOwnProperty.call(body, 'name')) {
@@ -81,6 +83,37 @@ export async function PATCH(
       }
 
       updatePayload.timezone = timezone;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'scheduleStartHour')) {
+      if (
+        typeof body.scheduleStartHour !== 'number' ||
+        !Number.isInteger(body.scheduleStartHour)
+      ) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'scheduleStartHour must be an integer when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      updatePayload.scheduleStartHour = body.scheduleStartHour;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'scheduleEndHour')) {
+      if (typeof body.scheduleEndHour !== 'number' || !Number.isInteger(body.scheduleEndHour)) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'scheduleEndHour must be an integer when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      updatePayload.scheduleEndHour = body.scheduleEndHour;
     }
 
     if (Object.keys(updatePayload).length === 0) {

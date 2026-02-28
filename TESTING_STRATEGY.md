@@ -21,7 +21,7 @@
 - Booking overlap rejection
 - User double-booking rejection (same workspace)
 - Cross-workspace overlapping bookings allowed
-- Booking hours window enforcement (07:00-22:00 workspace time)
+- Booking hours window enforcement based on workspace schedule settings
 - Booking time increment enforcement (15-minute workspace time)
 
 ---
@@ -52,9 +52,10 @@
 
 ## Booking Hours Test Case
 
-1. Attempt booking before 07:00 local workspace time
-2. Attempt booking ending after 22:00 local workspace time
-3. Expect BOOKING_OUTSIDE_ALLOWED_HOURS
+1. Configure a workspace schedule window
+2. Attempt booking before the configured local start hour
+3. Attempt booking ending after the configured local end hour
+4. Expect BOOKING_OUTSIDE_ALLOWED_HOURS
 
 ---
 

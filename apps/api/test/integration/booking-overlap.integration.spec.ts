@@ -833,7 +833,7 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('enforces booking hours between 07:00 and 22:00 in the workspace timezone', async () => {
+  it('enforces booking hours within the configured workspace schedule in the workspace timezone', async () => {
     const adminEmail = 'booking-hours-admin@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -844,6 +844,8 @@ describe('Booking overlap integration', () => {
       .send({
         name: 'Hours Rule',
         timezone: 'UTC',
+        scheduleStartHour: 8,
+        scheduleEndHour: 18,
       });
     expect(createWorkspaceResponse.status).toBe(201);
     const workspaceId = createWorkspaceResponse.body.id as string;
@@ -862,14 +864,14 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T06:30:00.000Z',
-        endAt: '2099-07-01T07:30:00.000Z',
+        startAt: '2099-07-01T07:30:00.000Z',
+        endAt: '2099-07-01T08:30:00.000Z',
         subject: 'Too early',
       });
     expect(earlyResponse.status).toBe(400);
     expect(earlyResponse.body).toEqual({
       code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-      message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+      message: 'Bookings must be within 08:00-18:00 in the workspace timezone',
     });
 
     const lateResponse = await request(app.getHttpServer())
@@ -877,14 +879,14 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T21:30:00.000Z',
-        endAt: '2099-07-01T22:30:00.000Z',
+        startAt: '2099-07-01T17:30:00.000Z',
+        endAt: '2099-07-01T18:30:00.000Z',
         subject: 'Too late',
       });
     expect(lateResponse.status).toBe(400);
     expect(lateResponse.body).toEqual({
       code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-      message: 'Bookings must be within 07:00-22:00 in the workspace timezone',
+      message: 'Bookings must be within 08:00-18:00 in the workspace timezone',
     });
 
     const boundaryResponse = await request(app.getHttpServer())
@@ -892,8 +894,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T07:00:00.000Z',
-        endAt: '2099-07-01T22:00:00.000Z',
+        startAt: '2099-07-01T08:00:00.000Z',
+        endAt: '2099-07-01T18:00:00.000Z',
         subject: 'Allowed boundary',
       });
     expect(boundaryResponse.status).toBe(201);
@@ -1038,6 +1040,10 @@ describe('Booking overlap integration', () => {
       });
     expect(createWorkspaceResponse.status).toBe(201);
     const workspaceId = createWorkspaceResponse.body.id as string;
+    expect(createWorkspaceResponse.body).toMatchObject({
+      scheduleStartHour: 8,
+      scheduleEndHour: 18,
+    });
 
     const inviteMemberResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/invitations`)
@@ -1058,6 +1064,8 @@ describe('Booking overlap integration', () => {
       .send({
         name: 'Updated Workspace Name',
         timezone: 'Europe/Rome',
+        scheduleStartHour: 9,
+        scheduleEndHour: 20,
       });
 
     expect(updateResponse.status).toBe(200);
@@ -1065,6 +1073,8 @@ describe('Booking overlap integration', () => {
       id: workspaceId,
       name: 'Updated Workspace Name',
       timezone: 'Europe/Rome',
+      scheduleStartHour: 9,
+      scheduleEndHour: 20,
     });
 
     const adminListResponse = await request(app.getHttpServer())
@@ -1076,6 +1086,8 @@ describe('Booking overlap integration', () => {
         id: workspaceId,
         name: 'Updated Workspace Name',
         timezone: 'Europe/Rome',
+        scheduleStartHour: 9,
+        scheduleEndHour: 20,
       }),
     );
 

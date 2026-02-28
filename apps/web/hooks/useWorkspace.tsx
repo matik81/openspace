@@ -17,6 +17,8 @@ type WorkspaceContextValue = {
   isActiveMember: boolean;
   isPendingInvitationOnly: boolean;
   timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -43,6 +45,8 @@ export function WorkspaceProvider({
       isActiveMember,
       isPendingInvitationOnly,
       timezone: workspace.timezone,
+      scheduleStartHour: workspace.scheduleStartHour,
+      scheduleEndHour: workspace.scheduleEndHour,
     };
   }, [workspace, currentUser]);
 
@@ -57,4 +61,3 @@ export function useWorkspace(): WorkspaceContextValue {
 
   return context;
 }
-

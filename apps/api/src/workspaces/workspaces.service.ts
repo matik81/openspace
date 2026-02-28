@@ -33,6 +33,8 @@ type VisibleWorkspaceListItem = {
   id: string;
   name: string;
   timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
   createdAt: Date;
   updatedAt: Date;
   membership: { role: WorkspaceRole; status: MembershipStatus } | null;
@@ -48,6 +50,9 @@ type VisibleWorkspaceListItem = {
 
 @Injectable()
 export class WorkspacesService {
+  private static readonly DEFAULT_SCHEDULE_START_HOUR = 8;
+  private static readonly DEFAULT_SCHEDULE_END_HOUR = 18;
+
   constructor(private readonly prismaService: PrismaService) {}
 
   async createWorkspace(authUser: AuthUser, dto: CreateWorkspaceDto) {
@@ -55,18 +60,23 @@ export class WorkspacesService {
     const name = this.requireString(dto.name, 'name');
     const timezone =
       dto.timezone === undefined ? 'UTC' : this.requireTimezone(dto.timezone);
+    const { scheduleStartHour, scheduleEndHour } = this.resolveScheduleHours(dto);
 
     return this.prismaService.$transaction(async (tx) => {
       const workspace = await tx.workspace.create({
         data: {
           name,
           timezone,
+          scheduleStartHour,
+          scheduleEndHour,
           createdByUserId: user.id,
         },
         select: {
           id: true,
           name: true,
           timezone: true,
+          scheduleStartHour: true,
+          scheduleEndHour: true,
           createdByUserId: true,
           createdAt: true,
           updatedAt: true,
@@ -113,6 +123,8 @@ export class WorkspacesService {
             id: true,
             name: true,
             timezone: true,
+            scheduleStartHour: true,
+            scheduleEndHour: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -138,6 +150,8 @@ export class WorkspacesService {
             id: true,
             name: true,
             timezone: true,
+            scheduleStartHour: true,
+            scheduleEndHour: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -152,6 +166,8 @@ export class WorkspacesService {
         id: membership.workspace.id,
         name: membership.workspace.name,
         timezone: membership.workspace.timezone,
+        scheduleStartHour: membership.workspace.scheduleStartHour,
+        scheduleEndHour: membership.workspace.scheduleEndHour,
         createdAt: membership.workspace.createdAt,
         updatedAt: membership.workspace.updatedAt,
         membership: {
@@ -182,6 +198,8 @@ export class WorkspacesService {
         id: invitation.workspace.id,
         name: invitation.workspace.name,
         timezone: invitation.workspace.timezone,
+        scheduleStartHour: invitation.workspace.scheduleStartHour,
+        scheduleEndHour: invitation.workspace.scheduleEndHour,
         createdAt: invitation.workspace.createdAt,
         updatedAt: invitation.workspace.updatedAt,
         membership: null,
@@ -325,6 +343,8 @@ export class WorkspacesService {
     const data: {
       name?: string;
       timezone?: string;
+      scheduleStartHour?: number;
+      scheduleEndHour?: number;
     } = {};
 
     if (dto.name !== undefined) {
@@ -333,6 +353,17 @@ export class WorkspacesService {
 
     if (dto.timezone !== undefined) {
       data.timezone = this.requireTimezone(dto.timezone);
+    }
+
+    if (dto.scheduleStartHour !== undefined || dto.scheduleEndHour !== undefined) {
+      const currentWorkspace = await this.findWorkspaceOrThrow(normalizedWorkspaceId);
+      const scheduleHours = this.resolveScheduleHours({
+        scheduleStartHour:
+          dto.scheduleStartHour ?? currentWorkspace.scheduleStartHour,
+        scheduleEndHour: dto.scheduleEndHour ?? currentWorkspace.scheduleEndHour,
+      });
+      data.scheduleStartHour = scheduleHours.scheduleStartHour;
+      data.scheduleEndHour = scheduleHours.scheduleEndHour;
     }
 
     if (Object.keys(data).length === 0) {
@@ -349,6 +380,8 @@ export class WorkspacesService {
         id: true,
         name: true,
         timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
         createdByUserId: true,
         createdAt: true,
         updatedAt: true,
@@ -797,6 +830,8 @@ export class WorkspacesService {
         id: true,
         name: true,
         timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
         createdByUserId: true,
         createdAt: true,
         updatedAt: true,
@@ -847,6 +882,43 @@ export class WorkspacesService {
         message: 'timezone must be a valid IANA timezone',
       });
     }
+  }
+
+  private resolveScheduleHours(value: {
+    scheduleStartHour?: number;
+    scheduleEndHour?: number;
+  }): {
+    scheduleStartHour: number;
+    scheduleEndHour: number;
+  } {
+    const scheduleStartHour =
+      value.scheduleStartHour === undefined
+        ? WorkspacesService.DEFAULT_SCHEDULE_START_HOUR
+        : this.requireScheduleHour(value.scheduleStartHour, 'scheduleStartHour');
+    const scheduleEndHour =
+      value.scheduleEndHour === undefined
+        ? WorkspacesService.DEFAULT_SCHEDULE_END_HOUR
+        : this.requireScheduleHour(value.scheduleEndHour, 'scheduleEndHour');
+
+    if (scheduleEndHour <= scheduleStartHour) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'scheduleEndHour must be greater than scheduleStartHour',
+      });
+    }
+
+    return { scheduleStartHour, scheduleEndHour };
+  }
+
+  private requireScheduleHour(value: number, fieldName: string): number {
+    if (!Number.isInteger(value) || value < 0 || value > 24) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: `${fieldName} must be an integer between 0 and 24`,
+      });
+    }
+
+    return value;
   }
 
   private requireUuid(value: string | undefined | null, fieldName: string): string {

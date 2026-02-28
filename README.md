@@ -43,7 +43,7 @@ infra/
 - Bookings are stored in UTC (`timestamptz`) and displayed with workspace timezone.
 - Room booking overlap is blocked at DB level with `btree_gist`, `tstzrange`, and partial active-only exclusion.
 - User double-booking within the same workspace (same user, overlapping active bookings) is blocked at DB level with an active-only exclusion constraint.
-- Booking creation is restricted to `07:00`-`22:00` in the workspace timezone.
+- Each workspace defines a daily booking schedule window with 1-hour granularity and default `08:00`-`18:00`.
 - Booking start/end times must align to 15-minute increments in the workspace timezone.
 - Booking cancellation is allowed for past, same-day, and future reservations.
 - Booking cancellation permanently removes the reservation record (hard delete).
@@ -84,13 +84,14 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - Dashboard supports creating workspaces, highlights pending invitations, and provides Accept/Reject actions.
 - Sidebar-based workspace navigation is shared across `/dashboard`, `/workspaces/[workspaceId]`, and `/workspaces/[workspaceId]/admin`.
 - `/workspaces/[workspaceId]` supports invitation acceptance/rejection for pending users and reservation management for active members.
-- `/workspaces/[workspaceId]/admin` supports room CRUD, active member listing, pending invitation listing, and invite-by-email.
+- `/workspaces/[workspaceId]/admin` supports workspace settings, room CRUD, active member listing, pending invitation listing, and invite-by-email.
+- Workspace admins can configure the workspace timezone and daily schedule range, and the main day schedule renders only the configured range.
 - Room deletion uses a styled confirmation modal and requires room name + admin email + password before the backend performs a permanent delete of the room and its reservations.
 
 ## Booking API (Implemented)
 
 - `POST /api/workspaces/:workspaceId/bookings` creates an `ACTIVE` booking.
-  - Enforces same-local-day booking and local booking hours (`07:00`-`22:00`).
+  - Enforces same-local-day booking and the configured local schedule window for the workspace.
   - Enforces 15-minute time increments in the workspace timezone.
   - Rejects overlapping active bookings for the same room.
   - Rejects overlapping active bookings for the same user across rooms within the same workspace.
