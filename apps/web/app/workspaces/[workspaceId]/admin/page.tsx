@@ -635,10 +635,6 @@ function WorkspaceAdminContent({
       <div className="space-y-6">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Update the workspace name, timezone, and daily schedule window used for booking
-            displays and validations.
-          </p>
 
           <form
             className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_240px_160px_160px_auto_auto] xl:items-end"
