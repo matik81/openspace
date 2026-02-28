@@ -5,6 +5,8 @@ import { join } from 'node:path';
 
 const PNPM_CMD = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const DEFAULT_URL = process.env.DEV_CHROME_URL ?? 'http://localhost:3000';
+const DEFAULT_PRISMA_STUDIO_URL =
+  process.env.DEV_CHROME_PRISMA_STUDIO_URL ?? 'http://localhost:5555';
 const READY_TIMEOUT_MS = readPositiveIntEnv('DEV_CHROME_READY_TIMEOUT_MS', 120_000);
 const USE_TEMP_PROFILE = readBooleanEnv('DEV_CHROME_TEMP_PROFILE', false);
 const PERSISTENT_PROFILE_DIR = USE_TEMP_PROFILE
@@ -12,6 +14,7 @@ const PERSISTENT_PROFILE_DIR = USE_TEMP_PROFILE
   : process.env.DEV_CHROME_PROFILE_DIR?.trim() || join(process.cwd(), '.chrome-dev-profile');
 
 let devProcess = null;
+let prismaStudioProcess = null;
 let chromeProcess = null;
 let chromeProfileDir = null;
 let cleaningUp = false;
@@ -46,6 +49,15 @@ function readBooleanEnv(name, fallback) {
   }
 
   return fallback;
+}
+
+function readPortFromUrl(url, fallback) {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.port || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function runCommand(command, args, options = {}) {
@@ -95,14 +107,14 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-async function waitForHttpReady(url, timeoutMs) {
+async function waitForHttpReady(url, timeoutMs, processToWatch, processLabel) {
   const deadline = Date.now() + timeoutMs;
   let attempts = 0;
   let lastErrorMessage = 'connection not ready';
 
   while (Date.now() < deadline) {
-    if (devProcess?.exitCode != null) {
-      throw new Error('pnpm dev si è chiuso prima che l’app fosse pronta.');
+    if (processToWatch?.exitCode != null) {
+      throw new Error(`${processLabel} exited before ${url} became ready.`);
     }
 
     attempts += 1;
@@ -110,7 +122,7 @@ async function waitForHttpReady(url, timeoutMs) {
     try {
       const response = await fetchWithTimeout(url, 2_500);
       if (response.status < 500) {
-        log(`Application ready on ${url} (HTTP ${response.status}).`);
+        log(`${processLabel} ready on ${url} (HTTP ${response.status}).`);
         return;
       }
 
@@ -120,7 +132,7 @@ async function waitForHttpReady(url, timeoutMs) {
     }
 
     if (attempts === 1 || attempts % 5 === 0) {
-      log(`Waiting for application on ${url}...`);
+      log(`Waiting for ${processLabel} on ${url}...`);
     }
 
     await sleep(1_000);
@@ -234,6 +246,7 @@ async function cleanup(reason) {
     await terminateProcessTree(chromeProcess, 'Chrome').catch(() => {});
   }
 
+  await terminateProcessTree(prismaStudioProcess, 'Prisma Studio').catch(() => {});
   await terminateProcessTree(devProcess, 'pnpm dev').catch(() => {});
 
   if (chromeProfileDir && !PERSISTENT_PROFILE_DIR) {
@@ -254,9 +267,7 @@ async function cleanup(reason) {
 async function main() {
   const chromePath = findChromePath();
   if (!chromePath) {
-    throw new Error(
-      'Chrome non trovato. Imposta CHROME_PATH oppure installa Google Chrome.',
-    );
+    throw new Error('Chrome not found. Set CHROME_PATH or install Google Chrome.');
   }
 
   log('Starting database...');
@@ -276,6 +287,35 @@ async function main() {
     }
   });
 
+  log('Starting Prisma Studio...');
+  prismaStudioProcess = spawn(
+    PNPM_CMD,
+    [
+      '--filter',
+      '@openspace/api',
+      'exec',
+      'prisma',
+      'studio',
+      '--schema=prisma/schema.prisma',
+      '--browser',
+      'none',
+      '--port',
+      readPortFromUrl(DEFAULT_PRISMA_STUDIO_URL, '5555'),
+    ],
+    {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    },
+  );
+
+  prismaStudioProcess.once('exit', (code, signal) => {
+    if (!cleaningUp) {
+      log(
+        `Prisma Studio exited unexpectedly (${signal ? `signal ${signal}` : `code ${code ?? 0}`})`,
+      );
+    }
+  });
+
   if (PERSISTENT_PROFILE_DIR) {
     chromeProfileDir = PERSISTENT_PROFILE_DIR;
     mkdirSync(chromeProfileDir, { recursive: true });
@@ -288,9 +328,18 @@ async function main() {
   ensureChromePreferences(chromeProfileDir);
 
   log(`Waiting for application readiness on ${DEFAULT_URL}...`);
-  await waitForHttpReady(DEFAULT_URL, READY_TIMEOUT_MS);
+  log(`Waiting for Prisma Studio readiness on ${DEFAULT_PRISMA_STUDIO_URL}...`);
+  await Promise.all([
+    waitForHttpReady(DEFAULT_URL, READY_TIMEOUT_MS, devProcess, 'Application'),
+    waitForHttpReady(
+      DEFAULT_PRISMA_STUDIO_URL,
+      READY_TIMEOUT_MS,
+      prismaStudioProcess,
+      'Prisma Studio',
+    ),
+  ]);
 
-  log(`Opening Chrome on ${DEFAULT_URL}...`);
+  log(`Opening Chrome on ${DEFAULT_URL} and ${DEFAULT_PRISMA_STUDIO_URL}...`);
   chromeProcess = spawn(
     chromePath,
     [
@@ -301,6 +350,7 @@ async function main() {
       '--disable-features=Translate,TranslateUI',
       `--user-data-dir=${chromeProfileDir}`,
       DEFAULT_URL,
+      DEFAULT_PRISMA_STUDIO_URL,
     ],
     {
       stdio: 'ignore',
