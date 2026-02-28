@@ -12,7 +12,6 @@ import type { BookingListItem } from '@/lib/types';
 
 export function WorkspaceRightSidebar({
   timezone,
-  dateKey,
   monthKey,
   onSelectDateKey,
   onSelectMonthKey,
@@ -22,7 +21,6 @@ export function WorkspaceRightSidebar({
   onOpenBooking,
 }: {
   timezone: string;
-  dateKey: string;
   monthKey: string;
   onSelectDateKey: (value: string) => void;
   onSelectMonthKey: (value: string) => void;
@@ -127,9 +125,6 @@ export function WorkspaceRightSidebar({
       <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-900">My bookings</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            {parseDateKey(dateKey, timezone).toFormat('cccc, dd LLL yyyy')}
-          </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">

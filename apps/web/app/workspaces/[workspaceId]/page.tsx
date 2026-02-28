@@ -856,7 +856,6 @@ function WorkspaceBookingDashboard({
   const rightSidebar = (
     <SharedWorkspaceRightSidebar
       timezone={timezone}
-      dateKey={dateKey}
       monthKey={monthKey}
       onSelectDateKey={setDateKey}
       onSelectMonthKey={setMonthKey}
@@ -949,7 +948,6 @@ function WorkspaceBookingDashboard({
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WorkspaceRightSidebar({
   timezone,
-  dateKey,
   monthKey,
   onSelectDateKey,
   onSelectMonthKey,
@@ -959,7 +957,6 @@ function WorkspaceRightSidebar({
   onOpenBooking,
 }: {
   timezone: string;
-  dateKey: string;
   monthKey: string;
   onSelectDateKey: (value: string) => void;
   onSelectMonthKey: (value: string) => void;
@@ -1064,9 +1061,6 @@ function WorkspaceRightSidebar({
       <section className="rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-900">My bookings</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            {parseDateKey(dateKey, timezone).toFormat('cccc, dd LLL yyyy')}
-          </p>
         </div>
 
         <div className="max-h-[calc(100vh-280px)] space-y-4 overflow-y-auto p-4">

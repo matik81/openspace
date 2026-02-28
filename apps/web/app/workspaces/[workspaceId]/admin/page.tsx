@@ -613,7 +613,6 @@ function WorkspaceAdminContent({
   const rightSidebar = (
     <WorkspaceRightSidebar
       timezone={selectedWorkspace.timezone}
-      dateKey={dateKey}
       monthKey={monthKey}
       onSelectDateKey={setDateKey}
       onSelectMonthKey={setMonthKey}
