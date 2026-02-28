@@ -487,7 +487,7 @@ export function DaySchedule({
               isInteractive={isMine}
               isSelected={selectedBookingId === item.booking.id}
               showResizeHandles={isMine}
-              onClick={() => handleBookingClick(item.booking)}
+              onClick={isMine ? () => handleBookingClick(item.booking) : undefined}
               onDragPointerDown={
                 isMine ? (event) => beginInteraction(event, item.booking, 'drag') : undefined
               }

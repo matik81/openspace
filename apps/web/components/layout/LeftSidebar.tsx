@@ -56,11 +56,13 @@ function SortableWorkspaceRow({
   selectedWorkspaceId,
   onSelectWorkspace,
   isSavingWorkspaceOrder,
+  actions = [],
 }: {
   item: WorkspaceItem;
   selectedWorkspaceId?: string;
   onSelectWorkspace: (workspaceId: string) => void;
   isSavingWorkspaceOrder: boolean;
+  actions?: SidebarAction[];
 }) {
   const {
     attributes,
@@ -77,7 +79,6 @@ function SortableWorkspaceRow({
   const isSelected = item.id === selectedWorkspaceId;
   const hasPendingInvitation = item.invitation?.status === 'PENDING';
   const canOpenAdminPanel = item.membership?.role === 'ADMIN';
-
   return (
     <li
       ref={setNodeRef}
@@ -101,26 +102,46 @@ function SortableWorkspaceRow({
             : 'border-slate-200 bg-white hover:bg-slate-50'
       } ${isDragging ? 'z-10 opacity-90 shadow-lg ring-2 ring-brand/20' : ''} ${isSavingWorkspaceOrder ? 'cursor-not-allowed' : 'active:cursor-grabbing'}`}
     >
-      <div className="absolute bottom-2 right-2 top-2 flex flex-col items-end justify-end">
-        {canOpenAdminPanel ? (
-          <Link
-            href={`/workspaces/${item.id}/admin`}
-            className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Admin
-          </Link>
-        ) : null}
-      </div>
-
-      <div className={`rounded-md px-1 py-1 ${canOpenAdminPanel ? 'pr-20' : 'pr-10'}`}>
+      <div className="flex items-end justify-between gap-2 rounded-md px-1 py-1">
         <button
           type="button"
           onClick={() => onSelectWorkspace(item.id)}
-          className="block w-full rounded-md text-left"
+          className="min-w-0 flex-1 rounded-md text-left"
         >
           <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
         </button>
 
+        <div className="flex shrink-0 items-center gap-1">
+          {canOpenAdminPanel ? (
+            <Link
+              href={`/workspaces/${item.id}/admin`}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Admin
+            </Link>
+          ) : null}
+          {actions.map((action) =>
+            'href' in action ? (
+              <Link
+                key={action.key}
+                href={action.href}
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${actionButtonClass(action.kind)}`}
+              >
+                {action.label}
+              </Link>
+            ) : (
+              <button
+                key={action.key}
+                type="button"
+                onClick={action.onClick}
+                disabled={action.disabled}
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${actionButtonClass(action.kind)}`}
+              >
+                {action.loading ? `${action.label}...` : action.label}
+              </button>
+            ),
+          )}
+        </div>
       </div>
     </li>
   );
@@ -135,6 +156,7 @@ export function LeftSidebar({
   onReorderWorkspaces,
   isSavingWorkspaceOrder = false,
   actions,
+  workspaceActionsById,
   createWorkspaceContent,
   extraContent,
 }: {
@@ -146,6 +168,7 @@ export function LeftSidebar({
   onReorderWorkspaces?: (workspaceIds: string[]) => void;
   isSavingWorkspaceOrder?: boolean;
   actions: SidebarAction[];
+  workspaceActionsById?: Record<string, SidebarAction[]>;
   createWorkspaceContent?: ReactNode;
   extraContent?: ReactNode;
 }) {
@@ -213,6 +236,7 @@ export function LeftSidebar({
                       selectedWorkspaceId={selectedWorkspaceId}
                       onSelectWorkspace={onSelectWorkspace}
                       isSavingWorkspaceOrder={isSavingWorkspaceOrder}
+                      actions={workspaceActionsById?.[workspace.id] ?? []}
                     />
                   ))}
                 </ul>

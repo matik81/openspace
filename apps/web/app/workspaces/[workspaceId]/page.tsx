@@ -97,6 +97,13 @@ function WorkspacePageContent({
     runInvitationAction,
     pendingInvitationAction,
   } = context;
+  const resolvedWorkspace =
+    selectedWorkspace && selectedWorkspace.id === workspaceId ? selectedWorkspace : null;
+  const bookingDashboardLayout = WorkspaceBookingDashboard({
+    workspace: resolvedWorkspace,
+    currentUser,
+    enabled: Boolean(resolvedWorkspace?.membership?.status === 'ACTIVE'),
+  });
 
   if (isLoading && !selectedWorkspace) {
     return <p className="text-sm text-slate-600">Loading workspace...</p>;
@@ -163,29 +170,32 @@ function WorkspacePageContent({
     );
   }
 
-  return WorkspaceBookingDashboard({ workspace: selectedWorkspace, currentUser });
+  return bookingDashboardLayout;
 }
 
 function WorkspaceBookingDashboard({
   workspace,
   currentUser,
+  enabled,
 }: {
-  workspace: WorkspaceItem;
+  workspace: WorkspaceItem | null;
   currentUser: WorkspaceShellRenderContext['currentUser'];
+  enabled: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const timezone = workspace.timezone;
+  const workspaceId = workspace?.id ?? '';
+  const timezone = workspace?.timezone ?? 'UTC';
   const schedule = useMemo(
     () => ({
-      startHour: workspace.scheduleStartHour,
-      endHour: workspace.scheduleEndHour,
+      startHour: workspace?.scheduleStartHour ?? 8,
+      endHour: workspace?.scheduleEndHour ?? 18,
     }),
-    [workspace.scheduleEndHour, workspace.scheduleStartHour],
+    [workspace?.scheduleEndHour, workspace?.scheduleStartHour],
   );
   const scheduleStart = scheduleStartMinutes(schedule);
   const scheduleEnd = scheduleEndMinutes(schedule);
-  const cachedSidebarState = workspaceSidebarStateCache.get(workspace.id);
+  const cachedSidebarState = workspace ? workspaceSidebarStateCache.get(workspace.id) : undefined;
   const [dateKey, setDateKey] = useState(
     () => cachedSidebarState?.dateKey ?? workspaceTodayDateKey(timezone),
   );
@@ -214,7 +224,7 @@ function WorkspaceBookingDashboard({
     isSubmitting: false,
     anchorPoint: null,
   });
-  const workspaceIdRef = useRef<string | null>(workspace.id);
+  const workspaceIdRef = useRef<string | null>(workspaceId || null);
   const requestedBookingId = searchParams.get('bookingId');
 
   const getBookingAnchorPoint = useCallback((bookingId: string): BookingModalAnchorPoint | null => {
@@ -241,9 +251,12 @@ function WorkspaceBookingDashboard({
     };
   }, []);
 
-  workspaceIdRef.current = workspace.id;
+  workspaceIdRef.current = workspaceId || null;
 
   useEffect(() => {
+    if (!workspace) {
+      return;
+    }
     const today = workspaceTodayDateKey(timezone);
     const cachedState = workspaceSidebarStateCache.get(workspace.id);
     setDateKey(cachedState?.dateKey ?? today);
@@ -259,15 +272,18 @@ function WorkspaceBookingDashboard({
       isSubmitting: false,
       anchorPoint: null,
     });
-  }, [workspace.id, timezone]);
+  }, [workspace, timezone]);
 
   useEffect(() => {
+    if (!workspace) {
+      return;
+    }
     workspaceSidebarStateCache.set(workspace.id, {
       dateKey,
       monthKey,
       bookings,
     });
-  }, [workspace.id, dateKey, monthKey, bookings]);
+  }, [workspace, dateKey, monthKey, bookings]);
 
   const loadRooms = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingRooms(true);
@@ -347,17 +363,23 @@ function WorkspaceBookingDashboard({
   }, []);
 
   const refreshData = useCallback(async () => {
+    if (!workspace || !enabled) {
+      return;
+    }
     setPageError(null);
     await Promise.all([loadRooms(workspace), loadBookings(workspace)]);
-  }, [loadBookings, loadRooms, workspace]);
+  }, [enabled, loadBookings, loadRooms, workspace]);
 
   useEffect(() => {
+    if (!workspace || !enabled) {
+      return;
+    }
     setPageBanner(null);
     setPageError(null);
     setHasLoadedRooms(false);
     setHasLoadedBookings(false);
     void refreshData();
-  }, [refreshData]);
+  }, [enabled, refreshData, workspace]);
 
   useEffect(() => {
     if (rooms.length === 0) {
@@ -386,8 +408,8 @@ function WorkspaceBookingDashboard({
     });
   }, [rooms]);
 
-  const hasCurrentRooms = roomsWorkspaceId === workspace.id;
-  const hasCurrentBookings = bookingsWorkspaceId === workspace.id;
+  const hasCurrentRooms = workspace ? roomsWorkspaceId === workspace.id : false;
+  const hasCurrentBookings = workspace ? bookingsWorkspaceId === workspace.id : false;
   const isReady = hasLoadedRooms && hasLoadedBookings && hasCurrentRooms && hasCurrentBookings;
   const isLoading = isLoadingRooms || isLoadingBookings || !isReady;
 
@@ -541,6 +563,9 @@ function WorkspaceBookingDashboard({
   );
 
   useEffect(() => {
+    if (!workspace) {
+      return;
+    }
     if (!requestedBookingId || !hasCurrentBookings || dialog.open) {
       return;
     }
@@ -559,7 +584,7 @@ function WorkspaceBookingDashboard({
     bookings,
     openEditDialog,
     router,
-    workspace.id,
+    workspace,
   ]);
 
   useEffect(() => {
@@ -656,7 +681,7 @@ function WorkspaceBookingDashboard({
       if (parsedStart < scheduleStart || parsedEnd > scheduleEnd) {
         return {
           code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-          message: `Bookings must be within ${workspace.scheduleStartHour.toString().padStart(2, '0')}:00-${workspace.scheduleEndHour.toString().padStart(2, '0')}:00 in the workspace timezone`,
+          message: `Bookings must be within ${(workspace?.scheduleStartHour ?? 8).toString().padStart(2, '0')}:00-${(workspace?.scheduleEndHour ?? 18).toString().padStart(2, '0')}:00 in the workspace timezone`,
         } satisfies ErrorPayload;
       }
 
@@ -685,7 +710,7 @@ function WorkspaceBookingDashboard({
 
       return null;
     },
-    [bookings, currentUserId, timezone, dateKey, scheduleEnd, scheduleStart, workspace.scheduleEndHour, workspace.scheduleStartHour],
+    [bookings, currentUserId, timezone, dateKey, scheduleEnd, scheduleStart, workspace?.scheduleEndHour, workspace?.scheduleStartHour],
   );
 
   const dialogValidationError = useMemo(
@@ -700,7 +725,7 @@ function WorkspaceBookingDashboard({
   );
 
   const submitDialog = async () => {
-    if (!dialog.open) {
+    if (!dialog.open || !workspace || !enabled) {
       return;
     }
     const validationError = dialogValidationError;
@@ -763,7 +788,7 @@ function WorkspaceBookingDashboard({
   };
 
   const deleteDialogBooking = async () => {
-    if (!dialog.open || dialog.mode !== 'edit' || !dialog.bookingId) {
+    if (!dialog.open || dialog.mode !== 'edit' || !dialog.bookingId || !workspace || !enabled) {
       return;
     }
 
@@ -806,6 +831,9 @@ function WorkspaceBookingDashboard({
       startMinutes: number;
       endMinutes: number;
     }) => {
+      if (!workspace || !enabled) {
+        return;
+      }
       const booking = bookings.find((item) => item.id === update.bookingId);
       if (!booking) {
         setPageError({ code: 'NOT_FOUND', message: 'Booking not found' });
@@ -850,7 +878,7 @@ function WorkspaceBookingDashboard({
       await loadBookings(workspace);
       setPageBanner('Booking updated.');
     },
-    [bookings, dateKey, timezone, workspace, loadBookings],
+    [bookings, dateKey, enabled, timezone, workspace, loadBookings],
   );
 
   const rightSidebar = (

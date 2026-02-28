@@ -542,46 +542,51 @@ export function WorkspaceShell({
   );
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
-  const leftSidebarActions = selectedWorkspace
-    ? [
-        ...(selectedWorkspace.invitation?.status === 'PENDING' && !selectedWorkspace.membership
-          ? ([
-              {
-                key: 'accept-invitation',
-                label: 'Accept invitation',
-                kind: 'primary' as const,
-                loading:
-                  pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id &&
-                  pendingInvitationAction.action === 'accept',
-                disabled: pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id,
-                onClick: () => void runInvitationAction(selectedWorkspace.invitation!.id, 'accept'),
-              },
-              {
-                key: 'reject-invitation',
-                label: 'Reject invitation',
-                kind: 'default' as const,
-                loading:
-                  pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id &&
-                  pendingInvitationAction.action === 'reject',
-                disabled: pendingInvitationAction?.invitationId === selectedWorkspace.invitation.id,
-                onClick: () => void runInvitationAction(selectedWorkspace.invitation!.id, 'reject'),
-              },
-            ] as const)
-          : []),
-        ...(selectedWorkspace.membership?.status === 'ACTIVE' &&
-        selectedWorkspace.membership.role === 'MEMBER'
-          ? ([
-              {
-                key: 'leave-workspace',
-                label: 'Leave workspace',
-                kind: 'danger' as const,
-                disabled: true,
-                onClick: () => undefined,
-              },
-            ] as const)
-          : []),
-      ]
-    : [];
+  const workspaceRowActionsById = items.reduce<Record<string, Array<{
+    key: string;
+    label: string;
+    kind: 'default' | 'primary';
+    loading: boolean;
+    disabled: boolean;
+    onClick: () => void;
+  }>>>((accumulator, item) => {
+    if (item.invitation?.status !== 'PENDING' || item.membership) {
+      return accumulator;
+    }
+
+    accumulator[item.id] = [
+      {
+        key: 'accept-invitation',
+        label: 'Accept',
+        kind: 'primary',
+        loading:
+          pendingInvitationAction?.invitationId === item.invitation.id &&
+          pendingInvitationAction.action === 'accept',
+        disabled: pendingInvitationAction?.invitationId === item.invitation.id,
+        onClick: () => void runInvitationAction(item.invitation!.id, 'accept'),
+      },
+      {
+        key: 'reject-invitation',
+        label: 'Reject',
+        kind: 'default',
+        loading:
+          pendingInvitationAction?.invitationId === item.invitation.id &&
+          pendingInvitationAction.action === 'reject',
+        disabled: pendingInvitationAction?.invitationId === item.invitation.id,
+        onClick: () => void runInvitationAction(item.invitation!.id, 'reject'),
+      },
+    ];
+
+    return accumulator;
+  }, {});
+  const leftSidebarActions: Array<{
+    key: string;
+    label: string;
+    kind?: 'default' | 'danger' | 'primary';
+    disabled?: boolean;
+    loading?: boolean;
+    onClick: () => void;
+  }> = [];
 
   const createWorkspaceContent = (
     <div className="space-y-2">
@@ -677,6 +682,7 @@ export function WorkspaceShell({
           onReorderWorkspaces={(workspaceIds) => void handleReorderWorkspaces(workspaceIds)}
           isSavingWorkspaceOrder={isSavingWorkspaceOrder}
           actions={leftSidebarActions}
+          workspaceActionsById={workspaceRowActionsById}
           createWorkspaceContent={createWorkspaceContent}
           extraContent={pageLeftSidebar}
         />
