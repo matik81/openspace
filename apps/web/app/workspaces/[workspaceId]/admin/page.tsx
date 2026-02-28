@@ -742,7 +742,7 @@ function WorkspaceAdminContent({
                 disabled={isSubmittingWorkspaceSettings}
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmittingWorkspaceSettings ? 'Saving...' : 'Save Settings'}
+                Save Settings
               </button>
               <button
                 type="button"
@@ -789,7 +789,7 @@ function WorkspaceAdminContent({
                 disabled={isSubmittingRoom}
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmittingRoom ? 'Saving...' : 'Create Room'}
+                Create Room
               </button>
             </form>
 
@@ -932,7 +932,7 @@ function WorkspaceAdminContent({
                 disabled={isSubmittingInvite}
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmittingInvite ? 'Sending...' : 'Invite'}
+                Invite
               </button>
             </form>
 
