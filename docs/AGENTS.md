@@ -118,6 +118,12 @@ Definition of Done:
 - CI passes
 - Documentation updated
 
+Repository language policy:
+
+- All repository content must use professional technical English
+- This applies to code, identifiers, variable names, function names, comments, error messages, and documentation
+- Do not introduce non-English text in source files or project documentation unless explicitly required for user-facing product content
+
 After major changes:
 - Run relevant commands
 - Fix failures before proceeding
