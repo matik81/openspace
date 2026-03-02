@@ -18,6 +18,7 @@ import { RightSidebar } from '@/components/layout/RightSidebar';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
+import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
 import { isWorkspaceListPayload } from '@/lib/workspace-payloads';
 
@@ -288,6 +289,10 @@ export function WorkspaceShell({
 
     if (!response.ok) {
       const normalized = normalizeErrorPayload(payload, response.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
       if (normalized.code === 'UNAUTHORIZED') {
         router.replace('/login?reason=session-expired');
         return;
@@ -322,6 +327,10 @@ export function WorkspaceShell({
       currentUserCache = mePayload;
     } else if (!meResponse.ok) {
       const normalized = normalizeErrorPayload(mePayload, meResponse.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
       if (normalized.code === 'UNAUTHORIZED') {
         router.replace('/login?reason=session-expired');
         return;
@@ -512,6 +521,10 @@ export function WorkspaceShell({
 
       if (!response.ok) {
         const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
         if (normalized.code === 'UNAUTHORIZED') {
           router.replace('/login?reason=session-expired');
           return;
@@ -553,11 +566,15 @@ export function WorkspaceShell({
       });
       const payload = await safeReadJson(response);
 
-      if (!response.ok) {
-        const normalized = normalizeErrorPayload(payload, response.status);
-        if (normalized.code === 'UNAUTHORIZED') {
-          router.replace('/login?reason=session-expired');
-          return;
+        if (!response.ok) {
+          const normalized = normalizeErrorPayload(payload, response.status);
+          if (isUserSuspendedError(normalized)) {
+            await logoutSuspendedUser(router);
+            return;
+          }
+          if (normalized.code === 'UNAUTHORIZED') {
+            router.replace('/login?reason=session-expired');
+            return;
         }
         setCriticalActionError(normalized);
         setIsSubmittingCriticalAction(false);
@@ -607,6 +624,10 @@ export function WorkspaceShell({
 
       if (!response.ok) {
         const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
         if (normalized.code === 'UNAUTHORIZED') {
           router.replace('/login?reason=session-expired');
           return;
@@ -659,6 +680,10 @@ export function WorkspaceShell({
 
         if (!response.ok) {
           const normalized = normalizeErrorPayload(payload, response.status);
+          if (isUserSuspendedError(normalized)) {
+            await logoutSuspendedUser(router);
+            return false;
+          }
           if (normalized.code === 'UNAUTHORIZED') {
             router.replace('/login?reason=session-expired');
             return false;

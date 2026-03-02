@@ -59,6 +59,16 @@ export function AccountSettingsModal({
         </div>
 
         <form className="mt-4 space-y-4" autoComplete="off" onSubmit={onSubmit}>
+          <div className="hidden" aria-hidden="true">
+            <input
+              type="email"
+              name="username"
+              autoComplete="username"
+              value={form.email}
+              readOnly
+              tabIndex={-1}
+            />
+          </div>
           {error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
               {error.code}: {error.message}
@@ -93,6 +103,8 @@ export function AccountSettingsModal({
               <input
                 required
                 type="email"
+                name="account-email"
+                autoComplete="email"
                 value={form.email}
                 readOnly
                 aria-readonly="true"
@@ -106,6 +118,8 @@ export function AccountSettingsModal({
               </span>
               <input
                 type="password"
+                name="current-password-display"
+                autoComplete="current-password"
                 value="********"
                 readOnly
                 aria-readonly="true"
@@ -122,6 +136,8 @@ export function AccountSettingsModal({
               <input
                 minLength={8}
                 type="password"
+                name="new-password"
+                autoComplete="new-password"
                 value={form.newPassword}
                 onChange={(event) => onChange({ ...form, newPassword: event.target.value })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -135,6 +151,8 @@ export function AccountSettingsModal({
               <input
                 minLength={8}
                 type="password"
+                name="confirm-new-password"
+                autoComplete="new-password"
                 value={form.confirmNewPassword}
                 onChange={(event) =>
                   onChange({ ...form, confirmNewPassword: event.target.value })

@@ -58,6 +58,7 @@ export function BookingModal({
   onDelete: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const overlayPointerDownRef = useRef(false);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -202,19 +203,43 @@ export function BookingModal({
     </option>
   ));
   const isAnchored = Boolean(anchoredDialogStyle);
+  const handleOverlayPointerDown = () => {
+    overlayPointerDownRef.current = true;
+  };
+  const handleOverlayPointerUp = () => {
+    if (!overlayPointerDownRef.current) {
+      return;
+    }
+
+    overlayPointerDownRef.current = false;
+    onClose();
+  };
+  const handleOverlayPointerCancel = () => {
+    overlayPointerDownRef.current = false;
+  };
+  const handleDialogPointerDown = () => {
+    overlayPointerDownRef.current = false;
+  };
 
   return (
     <div
       className={`fixed inset-0 z-[60] p-4 ${isAnchored ? 'bg-slate-950/10' : 'bg-slate-950/40'} ${isAnchored ? '' : 'flex items-center justify-center'}`}
       role="presentation"
     >
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+      <div
+        className="absolute inset-0"
+        onPointerDown={handleOverlayPointerDown}
+        onPointerUp={handleOverlayPointerUp}
+        onPointerCancel={handleOverlayPointerCancel}
+        aria-hidden="true"
+      />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         style={anchoredDialogStyle ?? undefined}
+        onPointerDown={handleDialogPointerDown}
         className={`relative z-10 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl ${isAnchored ? '' : 'w-full max-w-md'}`}
       >
         <div className="mb-4 flex items-start justify-between gap-3">

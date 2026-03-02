@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
 import type { ErrorPayload } from '@/lib/types';
 
@@ -59,6 +59,7 @@ export function PublicAuthModal({
   onSwitchMode: (mode: AuthMode, params?: Record<string, string | null>) => void;
 }) {
   const router = useRouter();
+  const didPointerDownOnOverlayRef = useRef(false);
   const [loginForm, setLoginForm] = useState<LoginFormState>(initialLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(initialRegisterForm);
   const [verificationToken, setVerificationToken] = useState('');
@@ -86,7 +87,7 @@ export function PublicAuthModal({
       setResetPasswordForm((current) => ({
         ...current,
         email: searchParams.get('email') ?? current.email,
-        token: searchParams.get('token') ?? current.token,
+        token: searchParams.get('token') ?? '',
       }));
     }
   }, [mode, searchParams]);
@@ -279,16 +280,40 @@ export function PublicAuthModal({
     });
   }
 
+  function handleOverlayPointerDown(event: PointerEvent<HTMLDivElement>) {
+    didPointerDownOnOverlayRef.current = event.target === event.currentTarget;
+  }
+
+  function handleOverlayPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget || !didPointerDownOnOverlayRef.current) {
+      return;
+    }
+
+    didPointerDownOnOverlayRef.current = false;
+    onClose();
+  }
+
+  function handleOverlayPointerCancel() {
+    didPointerDownOnOverlayRef.current = false;
+  }
+
+  function handleDialogPointerDown() {
+    didPointerDownOnOverlayRef.current = false;
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="public-auth-modal-title"
-      onClick={onClose}
+      onPointerDown={handleOverlayPointerDown}
+      onPointerUp={handleOverlayPointerUp}
+      onPointerCancel={handleOverlayPointerCancel}
     >
       <div
         className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        onPointerDown={handleDialogPointerDown}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -347,6 +372,12 @@ export function PublicAuthModal({
         {reason === 'account-deleted' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             Account deleted. Login is no longer available for that user.
+          </p>
+        ) : null}
+
+        {reason === 'user-suspended' && mode === 'login' ? (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            Account suspended due to rate limits. Login is temporarily unavailable.
           </p>
         ) : null}
 
@@ -534,6 +565,7 @@ export function PublicAuthModal({
                 <input
                   required
                   type="email"
+                  autoComplete="email"
                   value={resetPasswordForm.email}
                   onChange={(event) =>
                     setResetPasswordForm((current) => ({ ...current, email: event.target.value }))
@@ -551,14 +583,32 @@ export function PublicAuthModal({
               </button>
             </form>
 
-            <form className="space-y-4 border-t border-slate-200 pt-6" onSubmit={(event) => void handleResetPasswordConfirm(event)}>
+            <form
+              className="space-y-4 border-t border-slate-200 pt-6"
+              autoComplete="off"
+              onSubmit={(event) => void handleResetPasswordConfirm(event)}
+            >
               <p className="text-sm text-slate-600">
                 Paste the token and choose a new password.
               </p>
+              <div className="hidden" aria-hidden="true">
+                <input
+                  type="email"
+                  name="username"
+                  autoComplete="username"
+                  value={resetPasswordForm.email}
+                  readOnly
+                  tabIndex={-1}
+                />
+              </div>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Reset token</span>
                 <input
                   required
+                  name="reset-token"
+                  autoComplete="one-time-code"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={resetPasswordForm.token}
                   onChange={(event) =>
                     setResetPasswordForm((current) => ({ ...current, token: event.target.value }))
@@ -576,6 +626,8 @@ export function PublicAuthModal({
                     required
                     minLength={8}
                     type="password"
+                    name="new-password"
+                    autoComplete="new-password"
                     value={resetPasswordForm.password}
                     onChange={(event) =>
                       setResetPasswordForm((current) => ({
@@ -595,6 +647,8 @@ export function PublicAuthModal({
                     required
                     minLength={8}
                     type="password"
+                    name="confirm-new-password"
+                    autoComplete="new-password"
                     value={resetPasswordForm.confirmPassword}
                     onChange={(event) =>
                       setResetPasswordForm((current) => ({

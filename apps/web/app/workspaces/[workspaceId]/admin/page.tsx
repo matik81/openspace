@@ -4,8 +4,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
+import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
+import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
@@ -392,9 +394,14 @@ function WorkspaceAdminContent({
         },
         body: JSON.stringify(payload),
       });
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
         setIsSubmittingRoom(false);
         return;
       }
@@ -517,9 +524,14 @@ function WorkspaceAdminContent({
           email: inviteEmail,
         }),
       });
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
         setIsSubmittingInvite(false);
         return;
       }

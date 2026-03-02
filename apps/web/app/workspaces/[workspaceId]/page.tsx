@@ -13,6 +13,7 @@ import { WorkspaceRightSidebar as SharedWorkspaceRightSidebar } from '@/componen
 import { WorkspaceShell, type WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
+import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
   addDaysToDateKey,
   bookingToLocalRange,
@@ -304,7 +305,12 @@ function WorkspaceBookingDashboard({
     }
 
     if (!response.ok) {
-      setPageError(normalizeErrorPayload(payload, response.status));
+      const normalized = normalizeErrorPayload(payload, response.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
+      setPageError(normalized);
       setRooms([]);
       setRoomsWorkspaceId(selected.id);
       setHasLoadedRooms(true);
@@ -345,7 +351,12 @@ function WorkspaceBookingDashboard({
     }
 
     if (!response.ok) {
-      setPageError(normalizeErrorPayload(payload, response.status));
+      const normalized = normalizeErrorPayload(payload, response.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
+      setPageError(normalized);
       setBookings([]);
       setBookingsWorkspaceId(selected.id);
       setHasLoadedBookings(true);
@@ -794,12 +805,17 @@ function WorkspaceBookingDashboard({
     const payload = await safeReadJson(response);
 
     if (!response.ok) {
+      const normalized = normalizeErrorPayload(payload, response.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
       setDialog((previous) =>
         previous.open
           ? {
               ...previous,
               isSubmitting: false,
-              error: normalizeErrorPayload(payload, response.status),
+              error: normalized,
             }
           : previous,
       );
@@ -831,12 +847,17 @@ function WorkspaceBookingDashboard({
     const payload = await safeReadJson(response);
 
     if (!response.ok) {
+      const normalized = normalizeErrorPayload(payload, response.status);
+      if (isUserSuspendedError(normalized)) {
+        await logoutSuspendedUser(router);
+        return;
+      }
       setDialog((previous) =>
         previous.open
           ? {
               ...previous,
               isSubmitting: false,
-              error: normalizeErrorPayload(payload, response.status),
+              error: normalized,
             }
           : previous,
       );
@@ -895,7 +916,12 @@ function WorkspaceBookingDashboard({
       const payload = await safeReadJson(response);
 
       if (!response.ok) {
-        setPageError(normalizeErrorPayload(payload, response.status));
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        setPageError(normalized);
         return;
       }
 
