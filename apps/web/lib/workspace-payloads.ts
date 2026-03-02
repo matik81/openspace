@@ -25,6 +25,16 @@ export function isWorkspaceListPayload(payload: unknown): payload is WorkspaceLi
       typeof item.scheduleEndHour === 'number' &&
       typeof item.createdAt === 'string' &&
       typeof item.updatedAt === 'string' &&
+      (item.scheduleVersions === undefined ||
+        (Array.isArray(item.scheduleVersions) &&
+          item.scheduleVersions.every(
+            (version) =>
+              isRecord(version) &&
+              typeof version.timezone === 'string' &&
+              typeof version.scheduleStartHour === 'number' &&
+              typeof version.scheduleEndHour === 'number' &&
+              typeof version.effectiveFrom === 'string',
+          ))) &&
       (item.membership === null || isMembership(item.membership)) &&
       (item.invitation === null || isInvitation(item.invitation))
     );
@@ -46,6 +56,8 @@ export function isRoomListPayload(payload: unknown): payload is RoomListPayload 
       typeof item.workspaceId === 'string' &&
       typeof item.name === 'string' &&
       (item.description === null || typeof item.description === 'string') &&
+      typeof item.status === 'string' &&
+      (item.cancelledAt === null || typeof item.cancelledAt === 'string') &&
       typeof item.createdAt === 'string' &&
       typeof item.updatedAt === 'string'
     );

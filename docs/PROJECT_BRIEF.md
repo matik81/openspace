@@ -13,10 +13,20 @@ Fields:
 After registration:
 - Send verification email
 - Store emailVerifiedAt null
+- If the email belongs to a logically deleted (`CANCELLED`) account, reactivate the same user record instead of creating a new one
+- On reactivation, reset cancellation flags, clear sessions and require email verification again
 
 Until verified:
 - User cannot log in
 - System blocks all access
+
+Account management:
+- Authenticated users can update firstName and lastName
+- Authenticated users can change password
+- Account update requires confirmation with current email and current password
+- Account deletion remains available from the account management modal
+- Users can request a password reset token by email
+- Users can reset password with token + new password
 
 ---
 
@@ -32,7 +42,18 @@ Workspace attributes:
 - id
 - name
 - timezone
+- scheduleStartHour
+- scheduleEndHour
 - createdByUserId
+
+Rules:
+- Workspace name must be globally unique
+- Maximum 10 active workspaces per user
+- Maximum 100 active rooms per workspace
+- Maximum 1000 active members per workspace
+- Maximum 1000 pending invitations per workspace
+- Workspace deletion is logical (`CANCELLED`)
+- Workspace schedule changes create a new effective schedule version
 
 ---
 
@@ -68,6 +89,10 @@ Admin can create:
 
 Unique name per workspace.
 
+Rules:
+- Room deletion is logical (`CANCELLED`)
+- Future bookings on a deleted room become cancelled with reason `ROOM_UNAVAILABLE`
+
 ---
 
 ## 5. Bookings
@@ -86,10 +111,23 @@ Rules:
 - Prevented via Postgres EXCLUDE constraint
 - Stored as timestamptz
 - Displayed in workspace timezone
+- Maximum 1000 active future bookings per user in each workspace
+- Booking date cannot be more than 365 days ahead
+- Bookings before today cannot be changed or deleted
 
 Cancellation:
-- Allowed for past, same-day, and future reservations
-- Hard delete reservation record on cancellation
+- Past bookings before today cannot be cancelled by the user
+- Cancellation is logical with timestamp and reason
+- Supported reasons: `USER_CANCELLED`, `USER_LEFT_WORKSPACE`, `ROOM_UNAVAILABLE`, `SCHEDULE_INCOMPATIBLE`
+
+Operational limits:
+
+- Maximum 10 registrations per hour per IP
+- Maximum 5 workspace creations per hour per user
+- Maximum 50 room creations per hour per user
+- Maximum 50 invitation creations per hour per user
+- Maximum 50 booking creations per hour per user
+- Reaching the rate limit suspends the IP/user for 24 hours
 
 ---
 

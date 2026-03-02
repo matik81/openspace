@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ACCESS_TOKEN_COOKIE } from '@/lib/auth-cookies';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    if (!accessToken) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json().catch(() => null);
     if (!isRecord(body)) {
       return NextResponse.json<ErrorPayload>(
@@ -17,24 +29,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const lastName = getTrimmedString(body, 'lastName');
     const email = getTrimmedString(body, 'email');
     const password = getTrimmedString(body, 'password');
+    const newPassword = getTrimmedString(body, 'newPassword');
 
     if (!firstName || !lastName || !email || !password) {
       return NextResponse.json<ErrorPayload>(
-        { code: 'BAD_REQUEST', message: 'firstName, lastName, email and password are required' },
+        {
+          code: 'BAD_REQUEST',
+          message: 'firstName, lastName, email and password are required',
+        },
         { status: 400 },
       );
     }
 
-    const forwardedFor = request.headers.get('x-forwarded-for');
     const result = await proxyApiRequest({
-      path: '/api/auth/register',
+      path: '/api/auth/update-account',
       method: 'POST',
-      headers: forwardedFor ? { 'x-forwarded-for': forwardedFor } : undefined,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: {
         firstName,
         lastName,
         email,
         password,
+        ...(newPassword ? { newPassword } : {}),
       },
     });
 

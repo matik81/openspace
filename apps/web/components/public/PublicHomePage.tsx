@@ -9,7 +9,9 @@ import { RightSidebar } from '@/components/layout/RightSidebar';
 import { PublicAuthModal, type AuthMode } from '@/components/public/PublicAuthModal';
 import { PublicRightSidebar } from '@/components/public/PublicRightSidebar';
 import { PublicSchedulePreview } from '@/components/public/PublicSchedulePreview';
+import { readErrorPayload, safeReadJson } from '@/lib/client-http';
 import { buildMiniCalendarCells, formatSelectedDateLabel, formatSelectedDateSubLabel } from '@/lib/time';
+import type { ErrorPayload } from '@/lib/types';
 
 const PUBLIC_TIMEZONE = 'Europe/Rome';
 
@@ -34,11 +36,41 @@ function PublicHomePageContent() {
   );
   const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
+  const [ipRegistrationError, setIpRegistrationError] = useState<ErrorPayload | null>(null);
 
   useEffect(() => {
     const now = DateTime.now().setZone(PUBLIC_TIMEZONE);
     setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
     setMonthKey(now.toFormat('yyyy-LL'));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRegistrationStatus() {
+      const response = await fetch('/api/auth/register-status', {
+        method: 'GET',
+        cache: 'no-store',
+      });
+      if (cancelled) {
+        return;
+      }
+      if (response.ok) {
+        setIpRegistrationError(null);
+        return;
+      }
+      if (response.status === 429) {
+        setIpRegistrationError(await readErrorPayload(response));
+        return;
+      }
+      await safeReadJson(response);
+      setIpRegistrationError(null);
+    }
+
+    void loadRegistrationStatus();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedDateLabel = useMemo(
@@ -71,6 +103,7 @@ function PublicHomePageContent() {
       params.delete('email');
       params.delete('token');
       params.delete('verified');
+      params.delete('reset');
     }
 
     if (extraParams) {
@@ -114,6 +147,12 @@ function PublicHomePageContent() {
             onClick: () => setAuthMode('verify-email'),
             className: 'rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50',
           },
+          {
+            key: 'reset-password',
+            label: 'Reset password',
+            onClick: () => setAuthMode('reset-password'),
+            className: 'rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50',
+          },
         ]}
       />
 
@@ -140,6 +179,11 @@ function PublicHomePageContent() {
                 </header>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+                  {ipRegistrationError ? (
+                    <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      {ipRegistrationError.code}: {ipRegistrationError.message}
+                    </p>
+                  ) : null}
                   <PublicSchedulePreview
                     selectedDateLabel={selectedDateLabel}
                     selectedDateSubLabel={selectedDateSubLabel}
@@ -174,7 +218,12 @@ function PublicHomePageContent() {
 }
 
 function normalizeAuthMode(value: string | null): AuthMode | null {
-  if (value === 'login' || value === 'register' || value === 'verify-email') {
+  if (
+    value === 'login' ||
+    value === 'register' ||
+    value === 'verify-email' ||
+    value === 'reset-password'
+  ) {
     return value;
   }
 

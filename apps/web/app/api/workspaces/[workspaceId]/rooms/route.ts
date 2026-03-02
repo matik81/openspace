@@ -34,8 +34,11 @@ export async function GET(request: NextRequest, context: WorkspaceRouteContext):
       );
     }
 
+    const query = request.nextUrl.searchParams.toString();
     const result = await proxyApiRequest({
-      path: `/api/workspaces/${encodeURIComponent(workspaceId)}/rooms`,
+      path: `/api/workspaces/${encodeURIComponent(workspaceId)}/rooms${
+        query.length > 0 ? `?${query}` : ''
+      }`,
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,

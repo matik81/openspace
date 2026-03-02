@@ -5,7 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
 import type { ErrorPayload } from '@/lib/types';
 
-export type AuthMode = 'login' | 'register' | 'verify-email';
+export type AuthMode = 'login' | 'register' | 'verify-email' | 'reset-password';
 
 type LoginFormState = {
   email: string;
@@ -20,6 +20,13 @@ type RegisterFormState = {
   confirmPassword: string;
 };
 
+type ResetPasswordFormState = {
+  email: string;
+  token: string;
+  password: string;
+  confirmPassword: string;
+};
+
 const initialLoginForm: LoginFormState = {
   email: '',
   password: '',
@@ -29,6 +36,13 @@ const initialRegisterForm: RegisterFormState = {
   firstName: '',
   lastName: '',
   email: '',
+  password: '',
+  confirmPassword: '',
+};
+
+const initialResetPasswordForm: ResetPasswordFormState = {
+  email: '',
+  token: '',
   password: '',
   confirmPassword: '',
 };
@@ -48,6 +62,9 @@ export function PublicAuthModal({
   const [loginForm, setLoginForm] = useState<LoginFormState>(initialLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(initialRegisterForm);
   const [verificationToken, setVerificationToken] = useState('');
+  const [resetPasswordForm, setResetPasswordForm] =
+    useState<ResetPasswordFormState>(initialResetPasswordForm);
+  const [resetPasswordMessage, setResetPasswordMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<ErrorPayload | null>(null);
   const reason = searchParams.get('reason');
@@ -64,6 +81,13 @@ export function PublicAuthModal({
 
     if (mode === 'verify-email') {
       setVerificationToken(searchParams.get('token') ?? '');
+    }
+    if (mode === 'reset-password') {
+      setResetPasswordForm((current) => ({
+        ...current,
+        email: searchParams.get('email') ?? current.email,
+        token: searchParams.get('token') ?? current.token,
+      }));
     }
   }, [mode, searchParams]);
 
@@ -90,6 +114,7 @@ export function PublicAuthModal({
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setResetPasswordMessage(null);
 
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -112,6 +137,7 @@ export function PublicAuthModal({
   async function handleRegisterSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setResetPasswordMessage(null);
 
     if (registerForm.password !== registerForm.confirmPassword) {
       setError({
@@ -155,6 +181,7 @@ export function PublicAuthModal({
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setResetPasswordMessage(null);
 
     const response = await fetch('/api/auth/verify-email', {
       method: 'POST',
@@ -176,6 +203,79 @@ export function PublicAuthModal({
       registered: null,
       token: null,
       verified: '1',
+    });
+  }
+
+  async function handleResetPasswordRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    setResetPasswordMessage(null);
+
+    const response = await fetch('/api/auth/request-password-reset', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: resetPasswordForm.email,
+      }),
+    });
+
+    if (!response.ok) {
+      setError(await readErrorPayload(response));
+      setIsSubmitting(false);
+      return;
+    }
+
+    setResetPasswordMessage('If the account exists and is active, a reset token has been sent by email.');
+    setIsSubmitting(false);
+  }
+
+  async function handleResetPasswordConfirm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setResetPasswordMessage(null);
+
+    if (resetPasswordForm.password !== resetPasswordForm.confirmPassword) {
+      setError({
+        code: 'PASSWORD_MISMATCH',
+        message: 'Password and password confirmation must match',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const response = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: resetPasswordForm.token,
+        password: resetPasswordForm.password,
+      }),
+    });
+
+    if (!response.ok) {
+      setError(await readErrorPayload(response));
+      setIsSubmitting(false);
+      return;
+    }
+
+    setIsSubmitting(false);
+    setResetPasswordForm((current) => ({
+      ...current,
+      token: '',
+      password: '',
+      confirmPassword: '',
+    }));
+    onSwitchMode('login', {
+      reason: null,
+      verified: null,
+      token: null,
+      reset: '1',
     });
   }
 
@@ -201,7 +301,9 @@ export function PublicAuthModal({
                 ? 'Login'
                 : mode === 'register'
                   ? 'Create your account'
-                  : 'Verify your email'}
+                  : mode === 'verify-email'
+                    ? 'Verify your email'
+                    : 'Reset password'}
             </h2>
           </div>
           <button
@@ -214,7 +316,7 @@ export function PublicAuthModal({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-          {(['login', 'register', 'verify-email'] as const).map((tab) => (
+          {(['login', 'register', 'verify-email', 'reset-password'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -225,7 +327,13 @@ export function PublicAuthModal({
                   : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
-              {tab === 'verify-email' ? 'Verify email' : tab === 'register' ? 'Register' : 'Login'}
+              {tab === 'verify-email'
+                ? 'Verify email'
+                : tab === 'register'
+                  ? 'Register'
+                  : tab === 'reset-password'
+                    ? 'Reset password'
+                    : 'Login'}
             </button>
           ))}
         </div>
@@ -233,6 +341,12 @@ export function PublicAuthModal({
         {reason === 'session-expired' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             Your session is missing or expired. Please log in again.
+          </p>
+        ) : null}
+
+        {reason === 'account-deleted' && mode === 'login' ? (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            Account deleted. Login is no longer available for that user.
           </p>
         ) : null}
 
@@ -245,6 +359,12 @@ export function PublicAuthModal({
         {verified && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Email verified. You can now log in.
+          </p>
+        ) : null}
+
+        {searchParams.get('reset') === '1' && mode === 'login' ? (
+          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Password reset complete. You can now log in with the new password.
           </p>
         ) : null}
 
@@ -284,6 +404,18 @@ export function PublicAuthModal({
               className="w-full rounded-lg bg-slate-900 px-4 py-2.5 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? 'Logging in...' : 'Login'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSwitchMode('reset-password', {
+                  email: loginForm.email.trim() || null,
+                })
+              }
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Reset password
             </button>
           </form>
         ) : null}
@@ -383,6 +515,107 @@ export function PublicAuthModal({
               {isSubmitting ? 'Verifying...' : 'Verify email'}
             </button>
           </form>
+        ) : null}
+
+        {mode === 'reset-password' ? (
+          <div className="mt-6 space-y-6">
+            {resetPasswordMessage ? (
+              <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+                {resetPasswordMessage}
+              </p>
+            ) : null}
+
+            <form className="space-y-4" onSubmit={(event) => void handleResetPasswordRequest(event)}>
+              <p className="text-sm text-slate-600">
+                Request a reset token by email.
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Email</span>
+                <input
+                  required
+                  type="email"
+                  value={resetPasswordForm.email}
+                  onChange={(event) =>
+                    setResetPasswordForm((current) => ({ ...current, email: event.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? 'Sending token...' : 'Send reset token'}
+              </button>
+            </form>
+
+            <form className="space-y-4 border-t border-slate-200 pt-6" onSubmit={(event) => void handleResetPasswordConfirm(event)}>
+              <p className="text-sm text-slate-600">
+                Paste the token and choose a new password.
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Reset token</span>
+                <input
+                  required
+                  value={resetPasswordForm.token}
+                  onChange={(event) =>
+                    setResetPasswordForm((current) => ({ ...current, token: event.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-slate-700">
+                    New password
+                  </span>
+                  <input
+                    required
+                    minLength={8}
+                    type="password"
+                    value={resetPasswordForm.password}
+                    onChange={(event) =>
+                      setResetPasswordForm((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-slate-700">
+                    Confirm new password
+                  </span>
+                  <input
+                    required
+                    minLength={8}
+                    type="password"
+                    value={resetPasswordForm.confirmPassword}
+                    onChange={(event) =>
+                      setResetPasswordForm((current) => ({
+                        ...current,
+                        confirmPassword: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-lg bg-slate-900 px-4 py-2.5 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? 'Resetting password...' : 'Reset password'}
+              </button>
+            </form>
+          </div>
         ) : null}
       </div>
     </div>

@@ -15,9 +15,9 @@ const PUBLIC_SCHEDULE: ScheduleWindow = {
 };
 
 const PLACEHOLDER_ROOMS: RoomItem[] = [
-  { id: 'room-focus', workspaceId: 'public-demo', name: 'Focus Room', description: null, createdAt: '', updatedAt: '' },
-  { id: 'room-collab', workspaceId: 'public-demo', name: 'Collab Hub', description: null, createdAt: '', updatedAt: '' },
-  { id: 'room-board', workspaceId: 'public-demo', name: 'Board Room', description: null, createdAt: '', updatedAt: '' },
+  { id: 'room-focus', workspaceId: 'public-demo', name: 'Focus Room', description: null, status: 'ACTIVE', cancelledAt: null, createdAt: '', updatedAt: '' },
+  { id: 'room-collab', workspaceId: 'public-demo', name: 'Collab Hub', description: null, status: 'ACTIVE', cancelledAt: null, createdAt: '', updatedAt: '' },
+  { id: 'room-board', workspaceId: 'public-demo', name: 'Board Room', description: null, status: 'ACTIVE', cancelledAt: null, createdAt: '', updatedAt: '' },
 ];
 
 const PLACEHOLDER_BOOKINGS = [

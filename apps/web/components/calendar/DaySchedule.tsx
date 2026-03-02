@@ -81,6 +81,7 @@ export function DaySchedule({
   onPrevDay,
   onNextDay,
   onToday,
+  canCreateBookings,
   draftPreview,
   onCreateSlot,
   onOpenBooking,
@@ -98,6 +99,7 @@ export function DaySchedule({
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
+  canCreateBookings: boolean;
   draftPreview?: DraftPreview | null;
   onCreateSlot: (slot: {
     roomId: string;
@@ -435,7 +437,7 @@ export function DaySchedule({
   }, [interaction]);
 
   const handleEmptySlotClick = (roomId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (isMutating || committingBookingId) {
+    if (isMutating || committingBookingId || !canCreateBookings) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();

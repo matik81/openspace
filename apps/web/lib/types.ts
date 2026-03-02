@@ -27,6 +27,13 @@ export type WorkspaceInvitationSummary = {
   createdAt: string;
 };
 
+export type WorkspaceScheduleVersion = {
+  timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  effectiveFrom: string;
+};
+
 export type WorkspaceItem = {
   id: string;
   name: string;
@@ -35,6 +42,7 @@ export type WorkspaceItem = {
   scheduleEndHour: number;
   createdAt: string;
   updatedAt: string;
+  scheduleVersions?: WorkspaceScheduleVersion[];
   membership: WorkspaceMembershipSummary | null;
   invitation: WorkspaceInvitationSummary | null;
 };
@@ -48,6 +56,8 @@ export type RoomItem = {
   workspaceId: string;
   name: string;
   description: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

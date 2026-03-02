@@ -13,29 +13,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const firstName = getTrimmedString(body, 'firstName');
-    const lastName = getTrimmedString(body, 'lastName');
-    const email = getTrimmedString(body, 'email');
+    const token = getTrimmedString(body, 'token');
     const password = getTrimmedString(body, 'password');
-
-    if (!firstName || !lastName || !email || !password) {
+    if (!token || !password) {
       return NextResponse.json<ErrorPayload>(
-        { code: 'BAD_REQUEST', message: 'firstName, lastName, email and password are required' },
+        { code: 'BAD_REQUEST', message: 'token and password are required' },
         { status: 400 },
       );
     }
 
-    const forwardedFor = request.headers.get('x-forwarded-for');
     const result = await proxyApiRequest({
-      path: '/api/auth/register',
+      path: '/api/auth/reset-password',
       method: 'POST',
-      headers: forwardedFor ? { 'x-forwarded-for': forwardedFor } : undefined,
-      body: {
-        firstName,
-        lastName,
-        email,
-        password,
-      },
+      body: { token, password },
     });
 
     return NextResponse.json(result.payload, { status: result.status });

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 
 type HeaderUser = {
   firstName: string;
@@ -16,12 +17,21 @@ type HeaderGuestAction = {
   className?: string;
 };
 
+type HeaderUserAction = {
+  key: string;
+  label: string;
+  onClick: () => void;
+  kind?: 'default' | 'danger';
+  disabled?: boolean;
+};
+
 export function Header({
   user,
   onLogout,
   onToggleLeftSidebar,
   onToggleRightSidebar,
   guestActions,
+  userActions,
   brandHref = '/dashboard',
 }: {
   user: HeaderUser;
@@ -29,14 +39,43 @@ export function Header({
   onToggleLeftSidebar: () => void;
   onToggleRightSidebar: () => void;
   guestActions?: HeaderGuestAction[];
+  userActions?: HeaderUserAction[];
   brandHref?: string;
 }) {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const displayName = user
     ? `${user.firstName} ${user.lastName}`.trim() || user.email
     : null;
   const initials = user
     ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase() || 'U'
     : null;
+
+  useEffect(() => {
+    if (!isUserMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isUserMenuOpen]);
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 h-16 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -112,21 +151,61 @@ export function Header({
               )}
             </>
           ) : (
-            <>
-              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 sm:flex">
+            <div ref={userMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsUserMenuOpen((current) => !current)}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 text-left hover:bg-slate-50"
+                aria-expanded={isUserMenuOpen}
+                aria-haspopup="menu"
+              >
                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
                   {initials}
                 </span>
-                <span className="max-w-[180px] truncate text-sm text-slate-700">{displayName}</span>
-              </div>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Logout
+                <span className="hidden max-w-[180px] truncate text-sm text-slate-700 sm:block">
+                  {displayName}
+                </span>
               </button>
-            </>
+
+              {isUserMenuOpen ? (
+                <div
+                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                  role="menu"
+                >
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
+                    <p className="truncate text-xs text-slate-500">{user.email}</p>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {(userActions ?? [
+                      {
+                        key: 'logout',
+                        label: 'Logout',
+                        onClick: onLogout,
+                      },
+                    ]).map((action) => (
+                      <button
+                        key={action.key}
+                        type="button"
+                        disabled={action.disabled}
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          action.onClick();
+                        }}
+                        className={`w-full rounded-xl px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          action.kind === 'danger'
+                            ? 'text-rose-700 hover:bg-rose-50'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                        role="menuitem"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
       </div>

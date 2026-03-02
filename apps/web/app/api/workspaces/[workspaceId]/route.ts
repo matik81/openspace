@@ -10,6 +10,53 @@ type WorkspaceRouteContext = {
   };
 };
 
+export async function GET(
+  request: NextRequest,
+  context: WorkspaceRouteContext,
+): Promise<NextResponse> {
+  try {
+    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    if (!accessToken) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+        },
+        { status: 401 },
+      );
+    }
+
+    const workspaceId = context.params.workspaceId?.trim();
+    if (!workspaceId) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'BAD_REQUEST',
+          message: 'workspaceId is required',
+        },
+        { status: 400 },
+      );
+    }
+
+    const result = await proxyApiRequest({
+      path: `/api/workspaces/${encodeURIComponent(workspaceId)}`,
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return NextResponse.json(result.payload, { status: result.status });
+  } catch {
+    return NextResponse.json<ErrorPayload>(
+      {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Unable to reach API service',
+      },
+      { status: 503 },
+    );
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   context: WorkspaceRouteContext,

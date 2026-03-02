@@ -4,6 +4,14 @@ import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AccountSettingsModal,
+  type AccountSettingsFormState,
+} from '@/components/layout/AccountSettingsModal';
+import {
+  CriticalUserActionModal,
+  type CriticalUserActionFormState,
+} from '@/components/layout/CriticalUserActionModal';
 import { Header } from '@/components/layout/Header';
 import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
@@ -63,6 +71,18 @@ const SHELL_CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat',
 const createWorkspaceInitialState: CreateWorkspaceFormState = {
   name: '',
   timezone: 'UTC',
+};
+const criticalActionInitialState: CriticalUserActionFormState = {
+  email: '',
+  password: '',
+};
+const accountSettingsInitialState: AccountSettingsFormState = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+  newPassword: '',
+  confirmNewPassword: '',
 };
 
 let workspaceItemsCache: WorkspaceItem[] | null = null;
@@ -243,6 +263,18 @@ export function WorkspaceShell({
   );
   const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+  const [accountSettingsForm, setAccountSettingsForm] =
+    useState<AccountSettingsFormState>(accountSettingsInitialState);
+  const [accountSettingsError, setAccountSettingsError] = useState<ErrorPayload | null>(null);
+  const [isSubmittingAccountSettings, setIsSubmittingAccountSettings] = useState(false);
+  const [activeCriticalAction, setActiveCriticalAction] = useState<'leave' | 'delete-account' | null>(
+    null,
+  );
+  const [criticalActionForm, setCriticalActionForm] =
+    useState<CriticalUserActionFormState>(criticalActionInitialState);
+  const [criticalActionError, setCriticalActionError] = useState<ErrorPayload | null>(null);
+  const [isSubmittingCriticalAction, setIsSubmittingCriticalAction] = useState(false);
 
   const selectedWorkspace = useMemo(
     () => items.find((item) => item.id === selectedWorkspaceId) ?? null,
@@ -323,6 +355,15 @@ export function WorkspaceShell({
     setIsLeftSidebarOpenMobile(false);
     setIsRightSidebarOpenMobile(false);
   }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || isLoading || error) {
+      return;
+    }
+    if (!selectedWorkspace) {
+      router.replace('/dashboard');
+    }
+  }, [error, isLoading, router, selectedWorkspace, selectedWorkspaceId]);
 
   const resetCreateWorkspaceForm = useCallback(() => {
     setCreateWorkspaceForm({
@@ -431,6 +472,177 @@ export function WorkspaceShell({
     router.replace('/login');
     router.refresh();
   }, [router]);
+
+  const closeAccountSettingsModal = useCallback(() => {
+    setIsAccountSettingsOpen(false);
+    setAccountSettingsError(null);
+    setIsSubmittingAccountSettings(false);
+    setAccountSettingsForm((currentUser
+      ? {
+          firstName: currentUser.firstName,
+          lastName: currentUser.lastName,
+          email: currentUser.email,
+          password: '',
+          newPassword: '',
+          confirmNewPassword: '',
+        }
+      : accountSettingsInitialState));
+  }, [currentUser]);
+
+  const closeCriticalActionModal = useCallback(() => {
+    setActiveCriticalAction(null);
+    setCriticalActionForm(criticalActionInitialState);
+    setCriticalActionError(null);
+    setIsSubmittingCriticalAction(false);
+  }, []);
+
+  const handleLeaveWorkspace = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedWorkspace || !currentUser || isSubmittingCriticalAction) {
+        return;
+      }
+
+      setIsSubmittingCriticalAction(true);
+      setCriticalActionError(null);
+      const response = await fetch(`/api/workspaces/${selectedWorkspace.id}/leave`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(criticalActionForm),
+      });
+      const payload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (normalized.code === 'UNAUTHORIZED') {
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        setCriticalActionError(normalized);
+        setIsSubmittingCriticalAction(false);
+        return;
+      }
+
+      closeCriticalActionModal();
+      setBanner('Workspace left.');
+      await loadWorkspaces();
+      router.replace('/dashboard');
+    },
+    [
+      closeCriticalActionModal,
+      criticalActionForm,
+      currentUser,
+      isSubmittingCriticalAction,
+      loadWorkspaces,
+      router,
+      selectedWorkspace,
+    ],
+  );
+
+  const handleDeleteAccount = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!currentUser || isSubmittingCriticalAction) {
+        return;
+      }
+
+      setIsSubmittingCriticalAction(true);
+      setCriticalActionError(null);
+      const response = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(criticalActionForm),
+      });
+      const payload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (normalized.code === 'UNAUTHORIZED') {
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        setCriticalActionError(normalized);
+        setIsSubmittingCriticalAction(false);
+        return;
+      }
+
+      workspaceItemsCache = null;
+      currentUserCache = null;
+      closeCriticalActionModal();
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.replace('/?auth=login&reason=account-deleted');
+      router.refresh();
+    },
+    [closeCriticalActionModal, criticalActionForm, currentUser, isSubmittingCriticalAction, router],
+  );
+
+  const handleAccountSettingsSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!currentUser || isSubmittingAccountSettings) {
+        return;
+      }
+
+      setAccountSettingsError(null);
+      if (
+        accountSettingsForm.newPassword &&
+        accountSettingsForm.newPassword !== accountSettingsForm.confirmNewPassword
+      ) {
+        setAccountSettingsError({
+          code: 'PASSWORD_MISMATCH',
+          message: 'New password and confirmation must match',
+        });
+        return;
+      }
+
+      setIsSubmittingAccountSettings(true);
+      const response = await fetch('/api/auth/update-account', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          firstName: accountSettingsForm.firstName,
+          lastName: accountSettingsForm.lastName,
+          email: accountSettingsForm.email,
+          password: accountSettingsForm.password,
+          newPassword: accountSettingsForm.newPassword || undefined,
+        }),
+      });
+      const payload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (normalized.code === 'UNAUTHORIZED') {
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        setAccountSettingsError(normalized);
+        setIsSubmittingAccountSettings(false);
+        return;
+      }
+
+      if (!isAuthUserSummary(payload)) {
+        setAccountSettingsError({
+          code: 'BAD_GATEWAY',
+          message: 'Unexpected account payload',
+        });
+        setIsSubmittingAccountSettings(false);
+        return;
+      }
+
+      setCurrentUser(payload);
+      currentUserCache = payload;
+      setBanner('Account updated.');
+      setIsSubmittingAccountSettings(false);
+      closeAccountSettingsModal();
+    },
+    [
+      accountSettingsForm,
+      closeAccountSettingsModal,
+      currentUser,
+      isSubmittingAccountSettings,
+      router,
+    ],
+  );
 
   const persistWorkspaceOrder = useCallback(
     async (nextItems: WorkspaceItem[]) => {
@@ -587,6 +799,50 @@ export function WorkspaceShell({
     loading?: boolean;
     onClick: () => void;
   }> = [];
+  const canLeaveSelectedWorkspace =
+    selectedWorkspace?.membership?.status === 'ACTIVE' &&
+    selectedWorkspace.membership.role !== 'ADMIN';
+  const userMenuActions = currentUser
+    ? [
+        {
+          key: 'account',
+          label: 'Account',
+          onClick: () => {
+            setAccountSettingsForm({
+              firstName: currentUser.firstName,
+              lastName: currentUser.lastName,
+              email: currentUser.email,
+              password: '',
+              newPassword: '',
+              confirmNewPassword: '',
+            });
+            setAccountSettingsError(null);
+            setIsAccountSettingsOpen(true);
+          },
+        },
+        ...(canLeaveSelectedWorkspace
+          ? [
+              {
+                key: 'leave-workspace',
+                label: 'Leave workspace',
+                onClick: () => {
+                  setCriticalActionForm({
+                    email: currentUser.email,
+                    password: '',
+                  });
+                  setCriticalActionError(null);
+                  setActiveCriticalAction('leave');
+                },
+              },
+            ]
+          : []),
+        {
+          key: 'logout',
+          label: 'Logout',
+          onClick: () => void handleLogout(),
+        },
+      ]
+    : undefined;
 
   const createWorkspaceContent = (
     <div className="space-y-2">
@@ -670,6 +926,7 @@ export function WorkspaceShell({
         onLogout={() => void handleLogout()}
         onToggleLeftSidebar={() => setIsLeftSidebarOpenMobile(true)}
         onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
+        userActions={userMenuActions}
       />
 
       <div className="flex h-full pt-16">
@@ -749,6 +1006,57 @@ export function WorkspaceShell({
           </RightSidebar>
         </div>
       </div>
+
+      <CriticalUserActionModal
+        open={activeCriticalAction === 'leave'}
+        title="Leave Workspace"
+        description="Confirm with your email and password. Future bookings in this workspace will be cancelled."
+        confirmLabel="Leave workspace"
+        cancelLabel="Stay in workspace"
+        emailLabel="Email"
+        passwordLabel="Password"
+        isSubmitting={isSubmittingCriticalAction}
+        error={criticalActionError}
+        form={criticalActionForm}
+        onChange={setCriticalActionForm}
+        onClose={closeCriticalActionModal}
+        onSubmit={handleLeaveWorkspace}
+      />
+
+      <AccountSettingsModal
+        open={isAccountSettingsOpen}
+        form={accountSettingsForm}
+        error={accountSettingsError}
+        isSubmitting={isSubmittingAccountSettings}
+        onChange={setAccountSettingsForm}
+        onClose={closeAccountSettingsModal}
+        onSubmit={handleAccountSettingsSubmit}
+        onDeleteAccount={() => {
+          closeAccountSettingsModal();
+          setCriticalActionForm({
+            email: '',
+            password: '',
+          });
+          setCriticalActionError(null);
+          setActiveCriticalAction('delete-account');
+        }}
+      />
+
+      <CriticalUserActionModal
+        open={activeCriticalAction === 'delete-account'}
+        title="Delete Account"
+        description="Confirm with your email and password. Your account will be cancelled and admin-owned workspaces will be cancelled."
+        confirmLabel="Delete account"
+        cancelLabel="Keep account"
+        emailLabel="Email"
+        passwordLabel="Password"
+        isSubmitting={isSubmittingCriticalAction}
+        error={criticalActionError}
+        form={criticalActionForm}
+        onChange={setCriticalActionForm}
+        onClose={closeCriticalActionModal}
+        onSubmit={handleDeleteAccount}
+      />
     </div>
   );
 }

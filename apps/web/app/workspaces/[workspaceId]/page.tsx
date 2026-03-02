@@ -186,15 +186,6 @@ function WorkspaceBookingDashboard({
   const searchParams = useSearchParams();
   const workspaceId = workspace?.id ?? '';
   const timezone = workspace?.timezone ?? 'UTC';
-  const schedule = useMemo(
-    () => ({
-      startHour: workspace?.scheduleStartHour ?? 8,
-      endHour: workspace?.scheduleEndHour ?? 18,
-    }),
-    [workspace?.scheduleEndHour, workspace?.scheduleStartHour],
-  );
-  const scheduleStart = scheduleStartMinutes(schedule);
-  const scheduleEnd = scheduleEndMinutes(schedule);
   const cachedSidebarState = workspace ? workspaceSidebarStateCache.get(workspace.id) : undefined;
   const [dateKey, setDateKey] = useState(
     () => cachedSidebarState?.dateKey ?? workspaceTodayDateKey(timezone),
@@ -274,6 +265,20 @@ function WorkspaceBookingDashboard({
     });
   }, [workspace, timezone]);
 
+  const schedule = useMemo(
+    () => resolveScheduleWindowForDate(workspace, dateKey),
+    [workspace, dateKey],
+  );
+  const scheduleStart = scheduleStartMinutes(schedule);
+  const scheduleEnd = scheduleEndMinutes(schedule);
+  const workspaceCreatedDateKey = useMemo(
+    () => (workspace ? DateTime.fromISO(workspace.createdAt, { zone: 'utc' }).setZone(timezone).toFormat('yyyy-LL-dd') : null),
+    [timezone, workspace],
+  );
+  const isBeforeWorkspaceCreation = Boolean(workspaceCreatedDateKey && dateKey < workspaceCreatedDateKey);
+  const todayDateKey = useMemo(() => workspaceTodayDateKey(timezone), [timezone]);
+  const canCreateBookings = enabled && !isBeforeWorkspaceCreation && dateKey >= todayDateKey;
+
   useEffect(() => {
     if (!workspace) {
       return;
@@ -287,7 +292,8 @@ function WorkspaceBookingDashboard({
 
   const loadRooms = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingRooms(true);
-    const response = await fetch(`/api/workspaces/${selected.id}/rooms`, {
+    const query = new URLSearchParams({ date: dateKey });
+    const response = await fetch(`/api/workspaces/${selected.id}/rooms?${query.toString()}`, {
       method: 'GET',
       cache: 'no-store',
     });
@@ -319,7 +325,7 @@ function WorkspaceBookingDashboard({
     setRoomsWorkspaceId(selected.id);
     setHasLoadedRooms(true);
     setIsLoadingRooms(false);
-  }, []);
+  }, [dateKey]);
 
   const loadBookings = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingBookings(true);
@@ -418,12 +424,30 @@ function WorkspaceBookingDashboard({
     () =>
       new Set(
         bookings
-          .filter(
-            (booking) => booking.createdByUserId === currentUserId && booking.status === 'ACTIVE',
-          )
+          .filter((booking) => {
+            if (booking.createdByUserId !== currentUserId || booking.status !== 'ACTIVE') {
+              return false;
+            }
+            const local = bookingToLocalRange(booking, timezone);
+            return Boolean(local && local.dateKey >= todayDateKey);
+          })
           .map((booking) => booking.id),
       ),
-    [bookings, currentUserId],
+    [bookings, currentUserId, timezone, todayDateKey],
+  );
+  const visibleBookings = useMemo(
+    () =>
+      isBeforeWorkspaceCreation
+        ? []
+        : bookings.filter((booking) => {
+            const local = bookingToLocalRange(booking, timezone);
+            return Boolean(local && local.dateKey === dateKey);
+          }),
+    [bookings, dateKey, isBeforeWorkspaceCreation, timezone],
+  );
+  const visibleRooms = useMemo(
+    () => (isBeforeWorkspaceCreation ? [] : rooms),
+    [isBeforeWorkspaceCreation, rooms],
   );
 
   const markerCountsByDate = useMemo(
@@ -926,8 +950,8 @@ function WorkspaceBookingDashboard({
             </div>
           ) : (
             <DaySchedule
-              rooms={hasCurrentRooms ? rooms : []}
-              bookings={hasCurrentBookings ? bookings : []}
+              rooms={hasCurrentRooms ? visibleRooms : []}
+              bookings={hasCurrentBookings ? visibleBookings : []}
               timezone={timezone}
               schedule={schedule}
               selectedDateKey={dateKey}
@@ -937,6 +961,7 @@ function WorkspaceBookingDashboard({
               onPrevDay={goToPreviousDay}
               onNextDay={goToNextDay}
               onToday={goToToday}
+              canCreateBookings={canCreateBookings}
               draftPreview={dialogDraftPreview}
               onCreateSlot={openCreateDialog}
               onOpenBooking={openEditDialog}
@@ -970,6 +995,33 @@ function WorkspaceBookingDashboard({
       </div>
     ),
     rightSidebar,
+  };
+}
+
+function resolveScheduleWindowForDate(
+  workspace: WorkspaceItem | null,
+  selectedDateKey: string,
+) {
+  if (!workspace) {
+    return { startHour: 8, endHour: 18 };
+  }
+
+  const scheduleVersions = (workspace.scheduleVersions ?? []).slice().sort((left, right) =>
+    left.effectiveFrom.localeCompare(right.effectiveFrom),
+  );
+  const matchingVersion =
+    scheduleVersions
+      .filter(
+        (version) =>
+          DateTime.fromISO(version.effectiveFrom, { zone: 'utc' })
+            .setZone(workspace.timezone)
+            .toFormat('yyyy-LL-dd') <= selectedDateKey,
+      )
+      .at(-1) ?? null;
+
+  return {
+    startHour: matchingVersion?.scheduleStartHour ?? workspace.scheduleStartHour,
+    endHour: matchingVersion?.scheduleEndHour ?? workspace.scheduleEndHour,
   };
 }
 

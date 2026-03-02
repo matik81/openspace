@@ -8,21 +8,33 @@
 - WorkspaceService
 - InvitationService
 - BookingService
+- Auth account reactivation
+- Auth password reset token lifecycle
+- Auth account update confirmation
 
 ---
 
 ## Integration Tests
 
 - Email verification flow
+- Cancelled account reactivation on register
+- Account update flow
+- Password reset request flow
+- Password reset confirmation flow
 - Invitation accept flow
 - Invitation reject flow
 - Workspace visibility rules (active member or pending invitation only)
+- Workspace leave flow with future booking cancellation
+- Account deletion flow with logical cancellation propagation
 - Booking creation
 - Booking overlap rejection
 - User double-booking rejection (same workspace)
 - Cross-workspace overlapping bookings allowed
 - Booking hours window enforcement based on workspace schedule settings
 - Booking time increment enforcement (15-minute workspace time)
+- Booking soft-cancel behavior and past-mutation guard
+- Workspace schedule change cancellation for incompatible future bookings
+- Rate-limit suspension responses
 
 ---
 
@@ -67,5 +79,10 @@ CI must run:
 - pnpm lint
 - pnpm typecheck
 - pnpm test
-- prisma migrate
+- prisma migrate deploy
 - build
+
+Notes:
+
+- Prisma integration tests require the local Postgres instance to be running.
+- Mocked integration suites should stub `OperationLimitsService` unless they explicitly cover suspensions.
