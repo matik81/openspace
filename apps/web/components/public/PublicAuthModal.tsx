@@ -436,18 +436,6 @@ export function PublicAuthModal({
             >
               {isSubmitting ? 'Logging in...' : 'Login'}
             </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                onSwitchMode('reset-password', {
-                  email: loginForm.email.trim() || null,
-                })
-              }
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Reset password
-            </button>
           </form>
         ) : null}
 

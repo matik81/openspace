@@ -7,13 +7,17 @@ import { Header } from '@/components/layout/Header';
 import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
 import { PublicAuthModal, type AuthMode } from '@/components/public/PublicAuthModal';
+import {
+  PUBLIC_TIMEZONE,
+  PUBLIC_USER_ID,
+  buildPublicPreviewBookingGroups,
+  buildPublicPreviewBookings,
+} from '@/components/public/public-preview-data';
 import { PublicRightSidebar } from '@/components/public/PublicRightSidebar';
 import { PublicSchedulePreview } from '@/components/public/PublicSchedulePreview';
 import { readErrorPayload, safeReadJson } from '@/lib/client-http';
-import { buildMiniCalendarCells, formatSelectedDateLabel, formatSelectedDateSubLabel } from '@/lib/time';
+import { addDaysToDateKey, buildMarkerCountByDateKey, buildMiniCalendarCells } from '@/lib/time';
 import type { ErrorPayload } from '@/lib/types';
-
-const PUBLIC_TIMEZONE = 'Europe/Rome';
 
 export function PublicHomePage() {
   return (
@@ -28,6 +32,9 @@ function PublicHomePageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const authMode = normalizeAuthMode(searchParams.get('auth'));
+  const [previewAnchorDateKey] = useState(() =>
+    DateTime.now().setZone(PUBLIC_TIMEZONE).toFormat('yyyy-LL-dd'),
+  );
   const [selectedDateKey, setSelectedDateKey] = useState(() =>
     DateTime.now().setZone(PUBLIC_TIMEZONE).toFormat('yyyy-LL-dd'),
   );
@@ -73,13 +80,17 @@ function PublicHomePageContent() {
     };
   }, []);
 
-  const selectedDateLabel = useMemo(
-    () => formatSelectedDateLabel(selectedDateKey, PUBLIC_TIMEZONE),
-    [selectedDateKey],
+  const previewBookings = useMemo(
+    () => buildPublicPreviewBookings(previewAnchorDateKey),
+    [previewAnchorDateKey],
   );
-  const selectedDateSubLabel = useMemo(
-    () => formatSelectedDateSubLabel(selectedDateKey, PUBLIC_TIMEZONE),
-    [selectedDateKey],
+  const bookingGroups = useMemo(
+    () => buildPublicPreviewBookingGroups(previewBookings),
+    [previewBookings],
+  );
+  const markerCountsByDate = useMemo(
+    () => buildMarkerCountByDateKey(previewBookings, PUBLIC_TIMEZONE, PUBLIC_USER_ID),
+    [previewBookings],
   );
   const miniCalendarCells = useMemo(
     () =>
@@ -87,9 +98,32 @@ function PublicHomePageContent() {
         timezone: PUBLIC_TIMEZONE,
         monthKey,
         selectedDateKey,
+        markerCountByDateKey: markerCountsByDate,
       }),
-    [monthKey, selectedDateKey],
+    [monthKey, selectedDateKey, markerCountsByDate],
   );
+
+  function goToToday() {
+    const now = DateTime.now().setZone(PUBLIC_TIMEZONE);
+    setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
+    setMonthKey(now.toFormat('yyyy-LL'));
+  }
+
+  function goToPreviousDay() {
+    setSelectedDateKey((previous) => {
+      const next = addDaysToDateKey(previous, -1, PUBLIC_TIMEZONE);
+      setMonthKey(next.slice(0, 7));
+      return next;
+    });
+  }
+
+  function goToNextDay() {
+    setSelectedDateKey((previous) => {
+      const next = addDaysToDateKey(previous, 1, PUBLIC_TIMEZONE);
+      setMonthKey(next.slice(0, 7));
+      return next;
+    });
+  }
 
   function setAuthMode(mode: AuthMode | null, extraParams?: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
@@ -163,33 +197,44 @@ function PublicHomePageContent() {
           workspaces={[]}
           onSelectWorkspace={() => undefined}
           actions={[]}
+          extraContent={
+            <section>
+              <div className="relative rounded-lg border border-slate-200 bg-white p-2 transition-colors hover:bg-slate-50">
+                <div className="flex items-center justify-between gap-2 rounded-md px-1 py-1">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center rounded-md text-left"
+                  >
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      Guest preview
+                    </p>
+                  </button>
+                </div>
+              </div>
+            </section>
+          }
         />
 
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto">
             <div className="h-full p-3 sm:p-4">
-              <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">Dashboard</h2>
-                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                      Guest preview
-                    </div>
-                  </div>
-                </header>
+              <div className="flex h-full min-h-0 flex-col gap-3">
+                {ipRegistrationError ? (
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {ipRegistrationError.code}: {ipRegistrationError.message}
+                  </p>
+                ) : null}
 
-                <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-                  {ipRegistrationError ? (
-                    <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {ipRegistrationError.code}: {ipRegistrationError.message}
-                    </p>
-                  ) : null}
+                <div className="min-h-0 flex-1">
                   <PublicSchedulePreview
-                    selectedDateLabel={selectedDateLabel}
-                    selectedDateSubLabel={selectedDateSubLabel}
+                    selectedDateKey={selectedDateKey}
+                    onPrevDay={goToPreviousDay}
+                    onNextDay={goToNextDay}
+                    onToday={goToToday}
+                    bookings={previewBookings}
                   />
                 </div>
-              </section>
+              </div>
             </div>
           </div>
 
@@ -200,8 +245,10 @@ function PublicHomePageContent() {
             <PublicRightSidebar
               monthKey={monthKey}
               miniCalendarCells={miniCalendarCells}
+              bookingGroups={bookingGroups}
               onSelectDateKey={setSelectedDateKey}
               onSelectMonthKey={setMonthKey}
+              onToday={goToToday}
             />
           </RightSidebar>
         </div>
