@@ -4,11 +4,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   InvitationStatus,
   MembershipStatus,
+  UserStatus,
   WorkspaceRole,
+  WorkspaceStatus,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { EMAIL_PROVIDER, EmailProvider } from '../../src/auth/email/email-provider.interface';
+import { OperationLimitsService } from '../../src/common/operation-limits.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -18,6 +21,7 @@ type MockUser = {
   lastName: string;
   email: string;
   passwordHash: string;
+  status: UserStatus;
   emailVerifiedAt: Date | null;
   refreshTokenHash: string | null;
   refreshTokenExpiresAt: Date | null;
@@ -29,6 +33,9 @@ type MockWorkspace = {
   id: string;
   name: string;
   timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  status: WorkspaceStatus;
   createdByUserId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -71,6 +78,14 @@ type MockUserWorkspacePreference = {
   sortOrder: number;
 };
 
+type MockWorkspaceScheduleVersion = {
+  workspaceId: string;
+  timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  effectiveFrom: Date;
+};
+
 function selectRecord<T extends Record<string, unknown>>(
   record: T,
   select?: Record<string, unknown>,
@@ -96,6 +111,7 @@ function createPrismaMock(): PrismaService {
   const invitations: MockInvitation[] = [];
   const verificationTokens: MockVerificationToken[] = [];
   const userWorkspacePreferences: MockUserWorkspacePreference[] = [];
+  const workspaceScheduleVersions: MockWorkspaceScheduleVersion[] = [];
 
   const delegates = {
     user: {
@@ -138,6 +154,7 @@ function createPrismaMock(): PrismaService {
             lastName: data.lastName as string,
             email: (data.email as string).toLowerCase(),
             passwordHash: data.passwordHash as string,
+            status: UserStatus.ACTIVE,
             emailVerifiedAt: null,
             refreshTokenHash: null,
             refreshTokenExpiresAt: null,
@@ -186,6 +203,9 @@ function createPrismaMock(): PrismaService {
             id: randomUUID(),
             name: data.name as string,
             timezone: data.timezone as string,
+            scheduleStartHour: (data.scheduleStartHour as number) ?? 8,
+            scheduleEndHour: (data.scheduleEndHour as number) ?? 18,
+            status: WorkspaceStatus.ACTIVE,
             createdByUserId: data.createdByUserId as string,
             createdAt: now,
             updatedAt: now,
@@ -198,6 +218,69 @@ function createPrismaMock(): PrismaService {
           );
         },
       ),
+      findUnique: jest.fn(
+        async ({
+          where,
+          select,
+        }: {
+          where: { id: string };
+          select?: Record<string, unknown>;
+        }) => {
+          const workspace = workspaces.find((item) => item.id === where.id) ?? null;
+          if (!workspace) {
+            return null;
+          }
+          return selectRecord(workspace as unknown as Record<string, unknown>, select);
+        },
+      ),
+      findFirst: jest.fn(
+        async ({
+          where,
+          select,
+        }: {
+          where: { name?: string; id?: { not?: string } };
+          select?: Record<string, unknown>;
+        }) => {
+          const workspace =
+            workspaces.find((item) => {
+              if (where.name && item.name !== where.name) {
+                return false;
+              }
+              if (where.id?.not && item.id === where.id.not) {
+                return false;
+              }
+              return true;
+            }) ?? null;
+          if (!workspace) {
+            return null;
+          }
+          return selectRecord(workspace as unknown as Record<string, unknown>, select);
+        },
+      ),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+          select,
+        }: {
+          where: { id: string };
+          data: Partial<MockWorkspace>;
+          select?: Record<string, unknown>;
+        }) => {
+          const workspace = workspaces.find((item) => item.id === where.id);
+          if (!workspace) {
+            throw new Error('Workspace not found');
+          }
+          Object.assign(workspace, data, { updatedAt: new Date() });
+          return selectRecord(workspace as unknown as Record<string, unknown>, select);
+        },
+      ),
+    },
+    workspaceScheduleVersion: {
+      create: jest.fn(async ({ data }: { data: MockWorkspaceScheduleVersion }) => {
+        workspaceScheduleVersions.push(data);
+        return data;
+      }),
     },
     workspaceMember: {
       create: jest.fn(async ({ data }: { data: Partial<MockWorkspaceMember> }) => {
@@ -342,6 +425,25 @@ function createPrismaMock(): PrismaService {
           return member;
         },
       ),
+      count: jest.fn(
+        async ({
+          where,
+        }: {
+          where: { userId?: string; workspaceId?: string; status?: MembershipStatus };
+        }) =>
+          members.filter((item) => {
+            if (where.userId && item.userId !== where.userId) {
+              return false;
+            }
+            if (where.workspaceId && item.workspaceId !== where.workspaceId) {
+              return false;
+            }
+            if (where.status && item.status !== where.status) {
+              return false;
+            }
+            return true;
+          }).length,
+      ),
     },
     invitation: {
       updateMany: jest.fn(
@@ -426,9 +528,10 @@ function createPrismaMock(): PrismaService {
           select,
         }: {
           where: {
-            email: string;
+            email?: string;
             status: InvitationStatus;
             expiresAt: { gt: Date };
+            workspace?: { status: WorkspaceStatus };
           };
           select: {
             id: true;
@@ -450,7 +553,7 @@ function createPrismaMock(): PrismaService {
         }) => {
           const filtered = invitations.filter(
             (invitation) =>
-              invitation.email === where.email &&
+              (!where.email || invitation.email === where.email) &&
               invitation.status === where.status &&
               invitation.expiresAt > where.expiresAt.gt,
           );
@@ -521,11 +624,21 @@ function createPrismaMock(): PrismaService {
           if (!invitation) {
             return null;
           }
-
-          return selectRecord(
+          const workspace = workspaces.find((item) => item.id === invitation.workspaceId) ?? null;
+          const base = selectRecord(
             invitation as unknown as Record<string, unknown>,
             select,
           );
+          if (select && 'workspace' in select && workspace) {
+            return {
+              ...base,
+              workspace: selectRecord(
+                workspace as unknown as Record<string, unknown>,
+                (select.workspace as { select: Record<string, unknown> }).select,
+              ),
+            };
+          }
+          return base;
         },
       ),
       update: jest.fn(
@@ -545,6 +658,19 @@ function createPrismaMock(): PrismaService {
           });
           return invitation;
         },
+      ),
+      count: jest.fn(
+        async ({
+          where,
+        }: {
+          where: { workspaceId: string; status: InvitationStatus; expiresAt: { gt: Date } };
+        }) =>
+          invitations.filter(
+            (item) =>
+              item.workspaceId === where.workspaceId &&
+              item.status === where.status &&
+              item.expiresAt > where.expiresAt.gt,
+          ).length,
       ),
     },
     emailVerificationToken: {
@@ -693,6 +819,15 @@ describe('Workspace invitation flow integration', () => {
     sendVerificationEmail: jest.fn(async ({ to, token }) => {
       verificationTokensByEmail[to.toLowerCase()] = token;
     }),
+    sendPasswordResetEmail: jest.fn(async () => undefined),
+  };
+  const operationLimitsServiceMock: Partial<OperationLimitsService> = {
+    assertRegistrationAllowed: jest.fn(async () => undefined),
+    assertRegistrationStatusAllowed: jest.fn(async () => undefined),
+    recordRegistration: jest.fn(async () => undefined),
+    assertUserAuthenticationAllowed: jest.fn(async () => undefined),
+    assertUserOperationAllowed: jest.fn(async () => undefined),
+    recordUserOperation: jest.fn(async () => undefined),
   };
 
   const password = 'strong-password';
@@ -718,6 +853,8 @@ describe('Workspace invitation flow integration', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
+      .overrideProvider(OperationLimitsService)
+      .useValue(operationLimitsServiceMock)
       .overrideProvider(EMAIL_PROVIDER)
       .useValue(emailProviderMock)
       .compile();

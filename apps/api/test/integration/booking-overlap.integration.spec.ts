@@ -19,8 +19,15 @@ describe('Booking overlap integration', () => {
     sendVerificationEmail: jest.fn(async ({ to, token }) => {
       verificationTokensByEmail[to.toLowerCase()] = token;
     }),
+    sendPasswordResetEmail: jest.fn(async () => undefined),
   };
   const password = 'strong-password';
+  const futureDateIso = (daysAhead: number, hour: number, minute = 0) => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + daysAhead);
+    date.setUTCHours(hour, minute, 0, 0);
+    return date.toISOString();
+  };
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
@@ -33,6 +40,7 @@ describe('Booking overlap integration', () => {
     process.env.JWT_ACCESS_TTL ??= '15m';
     process.env.JWT_REFRESH_TTL ??= '7d';
     process.env.EMAIL_VERIFICATION_TTL_MINUTES ??= '60';
+    process.env.MAX_REGISTRATIONS_PER_HOUR_PER_IP = '999';
 
     appModule = await import('../../src/app.module');
 
@@ -76,7 +84,10 @@ describe('Booking overlap integration', () => {
     await prismaService.invitation.deleteMany();
     await prismaService.workspaceMember.deleteMany();
     await prismaService.workspace.deleteMany();
+    await prismaService.operationLog.deleteMany();
+    await prismaService.rateLimitSuspension.deleteMany();
     await prismaService.emailVerificationToken.deleteMany();
+    await prismaService.passwordResetToken.deleteMany();
     await prismaService.user.deleteMany();
   }
 
@@ -144,8 +155,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-02-20T10:00:00.000Z',
-        endAt: '2099-02-20T11:00:00.000Z',
+        startAt: futureDateIso(7, 10),
+        endAt: futureDateIso(7, 11),
         subject: 'Incident review',
       });
 
@@ -156,8 +167,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-02-20T10:30:00.000Z',
-        endAt: '2099-02-20T11:30:00.000Z',
+        startAt: futureDateIso(7, 10, 30),
+        endAt: futureDateIso(7, 11, 30),
         subject: 'Overlapping slot',
       });
 
@@ -204,8 +215,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId: createRoomAResponse.body.id as string,
-        startAt: '2099-06-01T10:00:00.000Z',
-        endAt: '2099-06-01T11:00:00.000Z',
+        startAt: futureDateIso(14, 10),
+        endAt: futureDateIso(14, 11),
         subject: 'First room booking',
       });
     expect(firstBookingResponse.status).toBe(201);
@@ -215,8 +226,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId: createRoomBResponse.body.id as string,
-        startAt: '2099-06-01T10:30:00.000Z',
-        endAt: '2099-06-01T11:30:00.000Z',
+        startAt: futureDateIso(14, 10, 30),
+        endAt: futureDateIso(14, 11, 30),
         subject: 'Second room same user',
       });
 
@@ -271,8 +282,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId: createRoomAResponse.body.id as string,
-        startAt: '2099-06-02T10:00:00.000Z',
-        endAt: '2099-06-02T11:00:00.000Z',
+        startAt: futureDateIso(15, 10),
+        endAt: futureDateIso(15, 11),
         subject: 'Workspace A booking',
       });
     expect(firstBookingResponse.status).toBe(201);
@@ -282,8 +293,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId: createRoomBResponse.body.id as string,
-        startAt: '2099-06-02T10:30:00.000Z',
-        endAt: '2099-06-02T11:30:00.000Z',
+        startAt: futureDateIso(15, 10, 30),
+        endAt: futureDateIso(15, 11, 30),
         subject: 'Workspace B booking',
       });
 
@@ -295,7 +306,7 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('hard deletes cancelled bookings and allows rebooking the same time range', async () => {
+  it('soft-cancels bookings and allows rebooking the same time range', async () => {
     const adminEmail = 'booking-admin-cancel@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -325,8 +336,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-02-20T13:00:00.000Z',
-        endAt: '2099-02-20T14:00:00.000Z',
+        startAt: futureDateIso(10, 13),
+        endAt: futureDateIso(10, 14),
         subject: 'Ticket triage',
       });
 
@@ -347,17 +358,22 @@ describe('Booking overlap integration', () => {
 
     const persistedBooking = await prismaService.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true },
+      select: { id: true, status: true, cancellationReason: true, cancelledAt: true },
     });
-    expect(persistedBooking).toBeNull();
+    expect(persistedBooking).toMatchObject({
+      id: bookingId,
+      status: 'CANCELLED',
+      cancellationReason: 'USER_CANCELLED',
+      cancelledAt: expect.any(Date),
+    });
 
     const secondBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-02-20T13:00:00.000Z',
-        endAt: '2099-02-20T14:00:00.000Z',
+        startAt: futureDateIso(10, 13),
+        endAt: futureDateIso(10, 14),
         subject: 'Replacement booking',
       });
 
@@ -365,7 +381,7 @@ describe('Booking overlap integration', () => {
     expect(secondBookingResponse.body.status).toBe('ACTIVE');
   });
 
-  it('allows cancelling past and same-day reservations with hard delete', async () => {
+  it('blocks cancelling past reservations and allows same-day soft cancellation', async () => {
     const adminEmail = 'booking-cancel-date-rules@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -428,14 +444,20 @@ describe('Booking overlap integration', () => {
       .post(`/api/workspaces/${workspaceId}/bookings/${pastBooking.id}/cancel`)
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(cancelPastResponse.status).toBe(201);
-    expect(cancelPastResponse.body).toEqual({ deleted: true });
-
-    const deletedPastBooking = await prismaService.booking.findUnique({
-      where: { id: pastBooking.id },
-      select: { id: true },
+    expect(cancelPastResponse.status).toBe(400);
+    expect(cancelPastResponse.body).toEqual({
+      code: 'BOOKING_PAST_MUTATION_NOT_ALLOWED',
+      message: 'Past bookings before today cannot be changed',
     });
-    expect(deletedPastBooking).toBeNull();
+
+    const persistedPastBooking = await prismaService.booking.findUnique({
+      where: { id: pastBooking.id },
+      select: { id: true, status: true },
+    });
+    expect(persistedPastBooking).toMatchObject({
+      id: pastBooking.id,
+      status: 'ACTIVE',
+    });
 
     const sameDayBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
@@ -457,11 +479,16 @@ describe('Booking overlap integration', () => {
     expect(cancelSameDayResponse.status).toBe(201);
     expect(cancelSameDayResponse.body).toEqual({ deleted: true });
 
-    const deletedSameDayBooking = await prismaService.booking.findUnique({
+    const cancelledSameDayBooking = await prismaService.booking.findUnique({
       where: { id: sameDayBookingId },
-      select: { id: true },
+      select: { id: true, status: true, cancellationReason: true, cancelledAt: true },
     });
-    expect(deletedSameDayBooking).toBeNull();
+    expect(cancelledSameDayBooking).toMatchObject({
+      id: sameDayBookingId,
+      status: 'CANCELLED',
+      cancellationReason: 'USER_CANCELLED',
+      cancelledAt: expect.any(Date),
+    });
   });
 
   it('lists bookings with default own-upcoming-active filter and optional history toggles', async () => {
@@ -547,8 +574,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`)
       .send({
         roomId,
-        startAt: '2099-05-01T09:00:00.000Z',
-        endAt: '2099-05-01T10:00:00.000Z',
+        startAt: futureDateIso(20, 9),
+        endAt: futureDateIso(20, 10),
         subject: 'Future active booking',
       });
 
@@ -560,8 +587,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`)
       .send({
         roomId,
-        startAt: '2099-05-01T11:00:00.000Z',
-        endAt: '2099-05-01T12:00:00.000Z',
+        startAt: futureDateIso(20, 11),
+        endAt: futureDateIso(20, 12),
         subject: 'Future cancelled booking',
       });
 
@@ -593,10 +620,17 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(includeHistoryResponse.status).toBe(200);
-    expect(includeHistoryResponse.body.items).toHaveLength(2);
+    expect(includeHistoryResponse.body.items).toHaveLength(3);
     const returnedIds = includeHistoryResponse.body.items.map((item: { id: string }) => item.id);
-    expect(returnedIds).toEqual([pastBooking.id, activeFutureBookingId]);
-    expect(returnedIds).not.toContain(cancelledFutureBookingId);
+    expect(returnedIds).toEqual([pastBooking.id, activeFutureBookingId, cancelledFutureBookingId]);
+    expect(
+      includeHistoryResponse.body.items.find(
+        (item: { id: string; status: string }) => item.id === cancelledFutureBookingId,
+      ),
+    ).toMatchObject({
+      id: cancelledFutureBookingId,
+      status: 'CANCELLED',
+    });
 
     const pendingListResponse = await request(app.getHttpServer())
       .get(`/api/workspaces/${workspaceId}/bookings`)
@@ -803,6 +837,8 @@ describe('Booking overlap integration', () => {
       .send({
         name: 'Timezone Rules',
         timezone: 'Europe/Paris',
+        scheduleStartHour: 0,
+        scheduleEndHour: 24,
       });
     expect(createWorkspaceResponse.status).toBe(201);
     const workspaceId = createWorkspaceResponse.body.id as string;
@@ -821,8 +857,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-05-01T21:30:00.000Z',
-        endAt: '2099-05-01T22:30:00.000Z',
+        startAt: futureDateIso(25, 22, 30),
+        endAt: futureDateIso(25, 23, 30),
         subject: 'Cross midnight local',
       });
 
@@ -864,8 +900,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T07:30:00.000Z',
-        endAt: '2099-07-01T08:30:00.000Z',
+        startAt: futureDateIso(30, 7, 30),
+        endAt: futureDateIso(30, 8, 30),
         subject: 'Too early',
       });
     expect(earlyResponse.status).toBe(400);
@@ -879,8 +915,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T17:30:00.000Z',
-        endAt: '2099-07-01T18:30:00.000Z',
+        startAt: futureDateIso(30, 17, 30),
+        endAt: futureDateIso(30, 18, 30),
         subject: 'Too late',
       });
     expect(lateResponse.status).toBe(400);
@@ -894,8 +930,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-01T08:00:00.000Z',
-        endAt: '2099-07-01T18:00:00.000Z',
+        startAt: futureDateIso(30, 8),
+        endAt: futureDateIso(30, 18),
         subject: 'Allowed boundary',
       });
     expect(boundaryResponse.status).toBe(201);
@@ -931,8 +967,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-02T09:03:00.000Z',
-        endAt: '2099-07-02T10:00:00.000Z',
+        startAt: futureDateIso(31, 9, 3),
+        endAt: futureDateIso(31, 10),
         subject: 'Misaligned start',
       });
     expect(misalignedResponse.status).toBe(400);
@@ -946,8 +982,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-07-02T09:15:00.000Z',
-        endAt: '2099-07-02T10:00:00.000Z',
+        startAt: futureDateIso(31, 9, 15),
+        endAt: futureDateIso(31, 10),
         subject: 'Aligned booking',
       });
     expect(alignedResponse.status).toBe(201);
@@ -1104,7 +1140,7 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('requires safe confirmation to cancel a workspace and hard deletes on success', async () => {
+  it('requires safe confirmation to cancel a workspace and soft-cancels on success', async () => {
     const adminEmail = 'workspace-cancel-admin@example.com';
     const pendingEmail = 'workspace-cancel-pending@example.com';
     await registerAndVerify(adminEmail);
@@ -1133,8 +1169,8 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: '2099-08-01T10:00:00.000Z',
-        endAt: '2099-08-01T11:00:00.000Z',
+        startAt: futureDateIso(35, 10),
+        endAt: futureDateIso(35, 11),
         subject: 'Future booking before cancel',
       });
     expect(createBookingResponse.status).toBe(201);
@@ -1216,10 +1252,14 @@ describe('Booking overlap integration', () => {
       prismaService.workspaceMember.findMany({ where: { workspaceId } }),
     ]);
 
-    expect(workspace).toBeNull();
-    expect(room).toBeNull();
-    expect(booking).toBeNull();
-    expect(invitation).toBeNull();
-    expect(memberships).toHaveLength(0);
+    expect(workspace).toMatchObject({
+      id: workspaceId,
+      status: 'CANCELLED',
+      cancelledAt: expect.any(Date),
+    });
+    expect(room).not.toBeNull();
+    expect(booking).not.toBeNull();
+    expect(invitation).not.toBeNull();
+    expect(memberships.length).toBeGreaterThan(0);
   });
 });

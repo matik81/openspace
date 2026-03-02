@@ -115,6 +115,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return 'CONFLICT';
       case HttpStatus.UNPROCESSABLE_ENTITY:
         return 'UNPROCESSABLE_ENTITY';
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return 'TOO_MANY_REQUESTS';
       case HttpStatus.SERVICE_UNAVAILABLE:
         return 'SERVICE_UNAVAILABLE';
       default:

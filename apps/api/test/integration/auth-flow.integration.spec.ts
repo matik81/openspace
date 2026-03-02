@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { EMAIL_PROVIDER, EmailProvider } from '../../src/auth/email/email-provider.interface';
+import { OperationLimitsService } from '../../src/common/operation-limits.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -12,6 +13,8 @@ type MockUser = {
   lastName: string;
   email: string;
   passwordHash: string;
+  status: 'ACTIVE' | 'CANCELLED';
+  cancelledAt: Date | null;
   emailVerifiedAt: Date | null;
   refreshTokenHash: string | null;
   refreshTokenExpiresAt: Date | null;
@@ -28,9 +31,19 @@ type MockVerificationToken = {
   createdAt: Date;
 };
 
+type MockPasswordResetToken = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+};
+
 function createPrismaMock(): PrismaService {
   const users: MockUser[] = [];
   const verificationTokens: MockVerificationToken[] = [];
+  const passwordResetTokens: MockPasswordResetToken[] = [];
 
   const delegates = {
     user: {
@@ -51,6 +64,8 @@ function createPrismaMock(): PrismaService {
           lastName: data.lastName as string,
           email: data.email as string,
           passwordHash: data.passwordHash as string,
+          status: 'ACTIVE',
+          cancelledAt: null,
           emailVerifiedAt: null,
           refreshTokenHash: null,
           refreshTokenExpiresAt: null,
@@ -142,6 +157,81 @@ function createPrismaMock(): PrismaService {
         },
       ),
     },
+    passwordResetToken: {
+      create: jest.fn(async ({ data }: { data: Partial<MockPasswordResetToken> }) => {
+        const record: MockPasswordResetToken = {
+          id: randomUUID(),
+          userId: data.userId as string,
+          tokenHash: data.tokenHash as string,
+          expiresAt: data.expiresAt as Date,
+          consumedAt: null,
+          createdAt: new Date(),
+        };
+        passwordResetTokens.push(record);
+        return record;
+      }),
+      findFirst: jest.fn(
+        async ({
+          where,
+        }: {
+          where: { tokenHash: string; consumedAt: null; expiresAt: { gt: Date } };
+        }) => {
+          const result = passwordResetTokens.find(
+            (token) =>
+              token.tokenHash === where.tokenHash &&
+              token.consumedAt === null &&
+              token.expiresAt > where.expiresAt.gt,
+          );
+          if (!result) {
+            return null;
+          }
+          return {
+            id: result.id,
+            userId: result.userId,
+          };
+        },
+      ),
+      update: jest.fn(async ({ where, data }: { where: { id: string }; data: { consumedAt: Date } }) => {
+        const token = passwordResetTokens.find((item) => item.id === where.id);
+        if (!token) {
+          throw new Error('Password reset token not found');
+        }
+        token.consumedAt = data.consumedAt;
+        return token;
+      }),
+      updateMany: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { userId: string; consumedAt: null; id?: { not: string } };
+          data: { consumedAt: Date };
+        }) => {
+          let count = 0;
+          for (const token of passwordResetTokens) {
+            if (
+              token.userId === where.userId &&
+              token.consumedAt === null &&
+              token.id !== where.id?.not
+            ) {
+              token.consumedAt = data.consumedAt;
+              count += 1;
+            }
+          }
+          return { count };
+        },
+      ),
+    },
+    workspaceMember: {
+      findMany: jest.fn(async () => []),
+      updateMany: jest.fn(async () => ({ count: 0 })),
+    },
+    booking: {
+      updateMany: jest.fn(async () => ({ count: 0 })),
+    },
+    workspace: {
+      updateMany: jest.fn(async () => ({ count: 0 })),
+    },
   };
 
   const prisma = {
@@ -159,11 +249,23 @@ describe('Auth flow integration', () => {
   let app: INestApplication;
   let appModule: { AppModule: unknown };
   let sentVerificationToken = '';
+  let sentPasswordResetToken = '';
   const prismaMock = createPrismaMock();
   const emailProviderMock: EmailProvider = {
     sendVerificationEmail: jest.fn(async ({ token }) => {
       sentVerificationToken = token;
     }),
+    sendPasswordResetEmail: jest.fn(async ({ token }) => {
+      sentPasswordResetToken = token;
+    }),
+  };
+  const operationLimitsServiceMock: Partial<OperationLimitsService> = {
+    assertRegistrationAllowed: jest.fn(async () => undefined),
+    assertRegistrationStatusAllowed: jest.fn(async () => undefined),
+    recordRegistration: jest.fn(async () => undefined),
+    assertUserAuthenticationAllowed: jest.fn(async () => undefined),
+    assertUserOperationAllowed: jest.fn(async () => undefined),
+    recordUserOperation: jest.fn(async () => undefined),
   };
 
   beforeAll(async () => {
@@ -178,6 +280,7 @@ describe('Auth flow integration', () => {
       JWT_ACCESS_TTL: '15m',
       JWT_REFRESH_TTL: '7d',
       EMAIL_VERIFICATION_TTL_MINUTES: '60',
+      PASSWORD_RESET_TTL_MINUTES: '60',
     };
 
     appModule = await import('../../src/app.module');
@@ -187,6 +290,8 @@ describe('Auth flow integration', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
+      .overrideProvider(OperationLimitsService)
+      .useValue(operationLimitsServiceMock)
       .overrideProvider(EMAIL_PROVIDER)
       .useValue(emailProviderMock)
       .compile();
@@ -270,5 +375,112 @@ describe('Auth flow integration', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('INVALID_VERIFICATION_TOKEN');
+  });
+
+  it('reactivates a cancelled account on register and requires email verification again', async () => {
+    const registerResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'reactivate@example.com',
+      password: 'strong-password',
+    });
+    expect(registerResponse.status).toBe(201);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: sentVerificationToken })
+      .expect(201);
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'reactivate@example.com',
+      password: 'strong-password',
+    });
+    expect(loginResponse.status).toBe(201);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/delete-account')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`)
+      .send({
+        email: 'reactivate@example.com',
+        password: 'strong-password',
+      })
+      .expect(201);
+
+    const reRegisterResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'reactivate@example.com',
+      password: 'new-strong-password',
+    });
+    expect(reRegisterResponse.status).toBe(201);
+
+    const loginBeforeVerification = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'reactivate@example.com',
+      password: 'new-strong-password',
+    });
+    expect(loginBeforeVerification.status).toBe(403);
+    expect(loginBeforeVerification.body.code).toBe('EMAIL_NOT_VERIFIED');
+  });
+
+  it('supports password reset request, reset confirmation and account update', async () => {
+    await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'account@example.com',
+      password: 'strong-password',
+    });
+    await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: sentVerificationToken })
+      .expect(201);
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'account@example.com',
+      password: 'strong-password',
+    });
+    expect(loginResponse.status).toBe(201);
+
+    const updateResponse = await request(app.getHttpServer())
+      .post('/api/auth/update-account')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`)
+      .send({
+        firstName: 'Updated',
+        lastName: 'Person',
+        email: 'account@example.com',
+        password: 'strong-password',
+        newPassword: 'next-strong-password',
+      });
+    expect(updateResponse.status).toBe(201);
+    expect(updateResponse.body).toMatchObject({
+      email: 'account@example.com',
+      firstName: 'Updated',
+      lastName: 'Person',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/auth/request-password-reset')
+      .send({ email: 'account@example.com' })
+      .expect(201, { requested: true });
+    expect(sentPasswordResetToken).toEqual(expect.any(String));
+
+    await request(app.getHttpServer())
+      .post('/api/auth/reset-password')
+      .send({
+        token: sentPasswordResetToken,
+        password: 'reset-strong-password',
+      })
+      .expect(201, { reset: true });
+
+    const oldPasswordLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'account@example.com',
+      password: 'next-strong-password',
+    });
+    expect(oldPasswordLogin.status).toBe(401);
+
+    const newPasswordLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'account@example.com',
+      password: 'reset-strong-password',
+    });
+    expect(newPasswordLogin.status).toBe(201);
   });
 });

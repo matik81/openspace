@@ -1,3 +1,5 @@
+import { BACKEND_POLICY_DEFAULTS } from '../common/backend-policy.defaults';
+
 type EnvInput = Record<string, unknown>;
 
 type ValidatedEnv = {
@@ -10,6 +12,19 @@ type ValidatedEnv = {
   JWT_ACCESS_TTL: string;
   JWT_REFRESH_TTL: string;
   EMAIL_VERIFICATION_TTL_MINUTES: number;
+  PASSWORD_RESET_TTL_MINUTES: number;
+  MAX_WORKSPACES_PER_USER: number;
+  MAX_ROOMS_PER_WORKSPACE: number;
+  MAX_USERS_PER_WORKSPACE: number;
+  MAX_PENDING_INVITATIONS_PER_WORKSPACE: number;
+  MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE: number;
+  MAX_BOOKING_DAYS_AHEAD: number;
+  MAX_REGISTRATIONS_PER_HOUR_PER_IP: number;
+  MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER: number;
+  MAX_ROOM_CREATIONS_PER_HOUR_PER_USER: number;
+  MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER: number;
+  MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER: number;
+  RATE_LIMIT_SUSPENSION_HOURS: number;
 };
 
 function isNonEmptyString(value: unknown): value is string {
@@ -127,12 +142,102 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     isNonEmptyString(config.JWT_ACCESS_TTL) ? config.JWT_ACCESS_TTL : '15m';
   const jwtRefreshTtl =
     isNonEmptyString(config.JWT_REFRESH_TTL) ? config.JWT_REFRESH_TTL : '7d';
-  let emailVerificationTtlMinutes = 60;
+  let emailVerificationTtlMinutes = BACKEND_POLICY_DEFAULTS.EMAIL_VERIFICATION_TTL_MINUTES;
+  let passwordResetTtlMinutes = BACKEND_POLICY_DEFAULTS.PASSWORD_RESET_TTL_MINUTES;
+  let maxWorkspacesPerUser = BACKEND_POLICY_DEFAULTS.MAX_WORKSPACES_PER_USER;
+  let maxRoomsPerWorkspace = BACKEND_POLICY_DEFAULTS.MAX_ROOMS_PER_WORKSPACE;
+  let maxUsersPerWorkspace = BACKEND_POLICY_DEFAULTS.MAX_USERS_PER_WORKSPACE;
+  let maxPendingInvitationsPerWorkspace =
+    BACKEND_POLICY_DEFAULTS.MAX_PENDING_INVITATIONS_PER_WORKSPACE;
+  let maxFutureBookingsPerUserPerWorkspace =
+    BACKEND_POLICY_DEFAULTS.MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE;
+  let maxBookingDaysAhead = BACKEND_POLICY_DEFAULTS.MAX_BOOKING_DAYS_AHEAD;
+  let maxRegistrationsPerHourPerIp =
+    BACKEND_POLICY_DEFAULTS.MAX_REGISTRATIONS_PER_HOUR_PER_IP;
+  let maxWorkspaceCreationsPerHourPerUser =
+    BACKEND_POLICY_DEFAULTS.MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER;
+  let maxRoomCreationsPerHourPerUser =
+    BACKEND_POLICY_DEFAULTS.MAX_ROOM_CREATIONS_PER_HOUR_PER_USER;
+  let maxInvitationCreationsPerHourPerUser =
+    BACKEND_POLICY_DEFAULTS.MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER;
+  let maxBookingCreationsPerHourPerUser =
+    BACKEND_POLICY_DEFAULTS.MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER;
+  let rateLimitSuspensionHours = BACKEND_POLICY_DEFAULTS.RATE_LIMIT_SUSPENSION_HOURS;
   try {
     emailVerificationTtlMinutes = parsePositiveInteger(
       config.EMAIL_VERIFICATION_TTL_MINUTES,
-      60,
+      BACKEND_POLICY_DEFAULTS.EMAIL_VERIFICATION_TTL_MINUTES,
       'EMAIL_VERIFICATION_TTL_MINUTES',
+    );
+    passwordResetTtlMinutes = parsePositiveInteger(
+      config.PASSWORD_RESET_TTL_MINUTES,
+      BACKEND_POLICY_DEFAULTS.PASSWORD_RESET_TTL_MINUTES,
+      'PASSWORD_RESET_TTL_MINUTES',
+    );
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+
+  try {
+    maxWorkspacesPerUser = parsePositiveInteger(
+      config.MAX_WORKSPACES_PER_USER,
+      BACKEND_POLICY_DEFAULTS.MAX_WORKSPACES_PER_USER,
+      'MAX_WORKSPACES_PER_USER',
+    );
+    maxRoomsPerWorkspace = parsePositiveInteger(
+      config.MAX_ROOMS_PER_WORKSPACE,
+      BACKEND_POLICY_DEFAULTS.MAX_ROOMS_PER_WORKSPACE,
+      'MAX_ROOMS_PER_WORKSPACE',
+    );
+    maxUsersPerWorkspace = parsePositiveInteger(
+      config.MAX_USERS_PER_WORKSPACE,
+      BACKEND_POLICY_DEFAULTS.MAX_USERS_PER_WORKSPACE,
+      'MAX_USERS_PER_WORKSPACE',
+    );
+    maxPendingInvitationsPerWorkspace = parsePositiveInteger(
+      config.MAX_PENDING_INVITATIONS_PER_WORKSPACE,
+      BACKEND_POLICY_DEFAULTS.MAX_PENDING_INVITATIONS_PER_WORKSPACE,
+      'MAX_PENDING_INVITATIONS_PER_WORKSPACE',
+    );
+    maxFutureBookingsPerUserPerWorkspace = parsePositiveInteger(
+      config.MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE,
+      BACKEND_POLICY_DEFAULTS.MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE,
+      'MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE',
+    );
+    maxBookingDaysAhead = parsePositiveInteger(
+      config.MAX_BOOKING_DAYS_AHEAD,
+      BACKEND_POLICY_DEFAULTS.MAX_BOOKING_DAYS_AHEAD,
+      'MAX_BOOKING_DAYS_AHEAD',
+    );
+    maxRegistrationsPerHourPerIp = parsePositiveInteger(
+      config.MAX_REGISTRATIONS_PER_HOUR_PER_IP,
+      BACKEND_POLICY_DEFAULTS.MAX_REGISTRATIONS_PER_HOUR_PER_IP,
+      'MAX_REGISTRATIONS_PER_HOUR_PER_IP',
+    );
+    maxWorkspaceCreationsPerHourPerUser = parsePositiveInteger(
+      config.MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER,
+      BACKEND_POLICY_DEFAULTS.MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER,
+      'MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER',
+    );
+    maxRoomCreationsPerHourPerUser = parsePositiveInteger(
+      config.MAX_ROOM_CREATIONS_PER_HOUR_PER_USER,
+      BACKEND_POLICY_DEFAULTS.MAX_ROOM_CREATIONS_PER_HOUR_PER_USER,
+      'MAX_ROOM_CREATIONS_PER_HOUR_PER_USER',
+    );
+    maxInvitationCreationsPerHourPerUser = parsePositiveInteger(
+      config.MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER,
+      BACKEND_POLICY_DEFAULTS.MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER,
+      'MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER',
+    );
+    maxBookingCreationsPerHourPerUser = parsePositiveInteger(
+      config.MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER,
+      BACKEND_POLICY_DEFAULTS.MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER,
+      'MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER',
+    );
+    rateLimitSuspensionHours = parsePositiveInteger(
+      config.RATE_LIMIT_SUSPENSION_HOURS,
+      BACKEND_POLICY_DEFAULTS.RATE_LIMIT_SUSPENSION_HOURS,
+      'RATE_LIMIT_SUSPENSION_HOURS',
     );
   } catch (error) {
     errors.push((error as Error).message);
@@ -152,5 +257,18 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     JWT_ACCESS_TTL: jwtAccessTtl,
     JWT_REFRESH_TTL: jwtRefreshTtl,
     EMAIL_VERIFICATION_TTL_MINUTES: emailVerificationTtlMinutes,
+    PASSWORD_RESET_TTL_MINUTES: passwordResetTtlMinutes,
+    MAX_WORKSPACES_PER_USER: maxWorkspacesPerUser,
+    MAX_ROOMS_PER_WORKSPACE: maxRoomsPerWorkspace,
+    MAX_USERS_PER_WORKSPACE: maxUsersPerWorkspace,
+    MAX_PENDING_INVITATIONS_PER_WORKSPACE: maxPendingInvitationsPerWorkspace,
+    MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE: maxFutureBookingsPerUserPerWorkspace,
+    MAX_BOOKING_DAYS_AHEAD: maxBookingDaysAhead,
+    MAX_REGISTRATIONS_PER_HOUR_PER_IP: maxRegistrationsPerHourPerIp,
+    MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER: maxWorkspaceCreationsPerHourPerUser,
+    MAX_ROOM_CREATIONS_PER_HOUR_PER_USER: maxRoomCreationsPerHourPerUser,
+    MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER: maxInvitationCreationsPerHourPerUser,
+    MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER: maxBookingCreationsPerHourPerUser,
+    RATE_LIMIT_SUSPENSION_HOURS: rateLimitSuspensionHours,
   };
 }

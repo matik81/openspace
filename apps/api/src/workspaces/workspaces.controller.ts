@@ -14,6 +14,7 @@ import { JwtSubject } from '../auth/types/jwt-subject.type';
 import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { LeaveWorkspaceDto } from './dto/leave-workspace.dto';
 import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
@@ -53,6 +54,17 @@ export class WorkspacesController {
     );
   }
 
+  @Get(':workspaceId')
+  async getVisibleWorkspace(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspacesService.getVisibleWorkspace(
+      this.extractAuthUser(request),
+      workspaceId,
+    );
+  }
+
   @Patch(':workspaceId')
   async updateWorkspace(
     @Req() request: AuthenticatedRequest,
@@ -73,6 +85,19 @@ export class WorkspacesController {
     @Body() body: CancelWorkspaceDto,
   ) {
     return this.workspacesService.cancelWorkspace(
+      this.extractAuthUser(request),
+      workspaceId,
+      body,
+    );
+  }
+
+  @Post(':workspaceId/leave')
+  async leaveWorkspace(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Body() body: LeaveWorkspaceDto,
+  ) {
+    return this.workspacesService.leaveWorkspace(
       this.extractAuthUser(request),
       workspaceId,
       body,

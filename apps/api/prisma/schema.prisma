@@ -12,6 +12,21 @@ enum WorkspaceRole {
   MEMBER
 }
 
+enum UserStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum RoomStatus {
+  ACTIVE
+  CANCELLED
+}
+
 enum MembershipStatus {
   ACTIVE
   INACTIVE
@@ -30,10 +45,30 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum BookingCancellationReason {
+  USER_CANCELLED
+  USER_LEFT_WORKSPACE
+  ROOM_UNAVAILABLE
+  SCHEDULE_INCOMPATIBLE
+}
+
 enum BookingCriticality {
   HIGH
   MEDIUM
   LOW
+}
+
+enum RateLimitOperationType {
+  REGISTER
+  CREATE_WORKSPACE
+  CREATE_ROOM
+  CREATE_INVITATION
+  CREATE_BOOKING
+}
+
+enum RateLimitSubjectType {
+  IP
+  USER
 }
 
 model User {
@@ -42,6 +77,8 @@ model User {
   lastName               String
   email                  String                   @unique
   passwordHash           String
+  status                 UserStatus               @default(ACTIVE)
+  cancelledAt            DateTime?
   emailVerifiedAt        DateTime?
   refreshTokenHash       String?
   refreshTokenExpiresAt  DateTime?
@@ -53,6 +90,8 @@ model User {
   bookings               Booking[]
   emailVerificationTokens EmailVerificationToken[]
   workspacePreferences   UserWorkspacePreference[]
+  operationLogs          OperationLog[]
+  rateLimitSuspensions   RateLimitSuspension[]
 }
 
 model Workspace {
@@ -61,6 +100,8 @@ model Workspace {
   timezone        String            @default("UTC")
   scheduleStartHour Int             @default(8)
   scheduleEndHour Int               @default(18)
+  status          WorkspaceStatus   @default(ACTIVE)
+  cancelledAt     DateTime?
   createdByUserId String            @db.Uuid
   createdByUser   User              @relation("WorkspaceCreatedBy", fields: [createdByUserId], references: [id])
   createdAt       DateTime          @default(now())
@@ -70,7 +111,9 @@ model Workspace {
   rooms           Room[]
   bookings        Booking[]
   userPreferences UserWorkspacePreference[]
+  scheduleVersions WorkspaceScheduleVersion[]
 
+  @@unique([name])
   @@index([createdByUserId])
 }
 
@@ -125,6 +168,8 @@ model Room {
   workspaceId String    @db.Uuid
   name        String
   description String?
+  status      RoomStatus @default(ACTIVE)
+  cancelledAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -145,6 +190,8 @@ model Booking {
   subject        String
   criticality    BookingCriticality @default(MEDIUM)
   status         BookingStatus      @default(ACTIVE)
+  cancelledAt    DateTime?
+  cancellationReason BookingCancellationReason?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -153,6 +200,46 @@ model Booking {
 
   @@index([roomId, startAt])
   @@index([workspaceId, status])
+}
+
+model WorkspaceScheduleVersion {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  timezone          String
+  scheduleStartHour Int
+  scheduleEndHour   Int
+  effectiveFrom     DateTime  @db.Timestamptz(6)
+  createdAt         DateTime  @default(now())
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, effectiveFrom])
+  @@index([workspaceId, effectiveFrom])
+}
+
+model OperationLog {
+  id            String                 @id @default(uuid()) @db.Uuid
+  operationType RateLimitOperationType
+  ipAddress     String?
+  userId        String?                @db.Uuid
+  createdAt     DateTime               @default(now()) @db.Timestamptz(6)
+  user          User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([operationType, ipAddress, createdAt])
+  @@index([operationType, userId, createdAt])
+}
+
+model RateLimitSuspension {
+  id            String               @id @default(uuid()) @db.Uuid
+  subjectType   RateLimitSubjectType
+  operationType RateLimitOperationType
+  ipAddress     String?
+  userId        String?              @db.Uuid
+  suspendedAt   DateTime             @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime             @db.Timestamptz(6)
+  user          User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([subjectType, ipAddress, expiresAt])
+  @@index([subjectType, userId, expiresAt])
 }
 
 model EmailVerificationToken {

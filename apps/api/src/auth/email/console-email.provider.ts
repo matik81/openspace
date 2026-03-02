@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EmailProvider, VerificationEmailPayload } from './email-provider.interface';
+import {
+  EmailProvider,
+  PasswordResetEmailPayload,
+  VerificationEmailPayload,
+} from './email-provider.interface';
 
 @Injectable()
 export class ConsoleEmailProvider implements EmailProvider {
@@ -10,5 +14,8 @@ export class ConsoleEmailProvider implements EmailProvider {
       `[DEV_EMAIL_VERIFICATION] to=${payload.to} token=${payload.token}`,
     );
   }
-}
 
+  async sendPasswordResetEmail(payload: PasswordResetEmailPayload): Promise<void> {
+    this.logger.log(`[DEV_PASSWORD_RESET] to=${payload.to} token=${payload.token}`);
+  }
+}

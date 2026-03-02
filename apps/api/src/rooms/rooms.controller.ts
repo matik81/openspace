@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -43,8 +44,9 @@ export class RoomsController {
   async listRooms(
     @Req() request: AuthenticatedRequest,
     @Param('workspaceId') workspaceId: string,
+    @Query('date') date: string | undefined,
   ) {
-    return this.roomsService.listRooms(this.extractAuthUser(request), workspaceId);
+    return this.roomsService.listRooms(this.extractAuthUser(request), workspaceId, date);
   }
 
   @Get(':roomId')

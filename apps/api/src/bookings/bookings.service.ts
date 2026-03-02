@@ -7,80 +7,53 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  BookingCancellationReason,
   BookingCriticality,
   BookingStatus,
   InvitationStatus,
   MembershipStatus,
   Prisma,
+  RateLimitOperationType,
+  RoomStatus,
+  UserStatus,
+  WorkspaceStatus,
 } from '@prisma/client';
+import { BackendPolicyService } from '../common/backend-policy.service';
+import { OperationLimitsService } from '../common/operation-limits.service';
+import {
+  isBookingWithinAllowedHours,
+  isSingleLocalDay,
+  toLocalDateKey,
+  toLocalTimeParts,
+} from '../common/workspace-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 
-type AuthUser = {
-  userId: string;
-};
-
-type VerifiedUser = {
-  id: string;
-  email: string;
-};
-
-type ListBookingsQuery = {
-  mine?: string;
-  includePast?: string;
-  includeCancelled?: string;
-};
+type AuthUser = { userId: string };
+type VerifiedUser = { id: string; email: string };
+type ListBookingsQuery = { mine?: string; includePast?: string; includeCancelled?: string };
 
 @Injectable()
 export class BookingsService {
   private static readonly BOOKING_MINUTE_STEP = 15;
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly backendPolicyService: BackendPolicyService,
+    private readonly operationLimitsService: OperationLimitsService,
+  ) {}
 
-  async listBookings(
-    authUser: AuthUser,
-    workspaceId: string,
-    query: ListBookingsQuery = {},
-  ) {
+  async listBookings(authUser: AuthUser, workspaceId: string, query: ListBookingsQuery = {}) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
-    const workspace = await this.prismaService.workspace.findUnique({
-      where: {
-        id: normalizedWorkspaceId,
-      },
-      select: {
-        timezone: true,
-        scheduleStartHour: true,
-        scheduleEndHour: true,
-      },
-    });
+    const workspace = await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
 
-    if (!workspace) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Workspace not found',
-      });
-    }
-
-    const mine = this.parseBooleanQuery(query.mine, true, 'mine');
-    const includePast = this.parseBooleanQuery(query.includePast, false, 'includePast');
-    const includeCancelled = this.parseBooleanQuery(
-      query.includeCancelled,
-      false,
-      'includeCancelled',
-    );
-
-    const where: Prisma.BookingWhereInput = {
-      workspaceId: normalizedWorkspaceId,
-    };
-
-    if (mine) {
+    const where: Prisma.BookingWhereInput = { workspaceId: normalizedWorkspaceId };
+    if (this.parseBooleanQuery(query.mine, true, 'mine')) {
       where.createdByUserId = user.id;
     }
-
-    if (!includeCancelled) {
+    if (!this.parseBooleanQuery(query.includeCancelled, false, 'includeCancelled')) {
       where.status = BookingStatus.ACTIVE;
     }
 
@@ -89,142 +62,87 @@ export class BookingsService {
       select: this.bookingListSelect(),
       orderBy: [{ startAt: 'asc' }, { createdAt: 'asc' }],
     });
-
-    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
-    const visibleBookings = includePast
-      ? bookings
-      : bookings.filter(
-          (booking) => this.toLocalDateKey(booking.startAt, workspace.timezone) >= todayDateKey,
-        );
+    const todayDateKey = toLocalDateKey(new Date(), workspace.timezone);
+    const includePast = this.parseBooleanQuery(query.includePast, false, 'includePast');
 
     return {
-      items: visibleBookings.map((booking) => ({
-        id: booking.id,
-        workspaceId: booking.workspaceId,
-        roomId: booking.roomId,
-        roomName: booking.room.name,
-        createdByUserId: booking.createdByUserId,
-        createdByDisplayName: this.toDisplayName(
-          booking.createdByUser.firstName,
-          booking.createdByUser.lastName,
-        ),
-        startAt: booking.startAt,
-        endAt: booking.endAt,
-        subject: booking.subject,
-        criticality: booking.criticality,
-        status: booking.status,
-        createdAt: booking.createdAt,
-        updatedAt: booking.updatedAt,
-      })),
+      items: bookings
+        .filter(
+          (booking) =>
+            includePast || toLocalDateKey(booking.startAt, workspace.timezone) >= todayDateKey,
+        )
+        .map((booking) => ({
+          id: booking.id,
+          workspaceId: booking.workspaceId,
+          roomId: booking.roomId,
+          roomName: booking.room.name,
+          createdByUserId: booking.createdByUserId,
+          createdByDisplayName: this.toDisplayName(
+            booking.createdByUser.firstName,
+            booking.createdByUser.lastName,
+          ),
+          startAt: booking.startAt,
+          endAt: booking.endAt,
+          subject: booking.subject,
+          criticality: booking.criticality,
+          status: booking.status,
+          createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
+        })),
     };
   }
 
-  async createBooking(
-    authUser: AuthUser,
-    workspaceId: string,
-    dto: CreateBookingDto,
-  ) {
+  async createBooking(authUser: AuthUser, workspaceId: string, dto: CreateBookingDto) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+    const workspace = await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+    await this.operationLimitsService.assertUserOperationAllowed(
+      user.id,
+      RateLimitOperationType.CREATE_BOOKING,
+    );
 
     const roomId = this.requireUuid(dto.roomId, 'roomId');
     const startAt = this.parseDate(dto.startAt, 'startAt');
     const endAt = this.parseDate(dto.endAt, 'endAt');
-    const subject = this.requireString(dto.subject, 'subject');
-    const criticality = this.parseCriticality(dto.criticality);
-    const workspace = await this.prismaService.workspace.findUnique({
-      where: {
-        id: normalizedWorkspaceId,
-      },
-      select: {
-        id: true,
-        timezone: true,
-        scheduleStartHour: true,
-        scheduleEndHour: true,
-      },
-    });
-
-    if (!workspace) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Workspace not found',
-      });
-    }
-
-    if (endAt <= startAt) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: 'endAt must be after startAt',
-      });
-    }
-
-    const startDateKey = this.toLocalDateKey(startAt, workspace.timezone);
-    const endDateKey = this.toLocalDateKey(endAt, workspace.timezone);
-    if (startDateKey !== endDateKey) {
-      throw new BadRequestException({
-        code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
-        message: 'Booking must start and end on the same date in the workspace timezone',
-      });
-    }
-
-    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
-    if (startDateKey < todayDateKey) {
-      throw new BadRequestException({
-        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
-        message: 'Booking date cannot be in the past',
-      });
-    }
+    this.validateBookingTimeRange(workspace, startAt, endAt);
+    await this.assertFutureBookingCapacity(normalizedWorkspaceId, user.id);
 
     const room = await this.prismaService.room.findFirst({
       where: {
         id: roomId,
         workspaceId: normalizedWorkspaceId,
+        status: RoomStatus.ACTIVE,
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
-
     if (!room) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Room not found',
-      });
+      throw new NotFoundException({ code: 'NOT_FOUND', message: 'Room not found' });
     }
 
-    this.assertBookingWithinAllowedHours(
-      startAt,
-      endAt,
-      workspace.timezone,
-      workspace.scheduleStartHour,
-      workspace.scheduleEndHour,
-    );
-    this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
-
     try {
-      return await this.prismaService.booking.create({
+      const booking = await this.prismaService.booking.create({
         data: {
           workspaceId: normalizedWorkspaceId,
           roomId: room.id,
           createdByUserId: user.id,
           startAt,
           endAt,
-          subject,
-          criticality,
+          subject: this.requireString(dto.subject, 'subject'),
+          criticality: this.parseCriticality(dto.criticality),
           status: BookingStatus.ACTIVE,
         },
         select: this.bookingSelect(),
       });
+      await this.operationLimitsService.recordUserOperation(
+        user.id,
+        RateLimitOperationType.CREATE_BOOKING,
+      );
+      return booking;
     } catch (error) {
       const bookingConflict = this.getBookingConflict(error);
       if (bookingConflict) {
-        throw new ConflictException({
-          code: bookingConflict.code,
-          message: bookingConflict.message,
-        });
+        throw new ConflictException(bookingConflict);
       }
-
       throw error;
     }
   }
@@ -237,17 +155,11 @@ export class BookingsService {
   ) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    const normalizedBookingId = this.requireUuid(bookingId, 'bookingId');
-    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
-
-    const existingBooking = await this.prismaService.booking.findFirst({
-      where: {
-        id: normalizedBookingId,
-        workspaceId: normalizedWorkspaceId,
-      },
+    const workspace = await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
+    const existing = await this.prismaService.booking.findFirst({
+      where: { id: this.requireUuid(bookingId, 'bookingId'), workspaceId: normalizedWorkspaceId },
       select: {
         id: true,
-        workspaceId: true,
         roomId: true,
         createdByUserId: true,
         startAt: true,
@@ -257,140 +169,63 @@ export class BookingsService {
         status: true,
       },
     });
-
-    if (!existingBooking) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Booking not found',
-      });
+    if (!existing) {
+      throw new NotFoundException({ code: 'NOT_FOUND', message: 'Booking not found' });
     }
-
-    if (existingBooking.createdByUserId !== user.id) {
+    if (existing.createdByUserId !== user.id) {
       throw new ForbiddenException({
         code: 'UNAUTHORIZED',
         message: 'Only the booking owner can update this booking',
       });
     }
+    if (existing.status === BookingStatus.CANCELLED) {
+      throw new ConflictException({
+        code: 'BOOKING_ALREADY_CANCELLED',
+        message: 'Booking is already cancelled',
+      });
+    }
+    this.assertBookingCanStillBeMutated(existing.startAt, workspace.timezone);
 
-    const hasAnyField =
-      dto.roomId !== undefined ||
-      dto.startAt !== undefined ||
-      dto.endAt !== undefined ||
-      dto.subject !== undefined ||
-      dto.criticality !== undefined;
+    const roomId = dto.roomId !== undefined ? this.requireUuid(dto.roomId, 'roomId') : existing.roomId;
+    const startAt = dto.startAt !== undefined ? this.parseDate(dto.startAt, 'startAt') : existing.startAt;
+    const endAt = dto.endAt !== undefined ? this.parseDate(dto.endAt, 'endAt') : existing.endAt;
+    const subject = dto.subject !== undefined ? this.requireString(dto.subject, 'subject') : existing.subject;
+    const criticality =
+      dto.criticality !== undefined ? this.parseCriticality(dto.criticality) : existing.criticality;
 
-    if (!hasAnyField) {
+    if (
+      dto.roomId === undefined &&
+      dto.startAt === undefined &&
+      dto.endAt === undefined &&
+      dto.subject === undefined &&
+      dto.criticality === undefined
+    ) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
         message: 'At least one field must be provided to update booking',
       });
     }
 
-    const workspace = await this.prismaService.workspace.findUnique({
-      where: {
-        id: normalizedWorkspaceId,
-      },
-      select: {
-        id: true,
-        timezone: true,
-        scheduleStartHour: true,
-        scheduleEndHour: true,
-      },
-    });
-
-    if (!workspace) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Workspace not found',
-      });
-    }
-
-    const roomId =
-      dto.roomId !== undefined ? this.requireUuid(dto.roomId, 'roomId') : existingBooking.roomId;
-    const startAt =
-      dto.startAt !== undefined ? this.parseDate(dto.startAt, 'startAt') : existingBooking.startAt;
-    const endAt =
-      dto.endAt !== undefined ? this.parseDate(dto.endAt, 'endAt') : existingBooking.endAt;
-    const subject =
-      dto.subject !== undefined ? this.requireString(dto.subject, 'subject') : existingBooking.subject;
-    const criticality =
-      dto.criticality !== undefined
-        ? this.parseCriticality(dto.criticality)
-        : existingBooking.criticality;
-
-    if (endAt <= startAt) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: 'endAt must be after startAt',
-      });
-    }
-
-    const startDateKey = this.toLocalDateKey(startAt, workspace.timezone);
-    const endDateKey = this.toLocalDateKey(endAt, workspace.timezone);
-    if (startDateKey !== endDateKey) {
-      throw new BadRequestException({
-        code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
-        message: 'Booking must start and end on the same date in the workspace timezone',
-      });
-    }
-
-    const todayDateKey = this.toLocalDateKey(new Date(), workspace.timezone);
-    if (startDateKey < todayDateKey) {
-      throw new BadRequestException({
-        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
-        message: 'Booking date cannot be in the past',
-      });
-    }
-
+    this.validateBookingTimeRange(workspace, startAt, endAt);
     const room = await this.prismaService.room.findFirst({
-      where: {
-        id: roomId,
-        workspaceId: normalizedWorkspaceId,
-      },
-      select: {
-        id: true,
-      },
+      where: { id: roomId, workspaceId: normalizedWorkspaceId, status: RoomStatus.ACTIVE },
+      select: { id: true },
     });
-
     if (!room) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Room not found',
-      });
+      throw new NotFoundException({ code: 'NOT_FOUND', message: 'Room not found' });
     }
-
-    this.assertBookingWithinAllowedHours(
-      startAt,
-      endAt,
-      workspace.timezone,
-      workspace.scheduleStartHour,
-      workspace.scheduleEndHour,
-    );
-    this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
 
     try {
       return await this.prismaService.booking.update({
-        where: {
-          id: existingBooking.id,
-        },
-        data: {
-          roomId: room.id,
-          startAt,
-          endAt,
-          subject,
-          criticality,
-        },
+        where: { id: existing.id },
+        data: { roomId: room.id, startAt, endAt, subject, criticality },
         select: this.bookingSelect(),
       });
     } catch (error) {
       const bookingConflict = this.getBookingConflict(error);
       if (bookingConflict) {
-        throw new ConflictException({
-          code: bookingConflict.code,
-          message: bookingConflict.message,
-        });
+        throw new ConflictException(bookingConflict);
       }
-
       throw error;
     }
   }
@@ -398,93 +233,86 @@ export class BookingsService {
   async cancelBooking(authUser: AuthUser, workspaceId: string, bookingId: string) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    const normalizedBookingId = this.requireUuid(bookingId, 'bookingId');
-    await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
-
+    const workspace = await this.assertActiveWorkspaceMember(normalizedWorkspaceId, user);
     const booking = await this.prismaService.booking.findFirst({
-      where: {
-        id: normalizedBookingId,
-        workspaceId: normalizedWorkspaceId,
-      },
+      where: { id: this.requireUuid(bookingId, 'bookingId'), workspaceId: normalizedWorkspaceId },
       select: {
         id: true,
+        createdByUserId: true,
+        startAt: true,
         status: true,
       },
     });
-
     if (!booking) {
-      throw new NotFoundException({
-        code: 'NOT_FOUND',
-        message: 'Booking not found',
+      throw new NotFoundException({ code: 'NOT_FOUND', message: 'Booking not found' });
+    }
+    if (booking.createdByUserId !== user.id) {
+      throw new ForbiddenException({
+        code: 'UNAUTHORIZED',
+        message: 'Only the booking owner can cancel this booking',
       });
     }
-
     if (booking.status === BookingStatus.CANCELLED) {
       throw new ConflictException({
         code: 'BOOKING_ALREADY_CANCELLED',
         message: 'Booking is already cancelled',
       });
     }
+    this.assertBookingCanStillBeMutated(booking.startAt, workspace.timezone);
 
-    await this.prismaService.booking.delete({
-      where: {
-        id: booking.id,
+    await this.prismaService.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancellationReason: BookingCancellationReason.USER_CANCELLED,
       },
     });
 
-    return {
-      deleted: true,
-    };
+    return { deleted: true };
   }
 
   private async requireVerifiedUser(userId: string): Promise<VerifiedUser> {
-    const normalizedUserId = this.requireUuid(userId, 'userId');
     const user = await this.prismaService.user.findUnique({
-      where: { id: normalizedUserId },
-      select: {
-        id: true,
-        email: true,
-        emailVerifiedAt: true,
-      },
+      where: { id: this.requireUuid(userId, 'userId') },
+      select: { id: true, email: true, status: true, emailVerifiedAt: true },
     });
-
     if (!user) {
-      throw new UnauthorizedException({
-        code: 'UNAUTHORIZED',
-        message: 'Invalid access token',
-      });
+      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Invalid access token' });
     }
-
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException({ code: 'ACCOUNT_CANCELLED', message: 'Account is no longer active' });
+    }
     if (!user.emailVerifiedAt) {
       throw new ForbiddenException({
         code: 'EMAIL_NOT_VERIFIED',
         message: 'Email must be verified before accessing workspaces',
       });
     }
-
-    return {
-      id: user.id,
-      email: this.normalizeEmail(user.email),
-    };
+    return { id: user.id, email: this.normalizeEmail(user.email) };
   }
 
-  private async assertActiveWorkspaceMember(
-    workspaceId: string,
-    user: VerifiedUser,
-  ): Promise<void> {
-    const membership = await this.prismaService.workspaceMember.findFirst({
-      where: {
-        workspaceId,
-        userId: user.id,
-        status: MembershipStatus.ACTIVE,
-      },
+  private async assertActiveWorkspaceMember(workspaceId: string, user: VerifiedUser) {
+    const workspace = await this.prismaService.workspace.findUnique({
+      where: { id: workspaceId },
       select: {
         id: true,
+        timezone: true,
+        scheduleStartHour: true,
+        scheduleEndHour: true,
+        status: true,
       },
     });
+    if (!workspace || workspace.status !== WorkspaceStatus.ACTIVE) {
+      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+    }
 
+    const membership = await this.prismaService.workspaceMember.findFirst({
+      where: { workspaceId, userId: user.id, status: MembershipStatus.ACTIVE },
+      select: { id: true },
+    });
     if (membership) {
-      return;
+      return workspace;
     }
 
     const pendingInvitation = await this.prismaService.invitation.findFirst({
@@ -492,26 +320,34 @@ export class BookingsService {
         workspaceId,
         email: user.email,
         status: InvitationStatus.PENDING,
-        expiresAt: {
-          gt: new Date(),
-        },
+        expiresAt: { gt: new Date() },
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
-
     if (pendingInvitation) {
       throw new ForbiddenException({
         code: 'UNAUTHORIZED',
         message: 'Only active workspace members can manage bookings',
       });
     }
+    throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+  }
 
-    throw new ForbiddenException({
-      code: 'WORKSPACE_NOT_VISIBLE',
-      message: 'Workspace not visible',
+  private async assertFutureBookingCapacity(workspaceId: string, userId: string) {
+    const count = await this.prismaService.booking.count({
+      where: {
+        workspaceId,
+        createdByUserId: userId,
+        status: BookingStatus.ACTIVE,
+        startAt: { gte: new Date() },
+      },
     });
+    if (count >= this.backendPolicyService.maxFutureBookingsPerUserPerWorkspace) {
+      throw new ConflictException({
+        code: 'USER_FUTURE_BOOKING_LIMIT_REACHED',
+        message: 'User has reached the maximum number of future bookings in this workspace',
+      });
+    }
   }
 
   private bookingSelect() {
@@ -532,42 +368,75 @@ export class BookingsService {
 
   private bookingListSelect() {
     return {
-      id: true,
-      workspaceId: true,
-      roomId: true,
-      createdByUserId: true,
-      startAt: true,
-      endAt: true,
-      subject: true,
-      criticality: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      room: {
-        select: {
-          name: true,
-        },
-      },
-      createdByUser: {
-        select: {
-          firstName: true,
-          lastName: true,
-        },
-      },
+      ...this.bookingSelect(),
+      room: { select: { name: true } },
+      createdByUser: { select: { firstName: true, lastName: true } },
     };
   }
 
-  private parseDate(value: string | undefined | null, fieldName: string): Date {
-    const raw = this.requireString(value, fieldName);
-    const date = new Date(raw);
+  private validateBookingTimeRange(
+    workspace: { timezone: string; scheduleStartHour: number; scheduleEndHour: number },
+    startAt: Date,
+    endAt: Date,
+  ) {
+    if (endAt <= startAt) {
+      throw new BadRequestException({ code: 'BAD_REQUEST', message: 'endAt must be after startAt' });
+    }
+    if (!isSingleLocalDay(startAt, endAt, workspace.timezone)) {
+      throw new BadRequestException({
+        code: 'BOOKING_MULTI_DAY_NOT_ALLOWED',
+        message: 'Booking must start and end on the same date in the workspace timezone',
+      });
+    }
 
+    const todayKey = toLocalDateKey(new Date(), workspace.timezone);
+    const startDateKey = toLocalDateKey(startAt, workspace.timezone);
+    if (startDateKey < todayKey) {
+      throw new BadRequestException({
+        code: 'BOOKING_PAST_DATE_NOT_ALLOWED',
+        message: 'Booking date cannot be in the past',
+      });
+    }
+    if (this.daysBetweenDateKeys(todayKey, startDateKey) > this.backendPolicyService.maxBookingDaysAhead) {
+      throw new BadRequestException({
+        code: 'BOOKING_TOO_FAR_IN_FUTURE',
+        message: 'Booking date cannot be more than 365 days in the future',
+      });
+    }
+    if (
+      !isBookingWithinAllowedHours(
+        startAt,
+        endAt,
+        workspace.timezone,
+        workspace.scheduleStartHour,
+        workspace.scheduleEndHour,
+      )
+    ) {
+      throw new BadRequestException({
+        code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
+        message: `Bookings must be within ${this.formatHourLabel(workspace.scheduleStartHour)}-${this.formatHourLabel(workspace.scheduleEndHour)} in the workspace timezone`,
+      });
+    }
+    this.assertBookingOnAllowedMinuteStep(startAt, endAt, workspace.timezone);
+  }
+
+  private assertBookingCanStillBeMutated(startAt: Date, timezone: string) {
+    if (toLocalDateKey(startAt, timezone) < toLocalDateKey(new Date(), timezone)) {
+      throw new BadRequestException({
+        code: 'BOOKING_PAST_MUTATION_NOT_ALLOWED',
+        message: 'Past bookings before today cannot be changed',
+      });
+    }
+  }
+
+  private parseDate(value: string | undefined | null, fieldName: string): Date {
+    const date = new Date(this.requireString(value, fieldName));
     if (Number.isNaN(date.getTime())) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
         message: `${fieldName} must be a valid ISO date string`,
       });
     }
-
     return date;
   }
 
@@ -575,105 +444,41 @@ export class BookingsService {
     if (value === undefined) {
       return BookingCriticality.MEDIUM;
     }
-
-    if (
-      value === BookingCriticality.HIGH ||
-      value === BookingCriticality.MEDIUM ||
-      value === BookingCriticality.LOW
-    ) {
+    if (value === BookingCriticality.HIGH || value === BookingCriticality.MEDIUM || value === BookingCriticality.LOW) {
       return value;
     }
-
     throw new BadRequestException({
       code: 'BAD_REQUEST',
       message: 'criticality must be one of HIGH, MEDIUM, LOW',
     });
   }
 
-  private toLocalDateKey(date: Date, timezone: string): string {
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const parts = formatter.formatToParts(date);
-    const year = parts.find((part) => part.type === 'year')?.value;
-    const month = parts.find((part) => part.type === 'month')?.value;
-    const day = parts.find((part) => part.type === 'day')?.value;
-
-    if (!year || !month || !day) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: 'Unable to evaluate booking date in workspace timezone',
-      });
-    }
-
-    return `${year}-${month}-${day}`;
-  }
-
-  private parseBooleanQuery(
-    value: string | undefined,
-    defaultValue: boolean,
-    fieldName: string,
-  ): boolean {
+  private parseBooleanQuery(value: string | undefined, defaultValue: boolean, fieldName: string) {
     if (value === undefined) {
       return defaultValue;
     }
-
     const normalized = value.trim().toLowerCase();
     if (normalized === 'true' || normalized === '1') {
       return true;
     }
-
     if (normalized === 'false' || normalized === '0') {
       return false;
     }
-
     throw new BadRequestException({
       code: 'BAD_REQUEST',
       message: `${fieldName} must be a boolean`,
     });
   }
 
-  private assertBookingWithinAllowedHours(
-    startAt: Date,
-    endAt: Date,
-    timezone: string,
-    scheduleStartHour: number,
-    scheduleEndHour: number,
-  ): void {
-    const startTime = this.toLocalTimeParts(startAt, timezone);
-    const endTime = this.toLocalTimeParts(endAt, timezone);
-
-    const startsTooEarly = startTime.hour < scheduleStartHour;
-    const endsTooLate =
-      endTime.hour > scheduleEndHour ||
-      (endTime.hour === scheduleEndHour && (endTime.minute > 0 || endTime.second > 0));
-
-    if (startsTooEarly || endsTooLate) {
-      throw new BadRequestException({
-        code: 'BOOKING_OUTSIDE_ALLOWED_HOURS',
-        message: `Bookings must be within ${this.formatHourLabel(scheduleStartHour)}-${this.formatHourLabel(scheduleEndHour)} in the workspace timezone`,
-      });
-    }
-  }
-
-  private assertBookingOnAllowedMinuteStep(
-    startAt: Date,
-    endAt: Date,
-    timezone: string,
-  ): void {
-    const startTime = this.toLocalTimeParts(startAt, timezone);
-    const endTime = this.toLocalTimeParts(endAt, timezone);
-
+  private assertBookingOnAllowedMinuteStep(startAt: Date, endAt: Date, timezone: string): void {
+    const startTime = toLocalTimeParts(startAt, timezone);
+    const endTime = toLocalTimeParts(endAt, timezone);
     const hasInvalidMilliseconds =
       startAt.getUTCMilliseconds() !== 0 || endAt.getUTCMilliseconds() !== 0;
     const startNotAligned =
       startTime.minute % BookingsService.BOOKING_MINUTE_STEP !== 0 || startTime.second !== 0;
     const endNotAligned =
       endTime.minute % BookingsService.BOOKING_MINUTE_STEP !== 0 || endTime.second !== 0;
-
     if (hasInvalidMilliseconds || startNotAligned || endNotAligned) {
       throw new BadRequestException({
         code: 'BOOKING_INVALID_TIME_INCREMENT',
@@ -682,104 +487,54 @@ export class BookingsService {
     }
   }
 
-  private toLocalTimeParts(
-    date: Date,
-    timezone: string,
-  ): {
-    hour: number;
-    minute: number;
-    second: number;
-  } {
-    const formatter = new Intl.DateTimeFormat('en-GB', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23',
-    });
-    const parts = formatter.formatToParts(date);
-    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
-    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
-    const second = Number(parts.find((part) => part.type === 'second')?.value);
-
-    if ([hour, minute, second].some((value) => Number.isNaN(value))) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: 'Unable to evaluate booking time in workspace timezone',
-      });
-    }
-
-    return { hour, minute, second };
-  }
-
-  private getBookingConflict(
-    error: unknown,
-  ): { code: string; message: string } | null {
-    const errorMessage = error instanceof Error ? error.message : '';
-    const normalizedErrorMessage = errorMessage.toLowerCase();
-
+  private getBookingConflict(error: unknown): { code: string; message: string } | null {
+    const message = error instanceof Error ? error.message : '';
+    const normalized = message.toLowerCase();
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      const meta = error.meta as
-        | {
-            database_error?: unknown;
-          }
-        | undefined;
       const databaseError =
-        typeof meta?.database_error === 'string' ? meta.database_error : '';
-      const normalizedDatabaseError = databaseError.toLowerCase();
-
+        typeof (error.meta as { database_error?: unknown } | undefined)?.database_error === 'string'
+          ? ((error.meta as { database_error?: string }).database_error ?? '')
+          : '';
       if (
         databaseError.includes('Booking_active_user_overlap_exclusion') ||
-        error.message.includes('Booking_active_user_overlap_exclusion')
+        message.includes('Booking_active_user_overlap_exclusion')
       ) {
         return {
           code: 'BOOKING_USER_OVERLAP',
           message: 'User already has an active booking in this time range',
         };
       }
-
       if (
         databaseError.includes('Booking_active_overlap_exclusion') ||
-        error.message.includes('Booking_active_overlap_exclusion') ||
-        normalizedDatabaseError.includes('exclusion constraint')
+        message.includes('Booking_active_overlap_exclusion') ||
+        databaseError.toLowerCase().includes('exclusion constraint')
       ) {
         return {
           code: 'BOOKING_OVERLAP',
           message: 'Booking overlaps with an existing active booking',
         };
       }
-
       return null;
     }
-
-    if (errorMessage.includes('Booking_active_user_overlap_exclusion')) {
+    if (message.includes('Booking_active_user_overlap_exclusion')) {
       return {
         code: 'BOOKING_USER_OVERLAP',
         message: 'User already has an active booking in this time range',
       };
     }
-
-    if (
-      errorMessage.includes('Booking_active_overlap_exclusion') ||
-      normalizedErrorMessage.includes('exclusion constraint')
-    ) {
+    if (message.includes('Booking_active_overlap_exclusion') || normalized.includes('exclusion constraint')) {
       return {
         code: 'BOOKING_OVERLAP',
         message: 'Booking overlaps with an existing active booking',
       };
     }
-
     return null;
   }
 
   private requireString(value: string | undefined | null, fieldName: string): string {
     if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: `${fieldName} is required`,
-      });
+      throw new BadRequestException({ code: 'BAD_REQUEST', message: `${fieldName} is required` });
     }
-
     return value.trim();
   }
 
@@ -792,25 +547,25 @@ export class BookingsService {
   }
 
   private toDisplayName(firstName: string, lastName: string): string {
-    const normalizedFirstName = firstName.trim();
-    const normalizedLastName = lastName.trim();
-    const fullName = `${normalizedFirstName} ${normalizedLastName}`.trim();
-
-    return fullName || 'Unknown User';
+    return `${firstName.trim()} ${lastName.trim()}`.trim() || 'Unknown User';
   }
 
   private requireUuid(value: string | undefined | null, fieldName: string): string {
     const normalized = this.requireString(value, fieldName);
     const uuidPattern =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
     if (!uuidPattern.test(normalized)) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
         message: `${fieldName} must be a valid UUID`,
       });
     }
-
     return normalized;
+  }
+
+  private daysBetweenDateKeys(start: string, end: string): number {
+    const startDate = new Date(`${start}T00:00:00Z`);
+    const endDate = new Date(`${end}T00:00:00Z`);
+    return Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
   }
 }

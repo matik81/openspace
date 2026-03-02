@@ -5,7 +5,12 @@ export type VerificationEmailPayload = {
   token: string;
 };
 
+export type PasswordResetEmailPayload = {
+  to: string;
+  token: string;
+};
+
 export interface EmailProvider {
   sendVerificationEmail(payload: VerificationEmailPayload): Promise<void>;
+  sendPasswordResetEmail(payload: PasswordResetEmailPayload): Promise<void>;
 }
-
