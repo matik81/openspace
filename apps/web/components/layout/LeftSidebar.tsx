@@ -102,11 +102,11 @@ function SortableWorkspaceRow({
             : 'border-slate-200 bg-white hover:bg-slate-50'
       } ${isDragging ? 'z-10 opacity-90 shadow-lg ring-2 ring-brand/20' : ''} ${isSavingWorkspaceOrder ? 'cursor-not-allowed' : 'active:cursor-grabbing'}`}
     >
-      <div className="flex items-end justify-between gap-2 rounded-md px-1 py-1">
+      <div className="flex items-center justify-between gap-2 rounded-md px-1 py-1">
         <button
           type="button"
           onClick={() => onSelectWorkspace(item.id)}
-          className="min-w-0 flex-1 rounded-md text-left"
+          className="flex min-w-0 flex-1 items-center rounded-md text-left"
         >
           <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
         </button>
