@@ -697,8 +697,8 @@ function WorkspaceAdminContent({
                   setWorkspaceSettingsForm((previous) => {
                     const nextStartHour = Number(event.target.value);
                     const nextEndHour =
-                      previous.scheduleEndHour <= nextStartHour
-                        ? Math.min(24, nextStartHour + 1)
+                      previous.scheduleEndHour < nextStartHour
+                        ? nextStartHour
                         : previous.scheduleEndHour;
 
                     return {
@@ -710,9 +710,7 @@ function WorkspaceAdminContent({
                 }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               >
-                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
-                  (hour) => hour < workspaceSettingsForm.scheduleEndHour,
-                ).map((hour) => (
+                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map((hour) => (
                   <option key={`start-${hour}`} value={hour}>
                     {hour.toString().padStart(2, '0')}:00
                   </option>
@@ -734,7 +732,7 @@ function WorkspaceAdminContent({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               >
                 {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
-                  (hour) => hour > workspaceSettingsForm.scheduleStartHour,
+                  (hour) => hour >= workspaceSettingsForm.scheduleStartHour,
                 ).map((hour) => (
                   <option key={`end-${hour}`} value={hour}>
                     {hour.toString().padStart(2, '0')}:00

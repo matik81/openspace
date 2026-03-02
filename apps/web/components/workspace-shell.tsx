@@ -9,6 +9,10 @@ import {
   type AccountSettingsFormState,
 } from '@/components/layout/AccountSettingsModal';
 import {
+  CreateWorkspaceModal,
+  type CreateWorkspaceFormState,
+} from '@/components/layout/CreateWorkspaceModal';
+import {
   CriticalUserActionModal,
   type CriticalUserActionFormState,
 } from '@/components/layout/CriticalUserActionModal';
@@ -17,17 +21,12 @@ import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
-import { IANA_TIMEZONES, resolveDefaultTimezone } from '@/lib/iana-timezones';
+import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
 import { isWorkspaceListPayload } from '@/lib/workspace-payloads';
 
 type InvitationAction = 'accept' | 'reject';
-
-type CreateWorkspaceFormState = {
-  name: string;
-  timezone: string;
-};
 
 type AuthUserSummary = {
   id: string;
@@ -72,6 +71,8 @@ const SHELL_CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat',
 const createWorkspaceInitialState: CreateWorkspaceFormState = {
   name: '',
   timezone: 'UTC',
+  scheduleStartHour: 8,
+  scheduleEndHour: 18,
 };
 const criticalActionInitialState: CriticalUserActionFormState = {
   email: '',
@@ -256,11 +257,12 @@ export function WorkspaceShell({
     action: InvitationAction;
   } | null>(null);
   const [isSavingWorkspaceOrder, setIsSavingWorkspaceOrder] = useState(false);
-  const [isCreateWorkspaceFormVisible, setIsCreateWorkspaceFormVisible] = useState(false);
+  const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [createWorkspaceForm, setCreateWorkspaceForm] = useState<CreateWorkspaceFormState>(
     createWorkspaceInitialState,
   );
+  const [createWorkspaceError, setCreateWorkspaceError] = useState<ErrorPayload | null>(null);
   const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
@@ -377,8 +379,17 @@ export function WorkspaceShell({
     setCreateWorkspaceForm({
       name: '',
       timezone: resolveDefaultTimezone(),
+      scheduleStartHour: 8,
+      scheduleEndHour: 18,
     });
+    setCreateWorkspaceError(null);
   }, []);
+
+  const closeCreateWorkspaceModal = useCallback(() => {
+    setIsCreateWorkspaceModalOpen(false);
+    resetCreateWorkspaceForm();
+    setIsCreatingWorkspace(false);
+  }, [resetCreateWorkspaceForm]);
 
   const runInvitationAction = useCallback(
     async (invitationId: string, action: InvitationAction) => {
@@ -418,7 +429,7 @@ export function WorkspaceShell({
       }
 
       setIsCreatingWorkspace(true);
-      setError(null);
+      setCreateWorkspaceError(null);
       setBanner(null);
 
       try {
@@ -430,6 +441,8 @@ export function WorkspaceShell({
           body: JSON.stringify({
             name: createWorkspaceForm.name,
             timezone: createWorkspaceForm.timezone,
+            scheduleStartHour: createWorkspaceForm.scheduleStartHour,
+            scheduleEndHour: createWorkspaceForm.scheduleEndHour,
           }),
         });
         const payload = await safeReadJson(response);
@@ -446,7 +459,7 @@ export function WorkspaceShell({
             return;
           }
 
-          setError(normalized);
+          setCreateWorkspaceError(normalized);
           return;
         }
 
@@ -454,15 +467,14 @@ export function WorkspaceShell({
           isRecord(payload) && typeof payload.id === 'string' ? payload.id : null;
 
         setBanner('Workspace created.');
-        setIsCreateWorkspaceFormVisible(false);
-        resetCreateWorkspaceForm();
+        closeCreateWorkspaceModal();
         await loadWorkspaces();
         if (createdWorkspaceId) {
           router.push(`/workspaces/${createdWorkspaceId}/admin`);
           return;
         }
       } catch {
-        setError({
+        setCreateWorkspaceError({
           code: 'SERVICE_UNAVAILABLE',
           message: 'Unable to reach API service',
         });
@@ -470,7 +482,7 @@ export function WorkspaceShell({
         setIsCreatingWorkspace(false);
       }
     },
-    [createWorkspaceForm, isCreatingWorkspace, loadWorkspaces, resetCreateWorkspaceForm, router],
+    [closeCreateWorkspaceModal, createWorkspaceForm, isCreatingWorkspace, loadWorkspaces, router],
   );
 
   const handleLogout = useCallback(async () => {
@@ -865,77 +877,17 @@ export function WorkspaceShell({
     : undefined;
 
   const createWorkspaceContent = (
-    <div className="space-y-2">
+    <div>
       <button
         type="button"
-        onClick={() =>
-          setIsCreateWorkspaceFormVisible((current) => {
-            const next = !current;
-            if (next) {
-              resetCreateWorkspaceForm();
-            }
-            return next;
-          })
-        }
+        onClick={() => {
+          resetCreateWorkspaceForm();
+          setIsCreateWorkspaceModalOpen(true);
+        }}
         className="w-full rounded-lg border border-transparent bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95"
       >
-        {isCreateWorkspaceFormVisible ? 'Close create form' : 'Create new workspace'}
+        Create new workspace
       </button>
-
-      {isCreateWorkspaceFormVisible ? (
-        <form
-          className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
-          onSubmit={(event) => void handleCreateWorkspace(event)}
-        >
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Name
-            </span>
-            <input
-              required
-              value={createWorkspaceForm.name}
-              onChange={(event) =>
-                setCreateWorkspaceForm((previous) => ({
-                  ...previous,
-                  name: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Timezone
-            </span>
-            <select
-              required
-              value={createWorkspaceForm.timezone}
-              onChange={(event) =>
-                setCreateWorkspaceForm((previous) => ({
-                  ...previous,
-                  timezone: event.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              {IANA_TIMEZONES.map((timezone) => (
-                <option key={timezone} value={timezone}>
-                  {timezone}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="submit"
-            disabled={isCreatingWorkspace}
-            className="w-full rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isCreatingWorkspace ? 'Creating...' : 'Create workspace'}
-          </button>
-        </form>
-      ) : null}
     </div>
   );
 
@@ -1076,6 +1028,16 @@ export function WorkspaceShell({
         onChange={setCriticalActionForm}
         onClose={closeCriticalActionModal}
         onSubmit={handleDeleteAccount}
+      />
+
+      <CreateWorkspaceModal
+        open={isCreateWorkspaceModalOpen}
+        form={createWorkspaceForm}
+        error={createWorkspaceError}
+        isSubmitting={isCreatingWorkspace}
+        onChange={setCreateWorkspaceForm}
+        onClose={closeCreateWorkspaceModal}
+        onSubmit={handleCreateWorkspace}
       />
     </div>
   );

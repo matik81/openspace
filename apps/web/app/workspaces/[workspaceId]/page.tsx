@@ -66,12 +66,13 @@ const emptyBookingDraft: BookingModalDraft = {
 };
 
 type WorkspaceSidebarState = {
-  dateKey: string;
-  monthKey: string;
   bookings: BookingListItem[];
 };
 
 const workspaceSidebarStateCache = new Map<string, WorkspaceSidebarState>();
+let sharedSelectedDateKey: string | null = null;
+let sharedSelectedMonthKey: string | null = null;
+const MAX_BOOKING_DAYS_AHEAD = 365;
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
@@ -189,10 +190,10 @@ function WorkspaceBookingDashboard({
   const timezone = workspace?.timezone ?? 'UTC';
   const cachedSidebarState = workspace ? workspaceSidebarStateCache.get(workspace.id) : undefined;
   const [dateKey, setDateKey] = useState(
-    () => cachedSidebarState?.dateKey ?? workspaceTodayDateKey(timezone),
+    () => sharedSelectedDateKey ?? workspaceTodayDateKey(timezone),
   );
   const [monthKey, setMonthKey] = useState(
-    () => cachedSidebarState?.monthKey ?? workspaceTodayDateKey(timezone).slice(0, 7),
+    () => sharedSelectedMonthKey ?? workspaceTodayDateKey(timezone).slice(0, 7),
   );
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>(
@@ -249,10 +250,10 @@ function WorkspaceBookingDashboard({
     if (!workspace) {
       return;
     }
-    const today = workspaceTodayDateKey(timezone);
     const cachedState = workspaceSidebarStateCache.get(workspace.id);
-    setDateKey(cachedState?.dateKey ?? today);
-    setMonthKey(cachedState?.monthKey ?? today.slice(0, 7));
+    const nextDateKey = sharedSelectedDateKey ?? workspaceTodayDateKey(timezone);
+    setDateKey(nextDateKey);
+    setMonthKey(sharedSelectedMonthKey ?? nextDateKey.slice(0, 7));
     setBookings(cachedState?.bookings ?? []);
     setSelectedBookingId(null);
     setDialog({
@@ -279,17 +280,25 @@ function WorkspaceBookingDashboard({
   const isBeforeWorkspaceCreation = Boolean(workspaceCreatedDateKey && dateKey < workspaceCreatedDateKey);
   const todayDateKey = useMemo(() => workspaceTodayDateKey(timezone), [timezone]);
   const canCreateBookings = enabled && !isBeforeWorkspaceCreation && dateKey >= todayDateKey;
+  const isTooFarInFuture = useMemo(() => {
+    const selectedDate = parseDateKey(dateKey, timezone);
+    const today = parseDateKey(todayDateKey, timezone);
+    return selectedDate.diff(today, 'days').days > MAX_BOOKING_DAYS_AHEAD;
+  }, [dateKey, timezone, todayDateKey]);
+
+  useEffect(() => {
+    sharedSelectedDateKey = dateKey;
+    sharedSelectedMonthKey = monthKey;
+  }, [dateKey, monthKey]);
 
   useEffect(() => {
     if (!workspace) {
       return;
     }
     workspaceSidebarStateCache.set(workspace.id, {
-      dateKey,
-      monthKey,
       bookings,
     });
-  }, [workspace, dateKey, monthKey, bookings]);
+  }, [workspace, bookings]);
 
   const loadRooms = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingRooms(true);
@@ -666,6 +675,7 @@ function WorkspaceBookingDashboard({
     }
     const hasConflict =
       endMinutes <= startMinutes ||
+      isTooFarInFuture ||
       Boolean(
         getBookingConflictMessage({
           bookings,
@@ -689,7 +699,18 @@ function WorkspaceBookingDashboard({
         [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim() || null,
       hasConflict,
     };
-  }, [dialog, rooms, currentUser, currentUserId, bookings, timezone, dateKey, scheduleEnd, scheduleStart]);
+  }, [
+    dialog,
+    rooms,
+    currentUser,
+    currentUserId,
+    bookings,
+    timezone,
+    dateKey,
+    scheduleEnd,
+    scheduleStart,
+    isTooFarInFuture,
+  ]);
 
   const validateDraft = useCallback(
     (draft: BookingModalDraft, opts: { mode: 'create' | 'edit'; bookingId: string | null }) => {
@@ -728,6 +749,12 @@ function WorkspaceBookingDashboard({
             'Reservations can only be created or moved on the current workspace day or later',
         } satisfies ErrorPayload;
       }
+      if (isTooFarInFuture) {
+        return {
+          code: 'BOOKING_TOO_FAR_IN_FUTURE',
+          message: `Booking date cannot be more than ${MAX_BOOKING_DAYS_AHEAD} days in the future`,
+        } satisfies ErrorPayload;
+      }
 
       const conflictMessage = getBookingConflictMessage({
         bookings,
@@ -745,7 +772,17 @@ function WorkspaceBookingDashboard({
 
       return null;
     },
-    [bookings, currentUserId, timezone, dateKey, scheduleEnd, scheduleStart, workspace?.scheduleEndHour, workspace?.scheduleStartHour],
+    [
+      bookings,
+      currentUserId,
+      timezone,
+      dateKey,
+      scheduleEnd,
+      scheduleStart,
+      workspace?.scheduleEndHour,
+      workspace?.scheduleStartHour,
+      isTooFarInFuture,
+    ],
   );
 
   const dialogValidationError = useMemo(
@@ -963,6 +1000,9 @@ function WorkspaceBookingDashboard({
     dialog.open && dialog.mode === 'create'
       ? true
       : Boolean(selectedBookingForDialog && editableBookingIds.has(selectedBookingForDialog.id));
+  const emptyScheduleMessage = isBeforeWorkspaceCreation
+    ? 'This workspace did not exist on the selected date.'
+    : 'No rooms available for this workspace yet.';
 
   return {
     leftSidebar,
@@ -981,6 +1021,7 @@ function WorkspaceBookingDashboard({
               timezone={timezone}
               schedule={schedule}
               selectedDateKey={dateKey}
+              emptyStateMessage={emptyScheduleMessage}
               editableBookingIds={editableBookingIds}
               selectedBookingId={selectedBookingId}
               isMutating={dialog.open && dialog.isSubmitting}

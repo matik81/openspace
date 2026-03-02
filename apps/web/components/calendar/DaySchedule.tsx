@@ -75,6 +75,7 @@ export function DaySchedule({
   timezone,
   schedule,
   selectedDateKey,
+  emptyStateMessage = 'No rooms available for this workspace yet.',
   editableBookingIds,
   selectedBookingId,
   isMutating,
@@ -93,6 +94,7 @@ export function DaySchedule({
   timezone: string;
   schedule: ScheduleWindow;
   selectedDateKey: string;
+  emptyStateMessage?: string;
   editableBookingIds: ReadonlySet<string>;
   selectedBookingId: string | null;
   isMutating: boolean;
@@ -582,9 +584,7 @@ export function DaySchedule({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {rooms.length === 0 ? (
-          <div className="p-4 text-sm text-slate-600">
-            No rooms available for this workspace yet.
-          </div>
+          <div className="p-4 text-sm text-slate-600">{emptyStateMessage}</div>
         ) : (
           <div className="min-w-[720px]">
             <div className="flex">
