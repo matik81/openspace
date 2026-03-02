@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload } from '@/lib/types';
 
 export type AuthMode = 'login' | 'register' | 'verify-email' | 'reset-password';
@@ -401,7 +402,7 @@ export function PublicAuthModal({
 
         {error ? (
           <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error.code}: {error.message}
+            {getErrorDisplayMessage(error)}
           </p>
         ) : null}
 

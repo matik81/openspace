@@ -9,6 +9,7 @@ import {
   type ScheduleWindow,
   timeInputToMinutes,
 } from '@/lib/time';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { BookingCriticality, ErrorPayload, RoomItem } from '@/lib/types';
 
 export type BookingModalDraft = {
@@ -266,7 +267,7 @@ export function BookingModal({
         <form className="space-y-3" onSubmit={handleSubmit}>
           {error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error.code}: {error.message}
+              {getErrorDisplayMessage(error)}
             </p>
           ) : null}
 

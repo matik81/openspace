@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent } from 'react';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload } from '@/lib/types';
 
 export type AccountSettingsFormState = {
@@ -71,7 +72,7 @@ export function AccountSettingsModal({
           </div>
           {error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error.code}: {error.message}
+              {getErrorDisplayMessage(error)}
             </p>
           ) : null}
 

@@ -19,6 +19,7 @@ import {
 import { Header } from '@/components/layout/Header';
 import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { resolveDefaultTimezone } from '@/lib/iana-timezones';
@@ -953,7 +954,7 @@ export function WorkspaceShell({
                     ) : null}
                     {error ? (
                       <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                        {error.code}: {error.message}
+                        {getErrorDisplayMessage(error)}
                       </p>
                     ) : null}
                   </div>
