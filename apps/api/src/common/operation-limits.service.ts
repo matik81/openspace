@@ -163,16 +163,28 @@ export class OperationLimitsService {
   }
 
   private async suspendUser(userId: string, operationType: RateLimitOperationType) {
-    return this.prismaService.rateLimitSuspension.create({
-      data: {
-        subjectType: RateLimitSubjectType.USER,
-        operationType,
-        userId,
-        expiresAt: this.suspendUntil(),
-      },
-      select: {
-        expiresAt: true,
-      },
+    const expiresAt = this.suspendUntil();
+
+    return this.prismaService.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          refreshTokenHash: null,
+          refreshTokenExpiresAt: null,
+        },
+      });
+
+      return tx.rateLimitSuspension.create({
+        data: {
+          subjectType: RateLimitSubjectType.USER,
+          operationType,
+          userId,
+          expiresAt,
+        },
+        select: {
+          expiresAt: true,
+        },
+      });
     });
   }
 

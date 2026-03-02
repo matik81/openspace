@@ -259,8 +259,6 @@ describe('AuthService', () => {
       {
         firstName: 'Updated',
         lastName: 'User',
-        email: 'user@example.com',
-        password: 'current-password',
         newPassword: 'next-password',
       },
     );
@@ -285,6 +283,7 @@ describe('AuthService', () => {
 
   it('requests a password reset without failing for an active verified user', async () => {
     const prismaService = createPrismaService();
+    const operationLimitsService = createOperationLimitsService();
     const emailProvider: EmailProvider = {
       sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
       sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
@@ -311,12 +310,13 @@ describe('AuthService', () => {
       prismaService,
       new JwtService(),
       createConfigService(),
-      createOperationLimitsService(),
+      operationLimitsService,
       emailProvider,
     );
 
     const result = await service.requestPasswordReset({ email: 'user@example.com' });
 
+    expect(operationLimitsService.assertUserAuthenticationAllowed).toHaveBeenCalledWith('user-id');
     expect(transactionDelegates.passwordResetToken.create).toHaveBeenCalled();
     expect(emailProvider.sendPasswordResetEmail).toHaveBeenCalledWith({
       to: 'user@example.com',
@@ -325,8 +325,43 @@ describe('AuthService', () => {
     expect(result).toEqual({ requested: true });
   });
 
+  it('blocks password reset requests for suspended users', async () => {
+    const prismaService = createPrismaService();
+    const operationLimitsService = createOperationLimitsService();
+    const suspensionError = Object.assign(new Error('User suspended'), {
+      response: { code: 'USER_SUSPENDED' },
+    });
+
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'user-id',
+      email: 'user@example.com',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+    });
+    (operationLimitsService.assertUserAuthenticationAllowed as jest.Mock).mockRejectedValue(
+      suspensionError,
+    );
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      operationLimitsService,
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    await expect(service.requestPasswordReset({ email: 'user@example.com' })).rejects.toBe(
+      suspensionError,
+    );
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
+  });
+
   it('resets password with a valid token', async () => {
     const prismaService = createPrismaService();
+    const operationLimitsService = createOperationLimitsService();
     const transactionDelegates = {
       user: {
         update: jest.fn().mockResolvedValue(undefined),
@@ -350,7 +385,7 @@ describe('AuthService', () => {
       prismaService,
       new JwtService(),
       createConfigService(),
-      createOperationLimitsService(),
+      operationLimitsService,
       {
         sendVerificationEmail: jest.fn(),
         sendPasswordResetEmail: jest.fn(),
@@ -362,11 +397,47 @@ describe('AuthService', () => {
       password: 'new-strong-password',
     });
 
+    expect(operationLimitsService.assertUserAuthenticationAllowed).toHaveBeenCalledWith('user-id');
     expect(transactionDelegates.user.update).toHaveBeenCalled();
     expect(transactionDelegates.passwordResetToken.update).toHaveBeenCalledWith({
       where: { id: 'reset-token-id' },
       data: { consumedAt: expect.any(Date) },
     });
     expect(result).toEqual({ reset: true });
+  });
+
+  it('blocks password reset confirmation for suspended users', async () => {
+    const prismaService = createPrismaService();
+    const operationLimitsService = createOperationLimitsService();
+    const suspensionError = Object.assign(new Error('User suspended'), {
+      response: { code: 'USER_SUSPENDED' },
+    });
+
+    (prismaService.passwordResetToken.findFirst as jest.Mock).mockResolvedValue({
+      id: 'reset-token-id',
+      userId: 'user-id',
+    });
+    (operationLimitsService.assertUserAuthenticationAllowed as jest.Mock).mockRejectedValue(
+      suspensionError,
+    );
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      operationLimitsService,
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    await expect(
+      service.resetPassword({
+        token: 'plain-token',
+        password: 'new-strong-password',
+      }),
+    ).rejects.toBe(suspensionError);
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
   });
 });

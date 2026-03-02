@@ -232,6 +232,8 @@ export class AuthService {
       return { requested: true };
     }
 
+    await this.operationLimitsService.assertUserAuthenticationAllowed(user.id);
+
     const token = this.generateOpaqueToken();
 
     await this.prismaService.$transaction(async (tx) => {
@@ -292,6 +294,8 @@ export class AuthService {
         message: 'Password reset token is invalid or expired',
       });
     }
+
+    await this.operationLimitsService.assertUserAuthenticationAllowed(passwordResetRecord.userId);
 
     const passwordHash = await hash(password, 12);
 
