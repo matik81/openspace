@@ -726,7 +726,7 @@ export class AuthService {
   }
 
   private generateOpaqueToken(): string {
-    return randomBytes(32).toString('hex');
+    return randomBytes(16).toString('hex');
   }
 
   private buildEmailVerificationExpiration(): Date {

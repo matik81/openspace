@@ -1034,7 +1034,7 @@ export class WorkspacesService {
   }
 
   private generateOpaqueToken(): string {
-    return randomBytes(32).toString('hex');
+    return randomBytes(16).toString('hex');
   }
 
   private hashToken(value: string): string {
