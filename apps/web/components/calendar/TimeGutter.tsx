@@ -12,9 +12,13 @@ export const TIME_GUTTER_WIDTH_PX = 72;
 export const TimeGutter = memo(function TimeGutter({
   schedule,
   heightPx,
+  currentTimeOffsetPx,
+  currentTimeLabel,
 }: {
   schedule: ScheduleWindow;
   heightPx?: number;
+  currentTimeOffsetPx?: number | null;
+  currentTimeLabel?: string | null;
 }) {
   const effectiveHeightPx = heightPx ?? scheduleRowMinHeightPx(schedule);
   const markers = useMemo(
@@ -52,6 +56,26 @@ export const TimeGutter = memo(function TimeGutter({
           </span>
         </div>
       ))}
+      {currentTimeOffsetPx !== null && currentTimeOffsetPx !== undefined && currentTimeLabel ? (
+        <>
+          <div
+            className="absolute left-0 right-0 z-20 border-t border-rose-400"
+            style={{ top: currentTimeOffsetPx }}
+            aria-hidden="true"
+          />
+          <span
+            className="absolute left-2 z-30 rounded bg-rose-500 px-1 text-[11px] font-medium text-white shadow-sm"
+            style={{
+              top: Math.min(
+                Math.max(currentTimeOffsetPx - 8, 0),
+                Math.max(effectiveHeightPx - 18, 0),
+              ),
+            }}
+          >
+            {currentTimeLabel}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 });

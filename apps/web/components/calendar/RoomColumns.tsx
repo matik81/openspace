@@ -52,7 +52,7 @@ export const RoomColumns = memo(function RoomColumns({
             />
             {currentTimeOffsetPx !== null ? (
               <div
-                className="absolute left-0 right-0 z-10 border-t border-rose-400"
+                className="pointer-events-none absolute left-0 right-0 z-30 border-t border-rose-400"
                 style={{ top: currentTimeOffsetPx }}
                 aria-hidden="true"
               />

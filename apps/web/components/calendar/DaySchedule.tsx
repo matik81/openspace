@@ -193,6 +193,17 @@ export function DaySchedule({
     return (minutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE;
   }, [timezone, selectedDateKey, scheduleEnd, scheduleStart]);
 
+  const currentTimeLabel = useMemo(() => {
+    if (currentTimeOffsetPx === null) {
+      return null;
+    }
+    const now = DateTime.now().setZone(timezone);
+    if (!now.isValid) {
+      return null;
+    }
+    return now.toFormat('HH:mm');
+  }, [currentTimeOffsetPx, timezone]);
+
   const visibleDateLabel = useMemo(
     () => formatSelectedDateLabel(selectedDateKey, timezone),
     [selectedDateKey, timezone],
@@ -566,18 +577,42 @@ export function DaySchedule({
           <button
             type="button"
             onClick={onPrevDay}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             aria-label="Previous day"
           >
-            ←
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path d="M10 14V6" />
+              <path d="m6.5 9.5 3.5-3.5 3.5 3.5" />
+            </svg>
           </button>
           <button
             type="button"
             onClick={onNextDay}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             aria-label="Next day"
           >
-            →
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path d="M10 6v8" />
+              <path d="m6.5 10.5 3.5 3.5 3.5-3.5" />
+            </svg>
           </button>
         </div>
       </div>
@@ -596,7 +631,12 @@ export function DaySchedule({
                   className="sticky top-0 z-30 border-b border-slate-200 bg-white"
                   style={{ height: ROOM_COLUMN_HEADER_HEIGHT_PX }}
                 />
-                <TimeGutter schedule={schedule} heightPx={trackHeightPx} />
+                <TimeGutter
+                  schedule={schedule}
+                  heightPx={trackHeightPx}
+                  currentTimeOffsetPx={currentTimeOffsetPx}
+                  currentTimeLabel={currentTimeLabel}
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <RoomColumns

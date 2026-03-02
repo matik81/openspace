@@ -66,13 +66,63 @@ const emptyBookingDraft: BookingModalDraft = {
 };
 
 type WorkspaceSidebarState = {
+  rooms: RoomItem[];
   bookings: BookingListItem[];
 };
 
 const workspaceSidebarStateCache = new Map<string, WorkspaceSidebarState>();
+const WORKSPACE_SIDEBAR_STORAGE_PREFIX = 'openspace:workspace-sidebar:';
 let sharedSelectedDateKey: string | null = null;
 let sharedSelectedMonthKey: string | null = null;
 const MAX_BOOKING_DAYS_AHEAD = 365;
+
+function getWorkspaceSidebarStorageKey(workspaceId: string): string {
+  return `${WORKSPACE_SIDEBAR_STORAGE_PREFIX}${workspaceId}`;
+}
+
+function readWorkspaceSidebarState(workspaceId: string): WorkspaceSidebarState | undefined {
+  const cached = workspaceSidebarStateCache.get(workspaceId);
+  if (cached) {
+    return cached;
+  }
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(getWorkspaceSidebarStorageKey(workspaceId));
+    if (!raw) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<WorkspaceSidebarState> | null;
+    if (!parsed || !Array.isArray(parsed.rooms) || !Array.isArray(parsed.bookings)) {
+      return undefined;
+    }
+
+    const state: WorkspaceSidebarState = {
+      rooms: parsed.rooms as RoomItem[],
+      bookings: parsed.bookings as BookingListItem[],
+    };
+    workspaceSidebarStateCache.set(workspaceId, state);
+    return state;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeWorkspaceSidebarState(workspaceId: string, state: WorkspaceSidebarState): void {
+  workspaceSidebarStateCache.set(workspaceId, state);
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(getWorkspaceSidebarStorageKey(workspaceId), JSON.stringify(state));
+  } catch {
+    // Ignore storage write failures and fall back to in-memory cache.
+  }
+}
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
@@ -188,21 +238,25 @@ function WorkspaceBookingDashboard({
   const searchParams = useSearchParams();
   const workspaceId = workspace?.id ?? '';
   const timezone = workspace?.timezone ?? 'UTC';
-  const cachedSidebarState = workspace ? workspaceSidebarStateCache.get(workspace.id) : undefined;
+  const cachedSidebarState = workspace ? readWorkspaceSidebarState(workspace.id) : undefined;
   const [dateKey, setDateKey] = useState(
     () => sharedSelectedDateKey ?? workspaceTodayDateKey(timezone),
   );
   const [monthKey, setMonthKey] = useState(
     () => sharedSelectedMonthKey ?? workspaceTodayDateKey(timezone).slice(0, 7),
   );
-  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [rooms, setRooms] = useState<RoomItem[]>(() => cachedSidebarState?.rooms ?? []);
   const [bookings, setBookings] = useState<BookingListItem[]>(
     () => cachedSidebarState?.bookings ?? [],
   );
-  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(null);
-  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(null);
-  const [hasLoadedRooms, setHasLoadedRooms] = useState(false);
-  const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
+  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(
+    () => (cachedSidebarState && workspace ? workspace.id : null),
+  );
+  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(
+    () => (cachedSidebarState && workspace ? workspace.id : null),
+  );
+  const [hasLoadedRooms, setHasLoadedRooms] = useState(Boolean(cachedSidebarState));
+  const [hasLoadedBookings, setHasLoadedBookings] = useState(Boolean(cachedSidebarState));
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [pageBanner, setPageBanner] = useState<string | null>(null);
@@ -250,11 +304,16 @@ function WorkspaceBookingDashboard({
     if (!workspace) {
       return;
     }
-    const cachedState = workspaceSidebarStateCache.get(workspace.id);
+    const cachedState = readWorkspaceSidebarState(workspace.id);
     const nextDateKey = sharedSelectedDateKey ?? workspaceTodayDateKey(timezone);
     setDateKey(nextDateKey);
     setMonthKey(sharedSelectedMonthKey ?? nextDateKey.slice(0, 7));
+    setRooms(cachedState?.rooms ?? []);
     setBookings(cachedState?.bookings ?? []);
+    setRoomsWorkspaceId(cachedState ? workspace.id : null);
+    setBookingsWorkspaceId(cachedState ? workspace.id : null);
+    setHasLoadedRooms(Boolean(cachedState));
+    setHasLoadedBookings(Boolean(cachedState));
     setSelectedBookingId(null);
     setDialog({
       open: false,
@@ -295,10 +354,11 @@ function WorkspaceBookingDashboard({
     if (!workspace) {
       return;
     }
-    workspaceSidebarStateCache.set(workspace.id, {
+    writeWorkspaceSidebarState(workspace.id, {
+      rooms,
       bookings,
     });
-  }, [workspace, bookings]);
+  }, [workspace, rooms, bookings]);
 
   const loadRooms = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingRooms(true);
@@ -437,7 +497,8 @@ function WorkspaceBookingDashboard({
   const hasCurrentRooms = workspace ? roomsWorkspaceId === workspace.id : false;
   const hasCurrentBookings = workspace ? bookingsWorkspaceId === workspace.id : false;
   const isReady = hasLoadedRooms && hasLoadedBookings && hasCurrentRooms && hasCurrentBookings;
-  const isLoading = isLoadingRooms || isLoadingBookings || !isReady;
+  const showScheduleSkeleton = !isReady && (!hasCurrentRooms || !hasCurrentBookings);
+  const isRefreshingSchedule = !showScheduleSkeleton && (isLoadingRooms || isLoadingBookings);
 
   const currentUserId = currentUser?.id ?? '';
   const editableBookingIds = useMemo(
@@ -1009,32 +1070,34 @@ function WorkspaceBookingDashboard({
     main: (
       <div className="flex h-full min-h-0 flex-col gap-3">
         <div className="min-h-0 flex-1">
-          {isLoading && !isReady ? (
+          {showScheduleSkeleton ? (
             <div className="h-full rounded-2xl border border-slate-200 bg-white p-4">
               <div className="h-5 w-48 rounded bg-slate-100" />
               <div className="mt-4 h-[480px] rounded-xl bg-slate-100" />
             </div>
           ) : (
-            <DaySchedule
-              rooms={hasCurrentRooms ? visibleRooms : []}
-              bookings={hasCurrentBookings ? visibleBookings : []}
-              timezone={timezone}
-              schedule={schedule}
-              selectedDateKey={dateKey}
-              emptyStateMessage={emptyScheduleMessage}
-              editableBookingIds={editableBookingIds}
-              selectedBookingId={selectedBookingId}
-              isMutating={dialog.open && dialog.isSubmitting}
-              onPrevDay={goToPreviousDay}
-              onNextDay={goToNextDay}
-              onToday={goToToday}
-              canCreateBookings={canCreateBookings}
-              draftPreview={dialogDraftPreview}
-              onCreateSlot={openCreateDialog}
-              onOpenBooking={openEditDialog}
-              onUpdateBooking={handleInteractiveUpdate}
-              onInlineError={(message) => setPageError({ code: 'BOOKING_OVERLAP', message })}
-            />
+            <div className={`h-full transition-opacity ${isRefreshingSchedule ? 'opacity-95' : 'opacity-100'}`}>
+              <DaySchedule
+                rooms={hasCurrentRooms ? visibleRooms : []}
+                bookings={hasCurrentBookings ? visibleBookings : []}
+                timezone={timezone}
+                schedule={schedule}
+                selectedDateKey={dateKey}
+                emptyStateMessage={emptyScheduleMessage}
+                editableBookingIds={editableBookingIds}
+                selectedBookingId={selectedBookingId}
+                isMutating={dialog.open && dialog.isSubmitting}
+                onPrevDay={goToPreviousDay}
+                onNextDay={goToNextDay}
+                onToday={goToToday}
+                canCreateBookings={canCreateBookings}
+                draftPreview={dialogDraftPreview}
+                onCreateSlot={openCreateDialog}
+                onOpenBooking={openEditDialog}
+                onUpdateBooking={handleInteractiveUpdate}
+                onInlineError={(message) => setPageError({ code: 'BOOKING_OVERLAP', message })}
+              />
+            </div>
           )}
         </div>
 
