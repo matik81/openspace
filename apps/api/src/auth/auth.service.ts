@@ -398,8 +398,6 @@ export class AuthService {
     const userId = this.requireUuid(authUser.userId, 'userId');
     const firstName = this.requireString(dto.firstName, 'firstName');
     const lastName = this.requireString(dto.lastName, 'lastName');
-    const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
     const newPassword = dto.newPassword?.trim() ? dto.newPassword.trim() : null;
 
     if (newPassword && newPassword.length < 8) {
@@ -427,13 +425,6 @@ export class AuthService {
     }
 
     this.assertUserActive(user.status);
-
-    if (user.email !== email || !(await compare(password, user.passwordHash))) {
-      throw new ForbiddenException({
-        code: 'ACCOUNT_UPDATE_CONFIRMATION_FAILED',
-        message: 'Account update confirmation failed',
-      });
-    }
 
     return this.prismaService.user.update({
       where: { id: user.id },

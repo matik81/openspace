@@ -7,7 +7,6 @@ export type AccountSettingsFormState = {
   firstName: string;
   lastName: string;
   email: string;
-  password: string;
   newPassword: string;
   confirmNewPassword: string;
 };
@@ -46,7 +45,7 @@ export function AccountSettingsModal({
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Edit Account</h3>
             <p className="mt-1 text-sm text-slate-600">
-              Update your name or password. Confirm with your current email and password.
+              Update your name or password. Your email and current password are shown for reference.
             </p>
           </div>
           <button
@@ -95,8 +94,9 @@ export function AccountSettingsModal({
                 required
                 type="email"
                 value={form.email}
-                onChange={(event) => onChange({ ...form, email: event.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                readOnly
+                aria-readonly="true"
+                className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600 outline-none"
               />
             </label>
 
@@ -105,11 +105,11 @@ export function AccountSettingsModal({
                 Current password
               </span>
               <input
-                required
                 type="password"
-                value={form.password}
-                onChange={(event) => onChange({ ...form, password: event.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                value="********"
+                readOnly
+                aria-readonly="true"
+                className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600 outline-none"
               />
             </label>
           </div>

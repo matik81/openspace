@@ -80,7 +80,6 @@ const accountSettingsInitialState: AccountSettingsFormState = {
   firstName: '',
   lastName: '',
   email: '',
-  password: '',
   newPassword: '',
   confirmNewPassword: '',
 };
@@ -482,7 +481,6 @@ export function WorkspaceShell({
           firstName: currentUser.firstName,
           lastName: currentUser.lastName,
           email: currentUser.email,
-          password: '',
           newPassword: '',
           confirmNewPassword: '',
         }
@@ -602,8 +600,6 @@ export function WorkspaceShell({
         body: JSON.stringify({
           firstName: accountSettingsForm.firstName,
           lastName: accountSettingsForm.lastName,
-          email: accountSettingsForm.email,
-          password: accountSettingsForm.password,
           newPassword: accountSettingsForm.newPassword || undefined,
         }),
       });
@@ -812,7 +808,6 @@ export function WorkspaceShell({
               firstName: currentUser.firstName,
               lastName: currentUser.lastName,
               email: currentUser.email,
-              password: '',
               newPassword: '',
               confirmNewPassword: '',
             });
