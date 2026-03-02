@@ -89,6 +89,7 @@ model User {
   invitations            Invitation[]             @relation("InvitationInvitedBy")
   bookings               Booking[]
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens    PasswordResetToken[]
   workspacePreferences   UserWorkspacePreference[]
   operationLogs          OperationLog[]
   rateLimitSuspensions   RateLimitSuspension[]
@@ -243,6 +244,19 @@ model RateLimitSuspension {
 }
 
 model EmailVerificationToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, consumedAt])
+}
+
+model PasswordResetToken {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @db.Uuid
   tokenHash  String   @unique
