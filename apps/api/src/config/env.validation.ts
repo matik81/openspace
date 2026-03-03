@@ -1,4 +1,5 @@
 import { BACKEND_POLICY_DEFAULTS } from '../common/backend-policy.defaults';
+import { isIP } from 'net';
 
 type EnvInput = Record<string, unknown>;
 
@@ -7,6 +8,7 @@ type ValidatedEnv = {
   API_PORT: number;
   DATABASE_URL: string;
   REDIS_URL: string;
+  TRUSTED_PROXY_IPS: string[];
   JWT_ACCESS_SECRET: string;
   JWT_REFRESH_SECRET: string;
   JWT_ACCESS_TTL: string;
@@ -89,6 +91,38 @@ function assertSecret(name: string, value: unknown): string {
   return value;
 }
 
+function defaultTrustedProxyIps(
+  nodeEnv: 'development' | 'test' | 'production',
+): string[] {
+  return nodeEnv === 'production' ? [] : ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+}
+
+function parseTrustedProxyIps(
+  value: unknown,
+  fallback: string[],
+): string[] {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error('TRUSTED_PROXY_IPS must be a comma-separated string of IP addresses');
+  }
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  for (const item of items) {
+    if (isIP(item) === 0) {
+      throw new Error('TRUSTED_PROXY_IPS must contain only valid IP addresses');
+    }
+  }
+
+  return items;
+}
+
 export function validateEnv(config: EnvInput): ValidatedEnv {
   const errors: string[] = [];
 
@@ -111,6 +145,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
 
   let databaseUrl = '';
   let redisUrl = '';
+  let trustedProxyIps = defaultTrustedProxyIps(nodeEnv);
   let jwtAccessSecret = '';
   let jwtRefreshSecret = '';
 
@@ -122,6 +157,15 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
 
   try {
     redisUrl = assertUrl('REDIS_URL', config.REDIS_URL, 'redis://localhost:6379');
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+
+  try {
+    trustedProxyIps = parseTrustedProxyIps(
+      config.TRUSTED_PROXY_IPS,
+      defaultTrustedProxyIps(nodeEnv),
+    );
   } catch (error) {
     errors.push((error as Error).message);
   }
@@ -252,6 +296,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     API_PORT: apiPort,
     DATABASE_URL: databaseUrl,
     REDIS_URL: redisUrl,
+    TRUSTED_PROXY_IPS: trustedProxyIps,
     JWT_ACCESS_SECRET: jwtAccessSecret,
     JWT_REFRESH_SECRET: jwtRefreshSecret,
     JWT_ACCESS_TTL: jwtAccessTtl,

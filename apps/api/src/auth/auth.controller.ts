@@ -1,4 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { isIP } from 'net';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
@@ -19,7 +21,10 @@ type AuthenticatedRequest = {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('register')
   async register(@Req() request: AuthenticatedRequest, @Body() body: RegisterDto) {
@@ -98,10 +103,52 @@ export class AuthController {
   }
 
   private extractIpAddress(request: AuthenticatedRequest): string {
-    const forwardedFor = request.headers?.['x-forwarded-for'];
-    const rawValue = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    const forwardedIp = typeof rawValue === 'string' ? rawValue.split(',')[0]?.trim() : '';
+    const requestIp = this.normalizeIp(request.ip);
+    const forwardedIp = this.extractForwardedIp(request.headers?.['x-forwarded-for']);
 
-    return forwardedIp || request.ip || 'unknown';
+    if (requestIp && forwardedIp && this.isTrustedProxy(requestIp)) {
+      return forwardedIp;
+    }
+
+    return requestIp ?? 'unknown';
+  }
+
+  private extractForwardedIp(value: string | string[] | undefined): string | null {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    if (typeof rawValue !== 'string') {
+      return null;
+    }
+
+    for (const item of rawValue.split(',')) {
+      const normalized = this.normalizeIp(item);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private isTrustedProxy(ipAddress: string): boolean {
+    const trustedProxyIps = this.configService.get<string[]>('TRUSTED_PROXY_IPS', []);
+    return trustedProxyIps.some((candidate) => this.normalizeIp(candidate) === ipAddress);
+  }
+
+  private normalizeIp(value: string | undefined | null): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    const ipv4MappedMatch = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(trimmed);
+    if (ipv4MappedMatch && isIP(ipv4MappedMatch[1]) === 4) {
+      return ipv4MappedMatch[1];
+    }
+
+    return isIP(trimmed) === 0 ? null : trimmed;
   }
 }
