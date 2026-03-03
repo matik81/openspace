@@ -446,8 +446,7 @@ describe('Auth flow integration', () => {
       .send({
         firstName: 'Updated',
         lastName: 'Person',
-        email: 'account@example.com',
-        password: 'strong-password',
+        currentPassword: 'strong-password',
         newPassword: 'next-strong-password',
       });
     expect(updateResponse.status).toBe(201);
@@ -482,5 +481,74 @@ describe('Auth flow integration', () => {
       password: 'reset-strong-password',
     });
     expect(newPasswordLogin.status).toBe(201);
+  });
+
+  it('rejects password changes without currentPassword', async () => {
+    await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'missing-current@example.com',
+      password: 'strong-password',
+    });
+    await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: sentVerificationToken })
+      .expect(201);
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'missing-current@example.com',
+      password: 'strong-password',
+    });
+    expect(loginResponse.status).toBe(201);
+
+    const updateResponse = await request(app.getHttpServer())
+      .post('/api/auth/update-account')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`)
+      .send({
+        firstName: 'Updated',
+        lastName: 'Person',
+        newPassword: 'next-strong-password',
+      });
+
+    expect(updateResponse.status).toBe(400);
+    expect(updateResponse.body).toEqual({
+      code: 'CURRENT_PASSWORD_REQUIRED',
+      message: 'currentPassword is required when changing password',
+    });
+  });
+
+  it('rejects password changes with a wrong currentPassword', async () => {
+    await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'wrong-current@example.com',
+      password: 'strong-password',
+    });
+    await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: sentVerificationToken })
+      .expect(201);
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'wrong-current@example.com',
+      password: 'strong-password',
+    });
+    expect(loginResponse.status).toBe(201);
+
+    const updateResponse = await request(app.getHttpServer())
+      .post('/api/auth/update-account')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`)
+      .send({
+        firstName: 'Updated',
+        lastName: 'Person',
+        currentPassword: 'wrong-password',
+        newPassword: 'next-strong-password',
+      });
+
+    expect(updateResponse.status).toBe(403);
+    expect(updateResponse.body).toEqual({
+      code: 'ACCOUNT_UPDATE_CONFIRMATION_FAILED',
+      message: 'Account update confirmation failed',
+    });
   });
 });

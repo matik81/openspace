@@ -27,6 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const firstName = getTrimmedString(body, 'firstName');
     const lastName = getTrimmedString(body, 'lastName');
+    const currentPassword = getTrimmedString(body, 'currentPassword');
     const newPassword = getTrimmedString(body, 'newPassword');
 
     if (!firstName || !lastName) {
@@ -34,6 +35,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           code: 'BAD_REQUEST',
           message: 'firstName and lastName are required',
+        },
+        { status: 400 },
+      );
+    }
+
+    if (newPassword && !currentPassword) {
+      return NextResponse.json<ErrorPayload>(
+        {
+          code: 'CURRENT_PASSWORD_REQUIRED',
+          message: 'currentPassword is required when changing password',
         },
         { status: 400 },
       );
@@ -48,6 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body: {
         firstName,
         lastName,
+        ...(currentPassword ? { currentPassword } : {}),
         ...(newPassword ? { newPassword } : {}),
       },
     });

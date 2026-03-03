@@ -228,7 +228,7 @@ describe('AuthService', () => {
     });
   });
 
-  it('updates account details after confirming current credentials', async () => {
+  it('updates account details after confirming the current password for password changes', async () => {
     const prismaService = createPrismaService();
     (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
       id: 'user-id',
@@ -259,6 +259,7 @@ describe('AuthService', () => {
       {
         firstName: 'Updated',
         lastName: 'User',
+        currentPassword: 'current-password',
         newPassword: 'next-password',
       },
     );
@@ -279,6 +280,83 @@ describe('AuthService', () => {
       firstName: 'Updated',
       lastName: 'User',
     });
+  });
+
+  it('requires currentPassword when changing password', async () => {
+    const prismaService = createPrismaService();
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'user-id',
+      email: 'user@example.com',
+      passwordHash: hashSync('current-password', 12),
+      status: 'ACTIVE',
+    });
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    await expect(
+      service.updateAccount(
+        { userId: 'b4724cda-0e07-4f84-a2d5-393472e8c98a' },
+        {
+          firstName: 'Updated',
+          lastName: 'User',
+          newPassword: 'next-password',
+        },
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'CURRENT_PASSWORD_REQUIRED',
+      },
+    });
+
+    expect(prismaService.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects password changes when currentPassword is wrong', async () => {
+    const prismaService = createPrismaService();
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'user-id',
+      email: 'user@example.com',
+      passwordHash: hashSync('current-password', 12),
+      status: 'ACTIVE',
+    });
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    await expect(
+      service.updateAccount(
+        { userId: 'b4724cda-0e07-4f84-a2d5-393472e8c98a' },
+        {
+          firstName: 'Updated',
+          lastName: 'User',
+          currentPassword: 'wrong-password',
+          newPassword: 'next-password',
+        },
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'ACCOUNT_UPDATE_CONFIRMATION_FAILED',
+      },
+    });
+
+    expect(prismaService.user.update).not.toHaveBeenCalled();
   });
 
   it('requests a password reset without failing for an active verified user', async () => {

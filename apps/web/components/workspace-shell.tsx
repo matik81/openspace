@@ -83,6 +83,7 @@ const accountSettingsInitialState: AccountSettingsFormState = {
   firstName: '',
   lastName: '',
   email: '',
+  currentPassword: '',
   newPassword: '',
   confirmNewPassword: '',
 };
@@ -503,6 +504,7 @@ export function WorkspaceShell({
           firstName: currentUser.firstName,
           lastName: currentUser.lastName,
           email: currentUser.email,
+          currentPassword: '',
           newPassword: '',
           confirmNewPassword: '',
         }
@@ -623,6 +625,14 @@ export function WorkspaceShell({
         return;
       }
 
+      if (accountSettingsForm.newPassword && !accountSettingsForm.currentPassword.trim()) {
+        setAccountSettingsError({
+          code: 'CURRENT_PASSWORD_REQUIRED',
+          message: 'Current password is required when changing password',
+        });
+        return;
+      }
+
       setIsSubmittingAccountSettings(true);
       const response = await fetch('/api/auth/update-account', {
         method: 'POST',
@@ -630,6 +640,7 @@ export function WorkspaceShell({
         body: JSON.stringify({
           firstName: accountSettingsForm.firstName,
           lastName: accountSettingsForm.lastName,
+          currentPassword: accountSettingsForm.currentPassword || undefined,
           newPassword: accountSettingsForm.newPassword || undefined,
         }),
       });
@@ -846,6 +857,7 @@ export function WorkspaceShell({
               firstName: currentUser.firstName,
               lastName: currentUser.lastName,
               email: currentUser.email,
+              currentPassword: '',
               newPassword: '',
               confirmNewPassword: '',
             });
