@@ -1,4 +1,6 @@
-import { normalizeErrorPayload } from './api-contract';
+import { NextRequest, NextResponse } from 'next/server';
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE, clearAuthCookies, setAuthCookies } from './auth-cookies';
+import { getTrimmedString, isRecord, normalizeErrorPayload } from './api-contract';
 import type { ErrorPayload } from './types';
 
 type ProxyApiSuccess = {
@@ -14,6 +16,16 @@ type ProxyApiFailure = {
 };
 
 export type ProxyApiResult = ProxyApiSuccess | ProxyApiFailure;
+
+const AUTHENTICATION_REQUIRED_ERROR: ErrorPayload = {
+  code: 'UNAUTHORIZED',
+  message: 'Authentication required',
+};
+
+const SERVICE_UNAVAILABLE_ERROR: ErrorPayload = {
+  code: 'SERVICE_UNAVAILABLE',
+  message: 'Unable to reach API service',
+};
 
 function getApiBaseUrl(): string {
   const value = process.env.OPENSPACE_API_BASE_URL ?? 'http://localhost:3001';
@@ -42,6 +54,38 @@ async function readResponsePayload(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+function createErrorResponse(payload: ErrorPayload, status: number): NextResponse {
+  return NextResponse.json<ErrorPayload>(payload, { status });
+}
+
+function createProxyResponse(result: ProxyApiResult): NextResponse {
+  return NextResponse.json(result.payload, { status: result.status });
+}
+
+function extractTokenPair(payload: unknown): { accessToken: string; refreshToken: string } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const accessToken = getTrimmedString(payload, 'accessToken');
+  const refreshToken = getTrimmedString(payload, 'refreshToken');
+
+  if (!accessToken || !refreshToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+  };
+}
+
+function buildAuthenticatedHeaders(headers: HeadersInit | undefined, accessToken: string): Headers {
+  const authenticatedHeaders = new Headers(headers);
+  authenticatedHeaders.set('Authorization', `Bearer ${accessToken}`);
+  return authenticatedHeaders;
 }
 
 export async function proxyApiRequest(options: {
@@ -78,4 +122,74 @@ export async function proxyApiRequest(options: {
     status: response.status,
     payload: normalizeErrorPayload(payload, response.status),
   };
+}
+
+export async function proxyAuthenticatedApiRequest(
+  request: NextRequest,
+  options: {
+    path: string;
+    method?: string;
+    body?: unknown;
+    headers?: HeadersInit;
+  },
+): Promise<NextResponse> {
+  const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+  const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
+
+  if (!accessToken && !refreshToken) {
+    return createErrorResponse(AUTHENTICATION_REQUIRED_ERROR, 401);
+  }
+
+  try {
+    const executeAuthenticatedRequest = async (token: string) =>
+      proxyApiRequest({
+        ...options,
+        headers: buildAuthenticatedHeaders(options.headers, token),
+      });
+
+    if (accessToken) {
+      const initialResult = await executeAuthenticatedRequest(accessToken);
+      if (initialResult.status !== 401) {
+        return createProxyResponse(initialResult);
+      }
+    }
+
+    if (!refreshToken) {
+      const response = createErrorResponse(AUTHENTICATION_REQUIRED_ERROR, 401);
+      clearAuthCookies(response);
+      return response;
+    }
+
+    const refreshResult = await proxyApiRequest({
+      path: '/api/auth/refresh',
+      method: 'POST',
+      body: { refreshToken },
+    });
+
+    if (!refreshResult.ok) {
+      const response = createProxyResponse(refreshResult);
+      clearAuthCookies(response);
+      return response;
+    }
+
+    const refreshedTokens = extractTokenPair(refreshResult.payload);
+    if (!refreshedTokens) {
+      const response = createErrorResponse(SERVICE_UNAVAILABLE_ERROR, 503);
+      clearAuthCookies(response);
+      return response;
+    }
+
+    const retryResult = await executeAuthenticatedRequest(refreshedTokens.accessToken);
+    const response = createProxyResponse(retryResult);
+
+    if (retryResult.status === 401) {
+      clearAuthCookies(response);
+      return response;
+    }
+
+    setAuthCookies(response, refreshedTokens);
+    return response;
+  } catch {
+    return createErrorResponse(SERVICE_UNAVAILABLE_ERROR, 503);
+  }
 }

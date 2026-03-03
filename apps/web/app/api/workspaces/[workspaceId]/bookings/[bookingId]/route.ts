@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_TOKEN_COOKIE } from '@/lib/auth-cookies';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
-import { proxyApiRequest } from '@/lib/backend-api';
+import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type BookingRouteContext = {
@@ -16,17 +15,6 @@ export async function PATCH(
   context: BookingRouteContext,
 ): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     const bookingId = context.params.bookingId?.trim();
     if (!workspaceId || !bookingId) {
@@ -138,18 +126,13 @@ export async function PATCH(
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/bookings/${encodeURIComponent(
         bookingId,
       )}`,
       method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       body: updatePayload,
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {

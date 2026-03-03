@@ -504,6 +504,38 @@ export class AuthService {
     return this.issueTokenPair(user);
   }
 
+  async logout(dto: RefreshTokenDto): Promise<{ loggedOut: true }> {
+    const refreshToken = this.requireString(dto.refreshToken, 'refreshToken');
+    let payload: JwtSubject;
+
+    try {
+      payload = await this.verifyRefreshToken(refreshToken);
+    } catch {
+      // Keep logout idempotent even when the client presents an invalid or expired token.
+      return { loggedOut: true };
+    }
+
+    const user = await this.prismaService.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        refreshTokenHash: true,
+      },
+    });
+
+    if (user && user.refreshTokenHash === this.hashToken(refreshToken)) {
+      await this.prismaService.user.update({
+        where: { id: user.id },
+        data: {
+          refreshTokenHash: null,
+          refreshTokenExpiresAt: null,
+        },
+      });
+    }
+
+    return { loggedOut: true };
+  }
+
   async deleteAccount(
     authUser: { userId: string },
     dto: DeleteAccountDto,

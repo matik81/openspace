@@ -308,7 +308,7 @@ describe('Auth flow integration', () => {
     }
   });
 
-  it('supports register, blocks login until verification, then allows login and refresh', async () => {
+  it('supports register, blocks login until verification, then allows login, refresh, and logout revocation', async () => {
     const registerResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
       firstName: 'Ada',
       lastName: 'Lovelace',
@@ -363,6 +363,27 @@ describe('Auth flow integration', () => {
     expect(refreshResponse.status).toBe(201);
     expect(refreshResponse.body.accessToken).toEqual(expect.any(String));
     expect(refreshResponse.body.refreshToken).toEqual(expect.any(String));
+
+    const logoutResponse = await request(app.getHttpServer())
+      .post('/api/auth/logout')
+      .send({
+        refreshToken: refreshResponse.body.refreshToken,
+      });
+
+    expect(logoutResponse.status).toBe(200);
+    expect(logoutResponse.body).toEqual({ loggedOut: true });
+
+    const refreshAfterLogout = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({
+        refreshToken: refreshResponse.body.refreshToken,
+      });
+
+    expect(refreshAfterLogout.status).toBe(401);
+    expect(refreshAfterLogout.body).toEqual({
+      code: 'UNAUTHORIZED',
+      message: 'Invalid refresh token',
+    });
 
     expect(prismaMock.user.update).toHaveBeenCalled();
     expect(prismaMock.emailVerificationToken.update).toHaveBeenCalled();

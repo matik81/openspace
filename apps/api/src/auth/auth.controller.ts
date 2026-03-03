@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isIP } from 'net';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -63,6 +63,12 @@ export class AuthController {
   @Post('refresh')
   async refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refresh(body);
+  }
+
+  @Post('logout')
+  @HttpCode(200)
+  async logout(@Body() body: RefreshTokenDto) {
+    return this.authService.logout(body);
   }
 
   @UseGuards(JwtAuthGuard)

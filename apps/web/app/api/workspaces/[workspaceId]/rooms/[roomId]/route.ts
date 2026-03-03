@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_TOKEN_COOKIE } from '@/lib/auth-cookies';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
-import { proxyApiRequest } from '@/lib/backend-api';
+import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type RoomRouteContext = {
@@ -13,17 +12,6 @@ type RoomRouteContext = {
 
 export async function PATCH(request: NextRequest, context: RoomRouteContext): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     const roomId = context.params.roomId?.trim();
 
@@ -98,16 +86,11 @@ export async function PATCH(request: NextRequest, context: RoomRouteContext): Pr
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/rooms/${encodeURIComponent(roomId)}`,
       method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       body: updatePayload,
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {
@@ -121,17 +104,6 @@ export async function PATCH(request: NextRequest, context: RoomRouteContext): Pr
 
 export async function DELETE(request: NextRequest, context: RoomRouteContext): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     const roomId = context.params.roomId?.trim();
     if (!workspaceId || !roomId) {
@@ -168,20 +140,15 @@ export async function DELETE(request: NextRequest, context: RoomRouteContext): P
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/rooms/${encodeURIComponent(roomId)}`,
       method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       body: {
         roomName,
         email,
         password,
       },
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {

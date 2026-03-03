@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_TOKEN_COOKIE } from '@/lib/auth-cookies';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
-import { proxyApiRequest } from '@/lib/backend-api';
+import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
@@ -12,17 +11,6 @@ type WorkspaceRouteContext = {
 
 export async function GET(request: NextRequest, context: WorkspaceRouteContext): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
@@ -34,15 +22,10 @@ export async function GET(request: NextRequest, context: WorkspaceRouteContext):
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {
@@ -56,17 +39,6 @@ export async function GET(request: NextRequest, context: WorkspaceRouteContext):
 
 export async function POST(request: NextRequest, context: WorkspaceRouteContext): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
@@ -100,18 +72,13 @@ export async function POST(request: NextRequest, context: WorkspaceRouteContext)
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       body: {
         email,
       },
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {

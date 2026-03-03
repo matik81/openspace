@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_TOKEN_COOKIE } from '@/lib/auth-cookies';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
-import { proxyApiRequest } from '@/lib/backend-api';
+import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceCancelRouteContext = {
@@ -15,17 +14,6 @@ export async function POST(
   context: WorkspaceCancelRouteContext,
 ): Promise<NextResponse> {
   try {
-    const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return NextResponse.json<ErrorPayload>(
-        {
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        { status: 401 },
-      );
-    }
-
     const workspaceId = context.params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
@@ -61,20 +49,15 @@ export async function POST(
       );
     }
 
-    const result = await proxyApiRequest({
+    return proxyAuthenticatedApiRequest(request, {
       path: `/api/workspaces/${encodeURIComponent(workspaceId)}/cancel`,
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       body: {
         workspaceName,
         email,
         password,
       },
     });
-
-    return NextResponse.json(result.payload, { status: result.status });
   } catch {
     return NextResponse.json<ErrorPayload>(
       {

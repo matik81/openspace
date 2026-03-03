@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { hashSync } from 'bcryptjs';
+import { createHash } from 'crypto';
 import { AuthService } from '../../src/auth/auth.service';
 import { EmailProvider } from '../../src/auth/email/email-provider.interface';
 import { OperationLimitsService } from '../../src/common/operation-limits.service';
@@ -357,6 +358,79 @@ describe('AuthService', () => {
     });
 
     expect(prismaService.user.update).not.toHaveBeenCalled();
+  });
+
+  it('revokes the stored refresh token on logout', async () => {
+    const prismaService = createPrismaService();
+    const verifiedAt = new Date('2025-01-01T00:00:00.000Z');
+    const userRecord = {
+      id: 'user-id',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'user@example.com',
+      passwordHash: hashSync('strong-password', 12),
+      emailVerifiedAt: verifiedAt,
+      status: 'ACTIVE',
+    };
+    let storedRefreshTokenHash: string | null = null;
+
+    (prismaService.user.findUnique as jest.Mock).mockImplementation(
+      async ({ where }: { where: { email?: string; id?: string } }) => {
+        if (where.email) {
+          return userRecord;
+        }
+
+        if (where.id) {
+          return {
+            id: userRecord.id,
+            refreshTokenHash: storedRefreshTokenHash,
+          };
+        }
+
+        return null;
+      },
+    );
+    (prismaService.user.update as jest.Mock).mockImplementation(
+      async ({ data }: { data: { refreshTokenHash?: string | null } }) => {
+        if (Object.prototype.hasOwnProperty.call(data, 'refreshTokenHash')) {
+          storedRefreshTokenHash = data.refreshTokenHash ?? null;
+        }
+
+        return {
+          id: userRecord.id,
+        };
+      },
+    );
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    const loginResult = await service.login({
+      email: userRecord.email,
+      password: 'strong-password',
+    });
+    expect(storedRefreshTokenHash).toBe(
+      createHash('sha256').update(loginResult.refreshToken).digest('hex'),
+    );
+
+    const result = await service.logout({ refreshToken: loginResult.refreshToken });
+
+    expect(result).toEqual({ loggedOut: true });
+    expect(prismaService.user.update).toHaveBeenLastCalledWith({
+      where: { id: userRecord.id },
+      data: {
+        refreshTokenHash: null,
+        refreshTokenExpiresAt: null,
+      },
+    });
   });
 
   it('requests a password reset without failing for an active verified user', async () => {
