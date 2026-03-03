@@ -249,15 +249,17 @@ describe('Domain rules integration', () => {
     });
   });
 
-  it('enforces unique workspace names globally', async () => {
+  it('enforces unique workspace names only across active workspaces', async () => {
     const admin = await createVerifiedUser('workspace-name-admin@example.com');
+    const secondAdmin = await createVerifiedUser('workspace-name-admin-2@example.com');
     const adminToken = await accessTokenFor(admin.id, admin.email);
+    const secondAdminToken = await accessTokenFor(secondAdmin.id, secondAdmin.email);
 
-    await createWorkspace(adminToken, 'Unique Workspace');
+    const workspaceId = await createWorkspace(adminToken, 'Unique Workspace');
 
     const duplicateResponse = await request(app.getHttpServer())
       .post('/api/workspaces')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Authorization', `Bearer ${secondAdminToken}`)
       .send({ name: 'Unique Workspace', timezone: 'UTC' });
 
     expect(duplicateResponse.status).toBe(409);
@@ -265,14 +267,33 @@ describe('Domain rules integration', () => {
       code: 'WORKSPACE_NAME_ALREADY_EXISTS',
       message: 'A workspace with this name already exists',
     });
+
+    const cancelResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        workspaceName: 'Unique Workspace',
+        email: admin.email,
+        password,
+      });
+
+    expect(cancelResponse.status).toBe(201);
+    expect(cancelResponse.body).toEqual({ cancelled: true });
+
+    const recreateResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${secondAdminToken}`)
+      .send({ name: 'Unique Workspace', timezone: 'UTC' });
+
+    expect(recreateResponse.status).toBe(201);
+    expect(recreateResponse.body.name).toBe('Unique Workspace');
   });
 
-  it('enforces unique room names per workspace and the maximum number of rooms per workspace', async () => {
+  it('enforces unique room names per workspace only across active rooms and the maximum room count', async () => {
     const admin = await createVerifiedUser('room-admin@example.com');
     const adminToken = await accessTokenFor(admin.id, admin.email);
     const workspaceId = await createWorkspace(adminToken, 'Room Capacity Workspace');
-
-    await createRoom(adminToken, workspaceId, 'Room A');
+    const roomAId = await createRoom(adminToken, workspaceId, 'Room A');
 
     const duplicateResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/rooms`)
@@ -285,6 +306,22 @@ describe('Domain rules integration', () => {
       message: 'A room with this name already exists in the workspace',
     });
 
+    const cancelRoomResponse = await request(app.getHttpServer())
+      .delete(`/api/workspaces/${workspaceId}/rooms/${roomAId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomName: 'Room A',
+        email: admin.email,
+        password,
+      });
+
+    expect(cancelRoomResponse.status).toBe(200);
+    expect(cancelRoomResponse.body).toEqual({
+      cancelled: true,
+      cancelledBookingsCount: 0,
+    });
+
+    await createRoom(adminToken, workspaceId, 'Room A');
     await createRoom(adminToken, workspaceId, 'Room B');
 
     const overflowResponse = await request(app.getHttpServer())
@@ -718,7 +755,7 @@ describe('Domain rules integration', () => {
       });
 
     expect(deleteResponse.status).toBe(200);
-    expect(deleteResponse.body).toEqual({ deleted: true, deletedBookingsCount: 1 });
+    expect(deleteResponse.body).toEqual({ cancelled: true, cancelledBookingsCount: 1 });
 
     const [room, futureBooking, persistedPastBooking] = await Promise.all([
       prismaService.room.findUnique({

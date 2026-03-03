@@ -269,7 +269,7 @@ export class BookingsService {
       },
     });
 
-    return { deleted: true };
+    return { cancelled: true };
   }
 
   private async requireVerifiedUser(userId: string): Promise<VerifiedUser> {

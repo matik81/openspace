@@ -90,8 +90,8 @@ Overlap safety must be concurrency-proof.
 
 ## Cancellation Policy
 
-Users can cancel reservations scheduled in the past, on the current workspace day, or in the future.
-Reservation cancellation performs a definitive hard delete from the database.
+Users can cancel reservations scheduled on the current workspace day or in the future.
+Reservation cancellation is logical and preserves the record with `status=CANCELLED`.
 
 ---
 

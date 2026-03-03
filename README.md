@@ -45,8 +45,10 @@ infra/
 - User double-booking within the same workspace (same user, overlapping active bookings) is blocked at DB level with an active-only exclusion constraint.
 - Each workspace defines a daily booking schedule window with 1-hour granularity and default `08:00`-`18:00`.
 - Booking start/end times must align to 15-minute increments in the workspace timezone.
-- Booking cancellation is allowed for past, same-day, and future reservations.
-- Booking cancellation permanently removes the reservation record (hard delete).
+- Booking cancellation is allowed only for same-day and future reservations.
+- Booking cancellation is logical: the reservation remains stored with `status=CANCELLED`, `cancelledAt`, and a cancellation reason.
+- Workspace names are unique only among active workspaces.
+- Room names are unique only among active rooms within the same workspace.
 
 ## Workspace API (Implemented)
 
@@ -68,7 +70,8 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - `GET /api/workspaces/:workspaceId/rooms` lists workspace rooms (active member read access).
 - `GET /api/workspaces/:workspaceId/rooms/:roomId` gets a room (active member read access).
 - `PATCH /api/workspaces/:workspaceId/rooms/:roomId` updates a room.
-- `DELETE /api/workspaces/:workspaceId/rooms/:roomId` permanently deletes a room and all associated reservations.
+- `DELETE /api/workspaces/:workspaceId/rooms/:roomId` logically cancels a room.
+- Future reservations in that room are cancelled with reason `ROOM_UNAVAILABLE`; past history is preserved.
   - Requires admin confirmation payload: `roomName`, `email`, and `password`.
 
 ## Web Frontend (Implemented)
@@ -86,7 +89,8 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
 - `/workspaces/[workspaceId]` supports invitation acceptance/rejection for pending users and reservation management for active members.
 - `/workspaces/[workspaceId]/admin` supports workspace settings, room CRUD, active member listing, pending invitation listing, and invite-by-email.
 - Workspace admins can configure the workspace timezone and daily schedule range, and the main day schedule renders only the configured range.
-- Room deletion uses a styled confirmation modal and requires room name + admin email + password before the backend performs a permanent delete of the room and its reservations.
+- Workspace and room destructive actions use styled confirmation modals, but both operations are logical cancellations rather than permanent deletes.
+- Cancelled workspace names can be reused for new active workspaces, and cancelled room names can be reused inside the same workspace.
 
 ## Booking API (Implemented)
 
@@ -100,6 +104,6 @@ All workspace endpoints enforce verified email and return errors in `{ code, mes
   - `mine` (default `true`)
   - `includePast` (default `false`)
   - `includeCancelled` (default `false`)
-- `POST /api/workspaces/:workspaceId/bookings/:bookingId/cancel` permanently deletes a reservation when its workspace-local booking date is today or in the future.
+- `POST /api/workspaces/:workspaceId/bookings/:bookingId/cancel` logically cancels a reservation when its workspace-local booking date is today or in the future.
 - Room overlap violations return `{ code: "BOOKING_OVERLAP", message: "..." }`.
 - User double-booking violations return `{ code: "BOOKING_USER_OVERLAP", message: "..." }`.

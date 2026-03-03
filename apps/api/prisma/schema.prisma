@@ -114,8 +114,8 @@ model Workspace {
   userPreferences UserWorkspacePreference[]
   scheduleVersions WorkspaceScheduleVersion[]
 
-  @@unique([name])
   @@index([createdByUserId])
+  @@index([status, name])
 }
 
 model UserWorkspacePreference {
@@ -176,8 +176,8 @@ model Room {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   bookings    Booking[]
 
-  @@unique([workspaceId, name])
   @@index([workspaceId])
+  @@index([workspaceId, status, name])
 }
 
 model Booking {

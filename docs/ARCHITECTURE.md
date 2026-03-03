@@ -34,6 +34,7 @@ Key design decisions:
 - Multi-tenant via workspaceId
 - EXCLUDE constraint for booking overlap
 - Soft delete via status field for users, workspace, rooms and bookings
+- Partial unique indexes enforce workspace names only for active workspaces and room names only for active rooms in a workspace
 - UUID primary keys
 - Configurable backend limits and persisted rate-limit suspensions
 - Workspace schedule history with effective dates

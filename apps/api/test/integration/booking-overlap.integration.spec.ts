@@ -350,7 +350,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(cancelResponse.status).toBe(201);
-    expect(cancelResponse.body).toEqual({ deleted: true });
+    expect(cancelResponse.body).toEqual({ cancelled: true });
 
     if (!prismaService) {
       throw new Error('Prisma service unavailable');
@@ -477,7 +477,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(cancelSameDayResponse.status).toBe(201);
-    expect(cancelSameDayResponse.body).toEqual({ deleted: true });
+    expect(cancelSameDayResponse.body).toEqual({ cancelled: true });
 
     const cancelledSameDayBooking = await prismaService.booking.findUnique({
       where: { id: sameDayBookingId },
@@ -600,7 +600,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(cancelFutureBookingResponse.status).toBe(201);
-    expect(cancelFutureBookingResponse.body).toEqual({ deleted: true });
+    expect(cancelFutureBookingResponse.body).toEqual({ cancelled: true });
 
     const defaultListResponse = await request(app.getHttpServer())
       .get(`/api/workspaces/${workspaceId}/bookings`)
@@ -1230,7 +1230,7 @@ describe('Booking overlap integration', () => {
         password,
       });
     expect(cancelResponse.status).toBe(201);
-    expect(cancelResponse.body).toEqual({ deleted: true });
+    expect(cancelResponse.body).toEqual({ cancelled: true });
 
     const adminListResponse = await request(app.getHttpServer())
       .get('/api/workspaces')

@@ -47,7 +47,7 @@ Workspace attributes:
 - createdByUserId
 
 Rules:
-- Workspace name must be globally unique
+- Workspace name must be unique only among active (`ACTIVE`) workspaces
 - Maximum 10 active workspaces per user
 - Maximum 100 active rooms per workspace
 - Maximum 1000 active members per workspace
@@ -87,7 +87,7 @@ Admin can create:
 - name
 - description
 
-Unique name per workspace.
+Room names must be unique within a workspace among active (`ACTIVE`) rooms.
 
 Rules:
 - Room deletion is logical (`CANCELLED`)
@@ -113,7 +113,7 @@ Rules:
 - Displayed in workspace timezone
 - Maximum 1000 active future bookings per user in each workspace
 - Booking date cannot be more than 365 days ahead
-- Bookings before today cannot be changed or deleted
+- Bookings before today cannot be changed or cancelled
 
 Cancellation:
 - Past bookings before today cannot be cancelled by the user

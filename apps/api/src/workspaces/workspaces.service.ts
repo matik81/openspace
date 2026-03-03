@@ -422,7 +422,7 @@ export class WorkspacesService {
       data: { status: WorkspaceStatus.CANCELLED, cancelledAt: new Date() },
     });
 
-    return { deleted: true };
+    return { cancelled: true };
   }
 
   async inviteUser(authUser: AuthUser, workspaceId: string, dto: InviteUserDto) {
@@ -848,6 +848,7 @@ export class WorkspacesService {
     const existing = await this.prismaService.workspace.findFirst({
       where: {
         name,
+        status: WorkspaceStatus.ACTIVE,
         ...(excludeWorkspaceId ? { id: { not: excludeWorkspaceId } } : {}),
       },
       select: { id: true },
@@ -941,7 +942,10 @@ export class WorkspacesService {
     if (typeof meta?.target === 'string') {
       return meta.target.includes('name');
     }
-    return error.message.includes('Workspace_name_key');
+    return (
+      error.message.includes('Workspace_name_key') ||
+      error.message.includes('Workspace_active_name_key')
+    );
   }
 
   private throwWorkspaceCancelConfirmationFailed(): never {

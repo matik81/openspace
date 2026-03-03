@@ -199,7 +199,7 @@ export class RoomsService {
       return bookingUpdate.count;
     });
 
-    return { deleted: true, deletedBookingsCount: cancelledBookings };
+    return { cancelled: true, cancelledBookingsCount: cancelledBookings };
   }
 
   private async findWorkspaceRoom(workspaceId: string, roomId: string) {
@@ -333,6 +333,7 @@ export class RoomsService {
       where: {
         workspaceId,
         name,
+        status: RoomStatus.ACTIVE,
         ...(excludeRoomId ? { id: { not: excludeRoomId } } : {}),
       },
       select: { id: true },
@@ -356,7 +357,10 @@ export class RoomsService {
     if (typeof meta?.target === 'string') {
       return meta.target.includes('workspaceId') && meta.target.includes('name');
     }
-    return error.message.includes('Room_workspaceId_name_key');
+    return (
+      error.message.includes('Room_workspaceId_name_key') ||
+      error.message.includes('Room_active_workspaceId_name_key')
+    );
   }
 
   private throwRoomDeleteConfirmationFailed(): never {

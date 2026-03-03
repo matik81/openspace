@@ -963,7 +963,7 @@ function WorkspaceBookingDashboard({
     }
 
     await loadBookings(workspace);
-    setPageBanner('Reservation cancelled and removed.');
+    setPageBanner('Reservation cancelled.');
     closeDialog();
   };
 
