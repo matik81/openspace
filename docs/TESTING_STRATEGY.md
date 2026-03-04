@@ -1,88 +1,87 @@
 # Testing Strategy
 
----
+## Current Automated Coverage
 
-## Unit Tests
+Current automated tests are concentrated in `apps/api`.
 
-- AuthService
-- WorkspaceService
-- InvitationService
-- BookingService
-- Auth account reactivation
-- Auth password reset token lifecycle
-- Auth account update confirmation
+Covered areas:
 
----
+- auth service behavior
+- auth controller behavior
+- global exception filter
+- environment validation
+- auth flow integration
+- workspace invitation flow integration
+- domain rules integration
+- booking overlap and scheduling integration
+- rate-limit suspension integration
 
-## Integration Tests
+Current gaps:
 
-- Email verification flow
-- Cancelled account reactivation on register
-- Account update flow
-- Password reset request flow
-- Password reset confirmation flow
-- Invitation accept flow
-- Invitation reject flow
-- Workspace visibility rules (active member or pending invitation only)
-- Workspace leave flow with future booking cancellation
-- Account deletion flow with logical cancellation propagation
-- Booking creation
-- Booking overlap rejection
-- User double-booking rejection (same workspace)
-- Cross-workspace overlapping bookings allowed
-- Booking hours window enforcement based on workspace schedule settings
-- Booking time increment enforcement (15-minute workspace time)
-- Booking soft-cancel behavior and past-mutation guard
-- Workspace schedule change cancellation for incompatible future bookings
-- Rate-limit suspension responses
+- `apps/web` has no automated tests yet
+- `packages/shared` has no automated tests yet
 
----
+## Current Integration Coverage
 
-## Overlap Test Case
+The API integration suite currently covers:
 
-1. Create booking A (10:00 - 11:00)
-2. Attempt booking B (10:30 - 11:30)
-3. Expect conflict error BOOKING_OVERLAP
+- email verification flow
+- cancelled account reactivation on register
+- account update flow
+- password reset request flow
+- password reset confirmation flow
+- invitation accept flow
+- invitation reject flow
+- workspace visibility rules
+- workspace leave flow with future booking cancellation
+- account deletion flow with logical cancellation propagation
+- booking creation
+- booking overlap rejection
+- user double-booking rejection inside a workspace
+- cross-workspace overlapping bookings allowed
+- booking hours enforcement based on workspace schedule
+- booking 15-minute increment enforcement
+- booking logical cancellation behavior and past-mutation guard
+- workspace schedule change cancellation for incompatible future bookings
+- rate-limit suspension responses
 
----
+## Local Execution
 
-## User Double-Booking Test Case
+Repository commands:
 
-1. Create booking A in Room 1 (10:00 - 11:00)
-2. Attempt booking B in Room 2 (10:30 - 11:30) by same user
-3. Expect conflict error BOOKING_USER_OVERLAP
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
 
----
+Infrastructure requirements for API integration tests:
 
-## Cross-Workspace User Booking Test Case
+- PostgreSQL must be reachable
+- local Docker setup can be started with `pnpm db:up`
 
-1. Create workspace A and workspace B
-2. Create overlapping bookings for the same user, one in each workspace
-3. Expect both bookings to succeed
+Current note:
 
----
-
-## Booking Hours Test Case
-
-1. Configure a workspace schedule window
-2. Attempt booking before the configured local start hour
-3. Attempt booking ending after the configured local end hour
-4. Expect BOOKING_OUTSIDE_ALLOWED_HOURS
-
----
+- Redis is not required by the current test suites
+- web and shared test scripts are placeholders and currently print `No tests yet`
 
 ## CI
 
-CI must run:
+Current CI workflow runs:
 
-- pnpm install
-- pnpm lint
-- pnpm typecheck
-- pnpm test
-- prisma migrate deploy
+- dependency installation
+- lint
+- Prisma generate
+- typecheck
+- Prisma migrate deploy
+- test
 - build
 
-Notes:
+The GitHub Actions workflow provisions PostgreSQL for the API integration suites.
 
-- Prisma integration tests require the local Postgres instance to be running.
-- Mocked integration suites should stub `OperationLimitsService` unless they explicitly cover suspensions.
+## Testing Direction
+
+Near-term priorities:
+
+- add frontend tests for auth proxy routes and session refresh behavior
+- add frontend tests for destructive confirmations and booking workflows
+- add shared package tests for contracts and value-level invariants
+- keep integration tests deterministic with timezone-aware test data

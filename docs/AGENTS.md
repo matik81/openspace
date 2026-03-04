@@ -1,166 +1,150 @@
-# Codex Agent Instructions – OpenSpace
+# Codex Agent Instructions - OpenSpace
 
-This file defines mandatory project constraints and workflow rules.
+This file defines mandatory project constraints and workflow rules for repository work.
 
-Codex must read and follow these instructions before making any changes.
-
----
-
-# 0. Private Folder Boundary
+## 0. Private Folder Boundary
 
 Codex must treat `.private/` as off-limits.
 
-- Do not read files in `.private/`
-- Do not write or modify files in `.private/`
-- Do not use `.private/` content as task context unless the user explicitly overrides this rule for a specific file
+- do not read files in `.private/`
+- do not write or modify files in `.private/`
+- do not use `.private/` content as task context unless the user explicitly overrides this rule for a specific file
 
----
+## 1. Architecture
 
-# 1. Architecture
+This project is implemented as:
 
-This project must be implemented as:
-
-- Modular monolith
-- pnpm workspace monorepo
+- modular monolith
+- `pnpm` workspace monorepo
 - Turborepo task runner
 
 Structure:
 
+```text
 apps/
-  web (Next.js)
-  api (NestJS)
+  web
+  api
 packages/
-  shared (types, enums, schemas)
+  shared
 infra/
-  docker/
+  docker
+```
 
----
+## 2. Core Requirements
 
-# 2. Core Requirements
-
-## Email Verification
+### Email Verification
 
 Email verification is mandatory.
-Users must have emailVerifiedAt not null.
-Until verified:
-- No login access
-- No workspace visibility
-- No invitation acceptance
 
-Hard gate.
+- users must have `emailVerifiedAt` not null before login
+- unverified users cannot log in
+- unverified users cannot access authenticated workspace flows
+- invitation acceptance requires an authenticated verified user
 
----
-
-## Workspace Visibility Rules
+### Workspace Visibility Rules
 
 Users can see a workspace only if:
 
-- They are ACTIVE members
-OR
-- They have a PENDING invitation matching their email
+- they are active members
+- or they have a pending invitation matching their authenticated email
 
-No public workspace listing.
-No enumeration possible.
+No public workspace listing exists.
 
----
-
-## Workspace Timezone
+### Workspace Timezone
 
 Each workspace has a timezone.
-- Bookings stored as timestamptz (UTC)
-- Displayed using workspace timezone
-- Admin configures timezone
 
----
+- bookings are stored in UTC
+- bookings are displayed using workspace timezone
+- admins configure workspace timezone and daily schedule window
 
-## Booking Overlap Protection
+### Booking Overlap Protection
 
-Booking overlap must be prevented at database level.
+Booking overlap must be prevented at the database level.
 
 Use PostgreSQL:
 
-- Enable extension: btree_gist
-- Use tstzrange
-- Add EXCLUDE constraint
-- Partial index only for ACTIVE bookings
+- `btree_gist`
+- `tstzrange`
+- exclusion constraints
+- active-only partial enforcement
 
-Overlap safety must be concurrency-proof.
+Overlap safety must remain concurrency-safe.
 
----
-
-## Cancellation Policy
+### Cancellation Policy
 
 Users can cancel reservations scheduled on the current workspace day or in the future.
 Reservation cancellation is logical and preserves the record with `status=CANCELLED`.
 
----
+Workspace and room destructive flows are also logical cancellations, not permanent deletes.
 
-## Roles
+### Roles
 
 Workspace roles:
-- ADMIN
-- MEMBER
 
-Only ADMIN can:
-- Invite users
-- Create rooms
-- Promote other admins (future feature)
+- `ADMIN`
+- `MEMBER`
 
----
+Only `ADMIN` can:
 
-# 3. Quality Requirements
+- invite users
+- create rooms
+- manage workspace settings
+
+## 3. Quality Requirements
 
 Definition of Done:
 
-- Lint passes
-- Typecheck passes
-- Tests pass
+- lint passes
+- typecheck passes
+- tests pass
 - CI passes
-- Documentation updated
+- documentation updated
 
 Repository language policy:
 
-- All repository content must use professional technical English
-- This applies to code, identifiers, variable names, function names, comments, error messages, and documentation
-- Do not introduce non-English text in source files or project documentation unless explicitly required for user-facing product content
+- use professional technical English for source code and documentation
+- do not introduce non-English text unless it is intentional user-facing product content
 
 After major changes:
-- Run relevant commands
-- Fix failures before proceeding
 
----
+- run relevant commands
+- fix failures before proceeding
 
-# 4. Testing Requirements
+## 4. Testing Requirements
 
-Minimum:
+Minimum expectations:
 
-- Unit tests for services
-- Integration tests for booking overlap logic
-- Integration tests for invitation flow
-- Auth tests
+- unit tests for critical services
+- integration tests for auth flows
+- integration tests for booking overlap and scheduling rules
+- integration tests for invitation and visibility rules
 
-Use test database.
+Use a test database for integration coverage.
 
----
+Current gap:
 
-# 5. Error Format
+- frontend and shared-package automated tests are still missing
 
-Errors must follow consistent structure:
+## 5. Error Format
 
+Errors must follow this structure:
+
+```json
 {
   "code": "ERROR_CODE",
   "message": "Human readable message"
 }
+```
 
-Example:
-BOOKING_OVERLAP
-EMAIL_NOT_VERIFIED
-UNAUTHORIZED
-WORKSPACE_NOT_VISIBLE
+Examples:
 
----
+- `BOOKING_OVERLAP`
+- `EMAIL_NOT_VERIFIED`
+- `UNAUTHORIZED`
+- `WORKSPACE_NOT_VISIBLE`
 
-# 6. Commit Messages
+## 6. Commit Messages
 
 Commit messages must use Conventional Commits with a mandatory scope.
 
