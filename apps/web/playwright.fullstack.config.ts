@@ -22,7 +22,7 @@ export default defineConfig({
     timeout: 5_000,
   },
   reporter: 'list',
-  globalSetup: './e2e-fullstack/global-setup.ts',
+  globalSetup: process.env.CI ? undefined : './e2e-fullstack/global-setup.ts',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',

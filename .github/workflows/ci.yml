@@ -133,6 +133,26 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Start Docker Compose for E2E Full-stack
+        run: docker compose -f infra/docker/docker-compose.yml up -d
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..60}; do
+            if (echo > /dev/tcp/127.0.0.1/${POSTGRES_PORT}) >/dev/null 2>&1; then
+              echo "PostgreSQL is ready on port ${POSTGRES_PORT}"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "PostgreSQL did not become ready in time" >&2
+          exit 1
+
+      - name: Prisma migrate E2E schema
+        env:
+          DATABASE_URL: postgresql://openspace:openspace@localhost:${{ env.POSTGRES_PORT }}/openspace?schema=e2e_playwright
+        run: pnpm --filter @openspace/api prisma:migrate:deploy
+
       - name: Install Playwright Chromium
         run: pnpm --filter @openspace/web exec playwright install --with-deps chromium
 
