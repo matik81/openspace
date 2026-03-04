@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  quality:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -69,3 +69,86 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  e2e-mock:
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @openspace/web exec playwright install --with-deps chromium
+
+      - name: Test E2E Mock
+        run: pnpm test:web:e2e:mock
+
+      - name: Upload Playwright Artifacts (mock)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-mock
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+
+  e2e-fullstack:
+    runs-on: ubuntu-latest
+    needs: quality
+    env:
+      OPENSPACE_E2E_POSTGRES_PORT: 55432
+      POSTGRES_PORT: 55432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @openspace/web exec playwright install --with-deps chromium
+
+      - name: Test E2E Full-stack
+        run: pnpm test:web:e2e:fullstack
+
+      - name: Upload Playwright Artifacts (fullstack)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-fullstack
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+
+      - name: Shutdown Docker Compose
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.yml down -v
