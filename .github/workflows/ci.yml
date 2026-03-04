@@ -141,6 +141,9 @@ jobs:
           DATABASE_URL: postgresql://openspace:openspace@localhost:${{ env.POSTGRES_PORT }}/openspace?schema=e2e_playwright
         run: pnpm --filter @openspace/api prisma:migrate:deploy
 
+      - name: Prisma generate for API
+        run: pnpm --filter @openspace/api prisma:generate
+
       - name: Install Playwright Chromium
         run: pnpm --filter @openspace/web exec playwright install --with-deps chromium
 
