@@ -7,6 +7,7 @@ import {
 } from '../../src/auth/email/email-provider.interface';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { toLocalDateKey, toLocalTimeParts } from '../../src/common/workspace-time';
 
 jest.setTimeout(30000);
 
@@ -27,6 +28,35 @@ describe('Booking overlap integration', () => {
     date.setUTCDate(date.getUTCDate() + daysAhead);
     date.setUTCHours(hour, minute, 0, 0);
     return date.toISOString();
+  };
+  const addDaysToDateKey = (dateKey: string, days: number) => {
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const findUtcIsoForLocalDateTime = (
+    dateKey: string,
+    timezone: string,
+    hour: number,
+    minute = 0,
+  ) => {
+    const approximateUtc = new Date(`${dateKey}T${String(hour).padStart(2, '0')}:${String(
+      minute,
+    ).padStart(2, '0')}:00.000Z`);
+
+    for (let offsetMinutes = -18 * 60; offsetMinutes <= 18 * 60; offsetMinutes += 15) {
+      const candidate = new Date(approximateUtc.getTime() + offsetMinutes * 60_000);
+      if (toLocalDateKey(candidate, timezone) !== dateKey) {
+        continue;
+      }
+
+      const localTime = toLocalTimeParts(candidate, timezone);
+      if (localTime.hour === hour && localTime.minute === minute) {
+        return candidate.toISOString();
+      }
+    }
+
+    throw new Error(`Unable to resolve ${dateKey} ${hour}:${minute} in timezone ${timezone}`);
   };
 
   beforeAll(async () => {
@@ -827,6 +857,7 @@ describe('Booking overlap integration', () => {
   });
 
   it('rejects bookings that cross a local date boundary in the workspace timezone', async () => {
+    const timezone = 'Europe/Paris';
     const adminEmail = 'booking-date-boundary-admin@example.com';
     await registerAndVerify(adminEmail);
     const adminToken = await login(adminEmail);
@@ -836,7 +867,7 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Timezone Rules',
-        timezone: 'Europe/Paris',
+        timezone,
         scheduleStartHour: 0,
         scheduleEndHour: 24,
       });
@@ -851,14 +882,16 @@ describe('Booking overlap integration', () => {
       });
     expect(createRoomResponse.status).toBe(201);
     const roomId = createRoomResponse.body.id as string;
+    const localStartDateKey = toLocalDateKey(new Date(Date.now() + 25 * 24 * 60 * 60 * 1000), timezone);
+    const localEndDateKey = addDaysToDateKey(localStartDateKey, 1);
 
     const response = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         roomId,
-        startAt: futureDateIso(25, 22, 30),
-        endAt: futureDateIso(25, 23, 30),
+        startAt: findUtcIsoForLocalDateTime(localStartDateKey, timezone, 23, 30),
+        endAt: findUtcIsoForLocalDateTime(localEndDateKey, timezone, 0, 30),
         subject: 'Cross midnight local',
       });
 

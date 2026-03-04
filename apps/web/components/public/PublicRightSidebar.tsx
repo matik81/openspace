@@ -3,7 +3,6 @@
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { PUBLIC_TIMEZONE } from '@/components/public/public-preview-data';
 import { buildMiniCalendarCells, type SidebarBookingGroup } from '@/lib/time';
-import type { BookingListItem } from '@/lib/types';
 
 export function PublicRightSidebar({
   monthKey,
@@ -29,7 +28,7 @@ export function PublicRightSidebar({
       onToday={onToday}
       miniCalendarCells={miniCalendarCells}
       bookingGroups={bookingGroups}
-      onOpenBooking={(_booking: BookingListItem) => undefined}
+      onOpenBooking={() => undefined}
     />
   );
 }

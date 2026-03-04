@@ -126,10 +126,10 @@ function writeWorkspaceSidebarState(workspaceId: string, state: WorkspaceSidebar
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
-  const workspaceId = params.workspaceId;
+  const workspaceId = params?.workspaceId ?? '';
 
   return (
-    <WorkspaceShell selectedWorkspaceId={workspaceId} pageTitle="" pageDescription="">
+    <WorkspaceShell selectedWorkspaceId={workspaceId || undefined} pageTitle="" pageDescription="">
       {(context) => WorkspacePageContent({ context, workspaceId })}
     </WorkspaceShell>
   );
@@ -272,7 +272,7 @@ function WorkspaceBookingDashboard({
     anchorPoint: null,
   });
   const workspaceIdRef = useRef<string | null>(workspaceId || null);
-  const requestedBookingId = searchParams.get('bookingId');
+  const requestedBookingId = searchParams?.get('bookingId') ?? null;
 
   const getBookingAnchorPoint = useCallback((bookingId: string): BookingModalAnchorPoint | null => {
     if (typeof document === 'undefined') {
@@ -400,7 +400,7 @@ function WorkspaceBookingDashboard({
     setRoomsWorkspaceId(selected.id);
     setHasLoadedRooms(true);
     setIsLoadingRooms(false);
-  }, [dateKey]);
+  }, [dateKey, router]);
 
   const loadBookings = useCallback(async (selected: WorkspaceItem) => {
     setIsLoadingBookings(true);
@@ -446,7 +446,7 @@ function WorkspaceBookingDashboard({
     setBookingsWorkspaceId(selected.id);
     setHasLoadedBookings(true);
     setIsLoadingBookings(false);
-  }, []);
+  }, [router]);
 
   const refreshData = useCallback(async () => {
     if (!workspace || !enabled) {
@@ -1026,7 +1026,7 @@ function WorkspaceBookingDashboard({
       await loadBookings(workspace);
       setPageBanner('Booking updated.');
     },
-    [bookings, dateKey, enabled, timezone, workspace, loadBookings],
+    [bookings, dateKey, enabled, timezone, workspace, loadBookings, router],
   );
 
   const rightSidebar = (

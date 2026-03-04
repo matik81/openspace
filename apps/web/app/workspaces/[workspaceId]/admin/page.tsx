@@ -69,11 +69,11 @@ const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) =>
 
 export default function WorkspaceAdminPage() {
   const params = useParams<WorkspacePageParams>();
-  const workspaceId = params.workspaceId;
+  const workspaceId = params?.workspaceId ?? '';
 
   return (
     <WorkspaceShell
-      selectedWorkspaceId={workspaceId}
+      selectedWorkspaceId={workspaceId || undefined}
       pageTitle="Workspace Admin"
       pageDescription="Manage meeting rooms, members, and invitations."
       pageBackHref={`/workspaces/${workspaceId}`}
@@ -411,7 +411,7 @@ function WorkspaceAdminContent({
       await loadAdminData();
       setIsSubmittingRoom(false);
     },
-    [selectedWorkspace, isAdmin, isSubmittingRoom, newRoomName, newRoomDescription, loadAdminData],
+    [selectedWorkspace, isAdmin, isSubmittingRoom, newRoomName, newRoomDescription, loadAdminData, router],
   );
 
   const handleSaveRoom = useCallback(
@@ -540,7 +540,7 @@ function WorkspaceAdminContent({
       await loadAdminData();
       setIsSubmittingInvite(false);
     },
-    [selectedWorkspace, isAdmin, isSubmittingInvite, inviteEmail, loadAdminData],
+    [selectedWorkspace, isAdmin, isSubmittingInvite, inviteEmail, loadAdminData, router],
   );
 
   const handleCancelWorkspace = useCallback(

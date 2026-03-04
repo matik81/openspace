@@ -31,7 +31,12 @@ function PublicHomePageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const authMode = normalizeAuthMode(searchParams.get('auth'));
+  const safePathname = pathname ?? '/';
+  const safeSearchParams = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams],
+  );
+  const authMode = normalizeAuthMode(safeSearchParams.get('auth'));
   const [previewAnchorDateKey] = useState(() =>
     DateTime.now().setZone(PUBLIC_TIMEZONE).toFormat('yyyy-LL-dd'),
   );
@@ -126,7 +131,7 @@ function PublicHomePageContent() {
   }
 
   function setAuthMode(mode: AuthMode | null, extraParams?: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(safeSearchParams.toString());
 
     if (mode) {
       params.set('auth', mode);
@@ -151,7 +156,7 @@ function PublicHomePageContent() {
     }
 
     const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    router.replace(query ? `${safePathname}?${query}` : safePathname, { scroll: false });
   }
 
   return (
@@ -256,7 +261,7 @@ function PublicHomePageContent() {
 
       <PublicAuthModal
         mode={authMode}
-        searchParams={searchParams}
+        searchParams={safeSearchParams}
         onClose={() => setAuthMode(null)}
         onSwitchMode={(nextMode, params) => setAuthMode(nextMode, params)}
       />
