@@ -1,0 +1,41 @@
+import { loginAsSeededAdmin } from './support/auth';
+import { expect, FULLSTACK_E2E, test } from './support/scenario';
+
+test('creates and cancels a booking against the real API', async ({ page }) => {
+  await loginAsSeededAdmin(page);
+  await page.goto(`/workspaces/${FULLSTACK_E2E.workspaces.admin.id}`);
+
+  await page
+    .getByRole('button', { name: `Create booking in ${FULLSTACK_E2E.rooms.focus.name}` })
+    .click({ position: { x: 32, y: 240 } });
+
+  const createDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Create Booking' }),
+  });
+
+  await createDialog.getByLabel('Title').fill('Full-stack booking');
+  await createDialog.getByLabel('Start').selectOption('13:00');
+  await createDialog.getByLabel('End').selectOption('14:00');
+  await createDialog
+    .locator('form')
+    .getByRole('button', { name: 'Create', exact: true })
+    .click();
+
+  await expect(page.getByText('Booking created.')).toBeVisible();
+
+  const myBookingsSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'My bookings' }),
+  });
+  await expect(myBookingsSection).toContainText('Full-stack booking');
+
+  await myBookingsSection.getByRole('button', { name: /Full-stack booking/i }).click();
+
+  const editDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Edit Booking' }),
+  });
+
+  await editDialog.getByRole('button', { name: 'Cancel Reservation' }).click();
+
+  await expect(page.getByText('Reservation cancelled.')).toBeVisible();
+  await expect(myBookingsSection).not.toContainText('Full-stack booking');
+});

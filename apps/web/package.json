@@ -8,7 +8,11 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet for web\""
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm run test:e2e:mock",
+    "test:e2e:mock": "playwright test -c ./playwright.mock.config.ts",
+    "test:e2e:fullstack": "playwright test -c ./playwright.fullstack.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -22,14 +26,24 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/luxon": "^3.7.1",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.14",
     "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.20",
     "eslint-config-next": "^14.2.20",
+    "happy-dom": "^20.8.3",
+    "jsdom": "^28.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^7.3.1",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.0.18"
   }
 }

@@ -10,6 +10,10 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:web": "pnpm --filter @openspace/web test",
+    "test:web:e2e": "pnpm run test:web:e2e:mock",
+    "test:web:e2e:mock": "pnpm --filter @openspace/web test:e2e:mock",
+    "test:web:e2e:fullstack": "pnpm --filter @openspace/web test:e2e:fullstack",
     "format": "prettier --write .",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down"
