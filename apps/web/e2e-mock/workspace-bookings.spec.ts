@@ -8,14 +8,15 @@ test.beforeEach(async ({ page }) => {
 test('creates, edits, and cancels a booking from the workspace page', async ({ page }) => {
   await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
 
-  await page
-    .getByRole('button', { name: 'Create booking in Focus Room' })
-    .click({ position: { x: 32, y: 180 } });
+  const createBookingTrigger = page.getByRole('button', { name: 'Create booking in Focus Room' });
+  await expect(createBookingTrigger).toBeVisible();
+  await createBookingTrigger.click();
 
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Create Booking' }),
   });
 
+  await expect(dialog).toBeVisible();
   await dialog.getByLabel('Title').fill('Ops Review');
   await dialog.getByLabel('Start').selectOption('13:00');
   await dialog.getByLabel('End').selectOption('14:00');

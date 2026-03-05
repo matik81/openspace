@@ -5,14 +5,17 @@ test('creates and cancels a booking against the real API', async ({ page }) => {
   await loginAsSeededAdmin(page);
   await page.goto(`/workspaces/${FULLSTACK_E2E.workspaces.admin.id}`);
 
-  await page
-    .getByRole('button', { name: `Create booking in ${FULLSTACK_E2E.rooms.focus.name}` })
-    .click({ position: { x: 32, y: 240 } });
+  const createBookingTrigger = page.getByRole('button', {
+    name: `Create booking in ${FULLSTACK_E2E.rooms.focus.name}`,
+  });
+  await expect(createBookingTrigger).toBeVisible();
+  await createBookingTrigger.click();
 
   const createDialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Create Booking' }),
   });
 
+  await expect(createDialog).toBeVisible();
   await createDialog.getByLabel('Title').fill('Full-stack booking');
   await createDialog.getByLabel('Start').selectOption('13:00');
   await createDialog.getByLabel('End').selectOption('14:00');
