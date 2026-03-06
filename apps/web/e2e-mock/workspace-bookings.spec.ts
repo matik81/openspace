@@ -17,6 +17,7 @@ test('creates, edits, and cancels a booking from the workspace page', async ({ p
   });
 
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Title')).toBeFocused();
   await dialog.getByLabel('Title').fill('Ops Review');
   await dialog.getByLabel('Start').selectOption('13:00');
   await dialog.getByLabel('End').selectOption('14:00');

@@ -16,6 +16,7 @@ test('creates and cancels a booking against the real API', async ({ page }) => {
   });
 
   await expect(createDialog).toBeVisible();
+  await expect(createDialog.getByLabel('Title')).toBeFocused();
   await createDialog.getByLabel('Title').fill('Full-stack booking');
   await createDialog.getByLabel('Start').selectOption('13:00');
   await createDialog.getByLabel('End').selectOption('14:00');

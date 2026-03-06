@@ -2,6 +2,7 @@
 
 import { DateTime } from 'luxon';
 import {
+  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -449,7 +450,7 @@ export function DaySchedule({
     }
   }, [interaction]);
 
-  const handleEmptySlotClick = (roomId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handleEmptySlotClick = (roomId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     if (isMutating || committingBookingId || !canCreateBookings) {
       return;
     }
@@ -481,7 +482,7 @@ export function DaySchedule({
         <button
           type="button"
           className="absolute inset-0 z-0 cursor-cell"
-          onPointerDown={(event) => handleEmptySlotClick(room.id, event)}
+          onClick={(event) => handleEmptySlotClick(room.id, event)}
           aria-label={`Create booking in ${room.name}`}
         />
 
