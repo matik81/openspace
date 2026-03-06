@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
+import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
@@ -16,7 +17,6 @@ import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
-  workspaceTodayDateKey,
 } from '@/lib/time';
 import type {
   BookingListItem,
@@ -59,8 +59,6 @@ type DeleteRoomConfirmationState = {
 };
 
 type AdminRightSidebarState = {
-  dateKey: string;
-  monthKey: string;
   myBookings: BookingListItem[];
 };
 
@@ -147,15 +145,8 @@ function WorkspaceAdminContent({
     email: '',
     password: '',
   });
-  const [dateKey, setDateKey] = useState(
-    () =>
-      cachedRightSidebarState?.dateKey ??
-      workspaceTodayDateKey(selectedWorkspace?.timezone ?? 'UTC'),
-  );
-  const [monthKey, setMonthKey] = useState(
-    () =>
-      cachedRightSidebarState?.monthKey ??
-      workspaceTodayDateKey(selectedWorkspace?.timezone ?? 'UTC').slice(0, 7),
+  const { dateKey, monthKey, setDateKey, setMonthKey, goToToday } = useSharedSelectedDate(
+    selectedWorkspace?.timezone ?? 'UTC',
   );
   const adminDataRequestIdRef = useRef(0);
   const lastSelectedWorkspaceIdRef = useRef<string | null>(null);
@@ -274,11 +265,7 @@ function WorkspaceAdminContent({
       return;
     }
 
-    const today = workspaceTodayDateKey(selectedWorkspaceTimezone);
-    const cachedState = adminRightSidebarStateCache.get(selectedWorkspaceId);
-    setDateKey(cachedState?.dateKey ?? today);
-    setMonthKey(cachedState?.monthKey ?? today.slice(0, 7));
-    setMyBookings(cachedState?.myBookings ?? []);
+    setMyBookings(adminRightSidebarStateCache.get(selectedWorkspaceId)?.myBookings ?? []);
 
     setWorkspaceSettingsForm((previous) =>
       previous.name === selectedWorkspaceName &&
@@ -334,20 +321,9 @@ function WorkspaceAdminContent({
     });
 
     adminRightSidebarStateCache.set(selectedWorkspaceId, {
-      dateKey,
-      monthKey,
       myBookings,
     });
-  }, [
-    selectedWorkspaceId,
-    dateKey,
-    monthKey,
-    myBookings,
-    hasLoadedAdminData,
-    rooms,
-    members,
-    pendingInvitations,
-  ]);
+  }, [selectedWorkspaceId, myBookings, hasLoadedAdminData, rooms, members, pendingInvitations]);
 
   const handleSaveWorkspaceSettings = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -650,11 +626,7 @@ function WorkspaceAdminContent({
       monthKey={monthKey}
       onSelectDateKey={setDateKey}
       onSelectMonthKey={setMonthKey}
-      onToday={() => {
-        const today = workspaceTodayDateKey(selectedWorkspace.timezone);
-        setDateKey(today);
-        setMonthKey(today.slice(0, 7));
-      }}
+      onToday={goToToday}
       miniCalendarCells={miniCalendarCells}
       bookingGroups={myBookingGroups}
       onOpenBooking={(booking) =>

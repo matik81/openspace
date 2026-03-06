@@ -19,6 +19,7 @@ import {
 import { Header } from '@/components/layout/Header';
 import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
+import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
@@ -102,22 +103,13 @@ function isAuthUserSummary(value: unknown): value is AuthUserSummary {
 }
 
 function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
-  const [selectedDateKey, setSelectedDateKey] = useState(() =>
-    DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'),
-  );
-  const [calendarMonthKey, setCalendarMonthKey] = useState(() =>
-    DateTime.now().setZone(timezone).toFormat('yyyy-LL'),
-  );
-
-  useEffect(() => {
-    const now = DateTime.now().setZone(timezone);
-    if (!now.isValid) {
-      return;
-    }
-
-    setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
-    setCalendarMonthKey(now.toFormat('yyyy-LL'));
-  }, [timezone]);
+  const {
+    dateKey: selectedDateKey,
+    monthKey: calendarMonthKey,
+    setDateKey,
+    setMonthKey,
+    goToToday,
+  } = useSharedSelectedDate(timezone);
 
   const todayDateKey = useMemo(
     () => DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'),
@@ -150,16 +142,6 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
     });
   }, [calendarMonth, selectedDateKey, todayDateKey]);
 
-  const jumpToToday = () => {
-    const now = DateTime.now().setZone(timezone);
-    if (!now.isValid) {
-      return;
-    }
-
-    setSelectedDateKey(now.toFormat('yyyy-LL-dd'));
-    setCalendarMonthKey(now.toFormat('yyyy-LL'));
-  };
-
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
@@ -173,16 +155,14 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={jumpToToday}
+              onClick={goToToday}
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Today
             </button>
             <button
               type="button"
-              onClick={() =>
-                setCalendarMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))
-              }
+              onClick={() => setMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               aria-label="Previous month"
             >
@@ -190,9 +170,7 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
             </button>
             <button
               type="button"
-              onClick={() =>
-                setCalendarMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))
-              }
+              onClick={() => setMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               aria-label="Next month"
             >
@@ -216,8 +194,8 @@ function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
               key={cell.dateKey}
               type="button"
               onClick={() => {
-                setSelectedDateKey(cell.dateKey);
-                setCalendarMonthKey(cell.dateKey.slice(0, 7));
+                setDateKey(cell.dateKey);
+                setMonthKey(cell.dateKey.slice(0, 7));
               }}
               className={`relative h-8 rounded-md border text-xs font-medium transition ${
                 cell.isSelected
@@ -268,15 +246,17 @@ export function WorkspaceShell({
   const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
-  const [accountSettingsForm, setAccountSettingsForm] =
-    useState<AccountSettingsFormState>(accountSettingsInitialState);
+  const [accountSettingsForm, setAccountSettingsForm] = useState<AccountSettingsFormState>(
+    accountSettingsInitialState,
+  );
   const [accountSettingsError, setAccountSettingsError] = useState<ErrorPayload | null>(null);
   const [isSubmittingAccountSettings, setIsSubmittingAccountSettings] = useState(false);
-  const [activeCriticalAction, setActiveCriticalAction] = useState<'leave' | 'delete-account' | null>(
-    null,
+  const [activeCriticalAction, setActiveCriticalAction] = useState<
+    'leave' | 'delete-account' | null
+  >(null);
+  const [criticalActionForm, setCriticalActionForm] = useState<CriticalUserActionFormState>(
+    criticalActionInitialState,
   );
-  const [criticalActionForm, setCriticalActionForm] =
-    useState<CriticalUserActionFormState>(criticalActionInitialState);
   const [criticalActionError, setCriticalActionError] = useState<ErrorPayload | null>(null);
   const [isSubmittingCriticalAction, setIsSubmittingCriticalAction] = useState(false);
 
@@ -499,16 +479,18 @@ export function WorkspaceShell({
     setIsAccountSettingsOpen(false);
     setAccountSettingsError(null);
     setIsSubmittingAccountSettings(false);
-    setAccountSettingsForm((currentUser
-      ? {
-          firstName: currentUser.firstName,
-          lastName: currentUser.lastName,
-          email: currentUser.email,
-          currentPassword: '',
-          newPassword: '',
-          confirmNewPassword: '',
-        }
-      : accountSettingsInitialState));
+    setAccountSettingsForm(
+      currentUser
+        ? {
+            firstName: currentUser.firstName,
+            lastName: currentUser.lastName,
+            email: currentUser.email,
+            currentPassword: '',
+            newPassword: '',
+            confirmNewPassword: '',
+          }
+        : accountSettingsInitialState,
+    );
   }, [currentUser]);
 
   const closeCriticalActionModal = useCallback(() => {
@@ -581,15 +563,15 @@ export function WorkspaceShell({
       });
       const payload = await safeReadJson(response);
 
-        if (!response.ok) {
-          const normalized = normalizeErrorPayload(payload, response.status);
-          if (isUserSuspendedError(normalized)) {
-            await logoutSuspendedUser(router);
-            return;
-          }
-          if (normalized.code === 'UNAUTHORIZED') {
-            router.replace('/login?reason=session-expired');
-            return;
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        if (normalized.code === 'UNAUTHORIZED') {
+          router.replace('/login?reason=session-expired');
+          return;
         }
         setCriticalActionError(normalized);
         setIsSubmittingCriticalAction(false);
@@ -799,14 +781,19 @@ export function WorkspaceShell({
   );
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
-  const workspaceRowActionsById = items.reduce<Record<string, Array<{
-    key: string;
-    label: string;
-    kind: 'default' | 'primary';
-    loading: boolean;
-    disabled: boolean;
-    onClick: () => void;
-  }>>>((accumulator, item) => {
+  const workspaceRowActionsById = items.reduce<
+    Record<
+      string,
+      Array<{
+        key: string;
+        label: string;
+        kind: 'default' | 'primary';
+        loading: boolean;
+        disabled: boolean;
+        onClick: () => void;
+      }>
+    >
+  >((accumulator, item) => {
     if (item.invitation?.status !== 'PENDING' || item.membership) {
       return accumulator;
     }

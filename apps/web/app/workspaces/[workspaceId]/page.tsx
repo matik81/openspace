@@ -11,6 +11,7 @@ import {
 } from '@/components/bookings/BookingModal';
 import { WorkspaceRightSidebar as SharedWorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, type WorkspaceShellRenderContext } from '@/components/workspace-shell';
+import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
@@ -19,7 +20,6 @@ import {
   writeWorkspaceSidebarState,
 } from '@/lib/workspace-sidebar-state';
 import {
-  addDaysToDateKey,
   bookingToLocalRange,
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
@@ -68,9 +68,6 @@ const emptyBookingDraft: BookingModalDraft = {
   startTimeLocal: '',
   endTimeLocal: '',
 };
-
-let sharedSelectedDateKey: string | null = null;
-let sharedSelectedMonthKey: string | null = null;
 const MAX_BOOKING_DAYS_AHEAD = 365;
 
 export default function WorkspacePage() {
@@ -188,12 +185,8 @@ function WorkspaceBookingDashboard({
   const workspaceId = workspace?.id ?? '';
   const timezone = workspace?.timezone ?? 'UTC';
   const cachedSidebarState = workspace ? readWorkspaceSidebarState(workspace.id) : undefined;
-  const [dateKey, setDateKey] = useState(
-    () => sharedSelectedDateKey ?? workspaceTodayDateKey(timezone),
-  );
-  const [monthKey, setMonthKey] = useState(
-    () => sharedSelectedMonthKey ?? workspaceTodayDateKey(timezone).slice(0, 7),
-  );
+  const { dateKey, monthKey, setDateKey, setMonthKey, goToToday, goToPreviousDay, goToNextDay } =
+    useSharedSelectedDate(timezone);
   const [rooms, setRooms] = useState<RoomItem[]>(() => cachedSidebarState?.rooms ?? []);
   const [bookings, setBookings] = useState<BookingListItem[]>(
     () => cachedSidebarState?.bookings ?? [],
@@ -254,9 +247,6 @@ function WorkspaceBookingDashboard({
       return;
     }
     const cachedState = readWorkspaceSidebarState(workspace.id);
-    const nextDateKey = sharedSelectedDateKey ?? workspaceTodayDateKey(timezone);
-    setDateKey(nextDateKey);
-    setMonthKey(sharedSelectedMonthKey ?? nextDateKey.slice(0, 7));
     setRooms(cachedState?.rooms ?? []);
     setBookings(cachedState?.bookings ?? []);
     setRoomsWorkspaceId(cachedState ? workspace.id : null);
@@ -273,7 +263,7 @@ function WorkspaceBookingDashboard({
       isSubmitting: false,
       anchorPoint: null,
     });
-  }, [workspace, timezone]);
+  }, [workspace]);
 
   const schedule = useMemo(
     () => resolveScheduleWindowForDate(workspace, dateKey),
@@ -300,11 +290,6 @@ function WorkspaceBookingDashboard({
     const today = parseDateKey(todayDateKey, timezone);
     return selectedDate.diff(today, 'days').days > MAX_BOOKING_DAYS_AHEAD;
   }, [dateKey, timezone, todayDateKey]);
-
-  useEffect(() => {
-    sharedSelectedDateKey = dateKey;
-    sharedSelectedMonthKey = monthKey;
-  }, [dateKey, monthKey]);
 
   useEffect(() => {
     if (!workspace) {
@@ -537,28 +522,6 @@ function WorkspaceBookingDashboard({
     });
     setSelectedBookingId(null);
   };
-
-  const goToToday = useCallback(() => {
-    const today = workspaceTodayDateKey(timezone);
-    setDateKey(today);
-    setMonthKey(today.slice(0, 7));
-  }, [timezone]);
-
-  const goToPreviousDay = useCallback(() => {
-    setDateKey((previous) => {
-      const next = addDaysToDateKey(previous, -1, timezone);
-      setMonthKey(next.slice(0, 7));
-      return next;
-    });
-  }, [timezone]);
-
-  const goToNextDay = useCallback(() => {
-    setDateKey((previous) => {
-      const next = addDaysToDateKey(previous, 1, timezone);
-      setMonthKey(next.slice(0, 7));
-      return next;
-    });
-  }, [timezone]);
 
   const openCreateDialog = useCallback(
     ({

@@ -1,9 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  installMockWorkspaceApp,
-  MOCK_IDS,
-  MOCK_NAMES,
-} from './support/mock-workspace-app';
+import { DateTime } from 'luxon';
+import { installMockWorkspaceApp, MOCK_IDS, MOCK_NAMES } from './support/mock-workspace-app';
 
 async function openUserMenu(page: Page) {
   await page.locator('button[aria-haspopup="menu"]').click();
@@ -91,4 +88,30 @@ test('allows a member to leave a workspace from the shell', async ({ page }) => 
 
   await expect(page).toHaveURL('/dashboard');
   await expect(page.getByText(MOCK_NAMES.memberWorkspace)).not.toBeVisible();
+});
+
+test('persists the selected mini-calendar date across dashboard, workspaces, and admin', async ({
+  page,
+}) => {
+  const selectedDateKey = DateTime.now()
+    .setZone('Europe/Rome')
+    .plus({ days: 1 })
+    .toFormat('yyyy-LL-dd');
+  const selectedDateButton = () => page.getByRole('button', { name: `Select ${selectedDateKey}` });
+
+  await page.goto('/dashboard');
+  await selectedDateButton().click();
+  await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
+
+  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
+
+  await page.goto(`/workspaces/${MOCK_IDS.memberWorkspace}`);
+  await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
+
+  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}/admin`);
+  await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
+
+  await page.goto('/dashboard');
+  await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 });

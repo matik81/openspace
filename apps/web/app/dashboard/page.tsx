@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { WorkspaceShell } from '@/components/workspace-shell';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
+import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { safeReadJson } from '@/lib/client-http';
 import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
-  workspaceTodayDateKey,
 } from '@/lib/time';
 import type { BookingListItem, WorkspaceItem } from '@/lib/types';
 import { isBookingListPayload } from '@/lib/workspace-payloads';
@@ -54,7 +54,8 @@ function DashboardContent({
                       <p className="text-sm font-semibold text-slate-900">{item.name}</p>
                       {item.invitation ? (
                         <p className="mt-1 text-xs text-slate-600">
-                          Expires {formatUtcInTimezone(item.invitation.expiresAt, item.timezone)} ({item.timezone})
+                          Expires {formatUtcInTimezone(item.invitation.expiresAt, item.timezone)} (
+                          {item.timezone})
                         </p>
                       ) : null}
                     </div>
@@ -100,7 +101,9 @@ function DashboardContent({
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="text-lg font-semibold text-slate-900">Visible Workspaces</h3>
           {items.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">No workspace is visible for this account yet.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              No workspace is visible for this account yet.
+            </p>
           ) : (
             <ul className="mt-3 space-y-2">
               {items.map((item) => (
@@ -149,9 +152,8 @@ function DashboardRightSidebar({
   currentUserId: string;
   timezone: string;
 }) {
-  const [dateKey, setDateKey] = useState(() => workspaceTodayDateKey(timezone));
-  const [monthKey, setMonthKey] = useState(() => workspaceTodayDateKey(timezone).slice(0, 7));
   const [myBookings, setMyBookings] = useState<BookingListItem[]>([]);
+  const { dateKey, monthKey, setDateKey, setMonthKey, goToToday } = useSharedSelectedDate(timezone);
 
   useEffect(() => {
     let isCancelled = false;
@@ -210,7 +212,11 @@ function DashboardRightSidebar({
         timezone,
         monthKey,
         selectedDateKey: dateKey,
-        markerCountByDateKey: buildMarkerCountByDateKey(myBookings, timezone, currentUserId || undefined),
+        markerCountByDateKey: buildMarkerCountByDateKey(
+          myBookings,
+          timezone,
+          currentUserId || undefined,
+        ),
       }),
     [currentUserId, dateKey, monthKey, myBookings, timezone],
   );
@@ -225,11 +231,7 @@ function DashboardRightSidebar({
       monthKey={monthKey}
       onSelectDateKey={setDateKey}
       onSelectMonthKey={setMonthKey}
-      onToday={() => {
-        const today = workspaceTodayDateKey(timezone);
-        setDateKey(today);
-        setMonthKey(today.slice(0, 7));
-      }}
+      onToday={goToToday}
       miniCalendarCells={miniCalendarCells}
       bookingGroups={bookingGroups}
       onOpenBooking={(booking) => {
