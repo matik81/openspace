@@ -9,6 +9,10 @@ import { safeReadJson } from '@/lib/client-http';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
+  readWorkspaceSidebarState,
+  writeWorkspaceSidebarState,
+} from '@/lib/workspace-sidebar-state';
+import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
@@ -17,15 +21,11 @@ import {
 import type {
   BookingListItem,
   RoomItem,
+  WorkspaceAdminSummaryPayload,
   WorkspaceInvitationSummary,
   WorkspaceMemberListItem,
 } from '@/lib/types';
-import {
-  isBookingListPayload,
-  isRoomListPayload,
-  isWorkspaceInvitationListPayload,
-  isWorkspaceMemberListPayload,
-} from '@/lib/workspace-payloads';
+import { isBookingListPayload, isWorkspaceAdminSummaryPayload } from '@/lib/workspace-payloads';
 import { formatUtcInTimezone } from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
@@ -64,7 +64,10 @@ type AdminRightSidebarState = {
   myBookings: BookingListItem[];
 };
 
+type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
+
 const adminRightSidebarStateCache = new Map<string, AdminRightSidebarState>();
+const adminWorkspaceDataCache = new Map<string, AdminWorkspaceDataState>();
 const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) => index);
 
 export default function WorkspaceAdminPage() {
@@ -97,14 +100,26 @@ function WorkspaceAdminContent({
   const cachedRightSidebarState = selectedWorkspace
     ? adminRightSidebarStateCache.get(selectedWorkspace.id)
     : null;
-  const [rooms, setRooms] = useState<RoomItem[]>([]);
-  const [members, setMembers] = useState<WorkspaceMemberListItem[]>([]);
-  const [pendingInvitations, setPendingInvitations] = useState<WorkspaceInvitationSummary[]>([]);
+  const cachedWorkspaceSidebarState = selectedWorkspace
+    ? readWorkspaceSidebarState(selectedWorkspace.id)
+    : undefined;
+  const cachedAdminData = selectedWorkspace
+    ? adminWorkspaceDataCache.get(selectedWorkspace.id)
+    : null;
+  const [rooms, setRooms] = useState<RoomItem[]>(
+    () => cachedAdminData?.rooms.items ?? cachedWorkspaceSidebarState?.rooms ?? [],
+  );
+  const [members, setMembers] = useState<WorkspaceMemberListItem[]>(
+    () => cachedAdminData?.members.items ?? [],
+  );
+  const [pendingInvitations, setPendingInvitations] = useState<WorkspaceInvitationSummary[]>(
+    () => cachedAdminData?.invitations.items ?? [],
+  );
   const [myBookings, setMyBookings] = useState<BookingListItem[]>(
     () => cachedRightSidebarState?.myBookings ?? [],
   );
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [hasLoadedAdminData, setHasLoadedAdminData] = useState(false);
+  const [hasLoadedAdminData, setHasLoadedAdminData] = useState(Boolean(cachedAdminData));
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomDescription, setNewRoomDescription] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -155,9 +170,24 @@ function WorkspaceAdminContent({
   const selectedWorkspaceScheduleEndHour = selectedWorkspace?.scheduleEndHour ?? null;
   const isResolvingSelectedWorkspace =
     isLoading && (!selectedWorkspace || selectedWorkspace.id !== workspaceId);
-  const isInitialAdminDataLoading = isLoadingData && !hasLoadedAdminData;
-  const isRefreshingAdminData = isLoadingData && hasLoadedAdminData;
   const currentUserId = currentUser?.id ?? '';
+
+  useEffect(() => {
+    if (!selectedWorkspaceId) {
+      setRooms([]);
+      setMembers([]);
+      setPendingInvitations([]);
+      setHasLoadedAdminData(false);
+      return;
+    }
+
+    const cachedSidebarState = readWorkspaceSidebarState(selectedWorkspaceId);
+    const cachedState = adminWorkspaceDataCache.get(selectedWorkspaceId);
+    setRooms(cachedState?.rooms.items ?? cachedSidebarState?.rooms ?? []);
+    setMembers(cachedState?.members.items ?? []);
+    setPendingInvitations(cachedState?.invitations.items ?? []);
+    setHasLoadedAdminData(Boolean(cachedState));
+  }, [selectedWorkspaceId]);
 
   const loadAdminData = useCallback(async () => {
     if (!selectedWorkspaceId || !isAdmin) {
@@ -171,64 +201,25 @@ function WorkspaceAdminContent({
 
     const requestId = ++adminDataRequestIdRef.current;
     setIsLoadingData(true);
-    const [roomsResponse, membersResponse, invitationsResponse] = await Promise.all([
-      fetch(`/api/workspaces/${selectedWorkspaceId}/rooms`, {
-        method: 'GET',
-        cache: 'no-store',
-      }),
-      fetch(`/api/workspaces/${selectedWorkspaceId}/members`, {
-        method: 'GET',
-        cache: 'no-store',
-      }),
-      fetch(`/api/workspaces/${selectedWorkspaceId}/invitations`, {
-        method: 'GET',
-        cache: 'no-store',
-      }),
-    ]);
-
-    const [roomsPayload, membersPayload, invitationsPayload] = await Promise.all([
-      safeReadJson(roomsResponse),
-      safeReadJson(membersResponse),
-      safeReadJson(invitationsResponse),
-    ]);
+    const response = await fetch(`/api/workspaces/${selectedWorkspaceId}/admin-summary`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    const payload = await safeReadJson(response);
 
     if (adminDataRequestIdRef.current !== requestId) {
       return;
     }
 
-    if (!roomsResponse.ok) {
+    if (!response.ok || !isWorkspaceAdminSummaryPayload(payload)) {
       setIsLoadingData(false);
       return;
     }
 
-    if (!membersResponse.ok) {
-      setIsLoadingData(false);
-      return;
-    }
-
-    if (!invitationsResponse.ok) {
-      setIsLoadingData(false);
-      return;
-    }
-
-    if (!isRoomListPayload(roomsPayload)) {
-      setIsLoadingData(false);
-      return;
-    }
-
-    if (!isWorkspaceMemberListPayload(membersPayload)) {
-      setIsLoadingData(false);
-      return;
-    }
-
-    if (!isWorkspaceInvitationListPayload(invitationsPayload)) {
-      setIsLoadingData(false);
-      return;
-    }
-
-    setRooms(roomsPayload.items);
-    setMembers(membersPayload.items);
-    setPendingInvitations(invitationsPayload.items);
+    adminWorkspaceDataCache.set(selectedWorkspaceId, payload);
+    setRooms(payload.rooms.items);
+    setMembers(payload.members.items);
+    setPendingInvitations(payload.invitations.items);
     setHasLoadedAdminData(true);
     setIsLoadingData(false);
   }, [selectedWorkspaceId, isAdmin]);
@@ -328,12 +319,35 @@ function WorkspaceAdminContent({
       return;
     }
 
+    if (hasLoadedAdminData) {
+      adminWorkspaceDataCache.set(selectedWorkspaceId, {
+        rooms: { items: rooms },
+        members: { items: members },
+        invitations: { items: pendingInvitations },
+      });
+    }
+
+    const cachedSidebarState = readWorkspaceSidebarState(selectedWorkspaceId);
+    writeWorkspaceSidebarState(selectedWorkspaceId, {
+      rooms,
+      bookings: cachedSidebarState?.bookings ?? [],
+    });
+
     adminRightSidebarStateCache.set(selectedWorkspaceId, {
       dateKey,
       monthKey,
       myBookings,
     });
-  }, [selectedWorkspaceId, dateKey, monthKey, myBookings]);
+  }, [
+    selectedWorkspaceId,
+    dateKey,
+    monthKey,
+    myBookings,
+    hasLoadedAdminData,
+    rooms,
+    members,
+    pendingInvitations,
+  ]);
 
   const handleSaveWorkspaceSettings = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -411,7 +425,15 @@ function WorkspaceAdminContent({
       await loadAdminData();
       setIsSubmittingRoom(false);
     },
-    [selectedWorkspace, isAdmin, isSubmittingRoom, newRoomName, newRoomDescription, loadAdminData, router],
+    [
+      selectedWorkspace,
+      isAdmin,
+      isSubmittingRoom,
+      newRoomName,
+      newRoomDescription,
+      loadAdminData,
+      router,
+    ],
   );
 
   const handleSaveRoom = useCallback(
@@ -797,16 +819,7 @@ function WorkspaceAdminContent({
                 Create Room
               </button>
             </form>
-
-            {isInitialAdminDataLoading ? (
-              <p className="mt-3 text-sm text-slate-600">Loading rooms...</p>
-            ) : null}
-
-            {isRefreshingAdminData ? (
-              <p className="mt-3 text-xs text-slate-500">Refreshing rooms...</p>
-            ) : null}
-
-            {!isInitialAdminDataLoading && rooms.length === 0 ? (
+            {!isLoadingData && rooms.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
             ) : null}
 
@@ -859,7 +872,8 @@ function WorkspaceAdminContent({
                               Room Name
                             </span>
                             <p className="mb-2 text-xs text-slate-500">
-                              Unique among active rooms in this workspace. Used in reservation lists and filters.
+                              Unique among active rooms in this workspace. Used in reservation lists
+                              and filters.
                             </p>
                             <input
                               value={roomEditForm.name}
@@ -1117,7 +1131,9 @@ function WorkspaceAdminContent({
                     disabled={isCancellingWorkspace}
                     className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isCancellingWorkspace ? 'Cancelling Workspace...' : 'Confirm Workspace Cancellation'}
+                    {isCancellingWorkspace
+                      ? 'Cancelling Workspace...'
+                      : 'Confirm Workspace Cancellation'}
                   </button>
                   <button
                     type="button"
@@ -1150,8 +1166,8 @@ function WorkspaceAdminContent({
                     Cancel Room
                   </h3>
                   <p className="mt-1 text-sm text-rose-800">
-                    This marks the room as cancelled. Future reservations in this room are cancelled,
-                    while past reservation history is preserved.
+                    This marks the room as cancelled. Future reservations in this room are
+                    cancelled, while past reservation history is preserved.
                   </p>
                 </div>
                 <button

@@ -84,6 +84,12 @@ export type WorkspaceInvitationListPayload = {
   items: WorkspaceInvitationSummary[];
 };
 
+export type WorkspaceAdminSummaryPayload = {
+  rooms: RoomListPayload;
+  members: WorkspaceMemberListPayload;
+  invitations: WorkspaceInvitationListPayload;
+};
+
 export type BookingListItem = {
   id: string;
   workspaceId: string;

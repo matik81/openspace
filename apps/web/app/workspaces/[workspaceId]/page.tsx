@@ -15,6 +15,10 @@ import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
+  readWorkspaceSidebarState,
+  writeWorkspaceSidebarState,
+} from '@/lib/workspace-sidebar-state';
+import {
   addDaysToDateKey,
   bookingToLocalRange,
   buildMarkerCountByDateKey,
@@ -65,64 +69,9 @@ const emptyBookingDraft: BookingModalDraft = {
   endTimeLocal: '',
 };
 
-type WorkspaceSidebarState = {
-  rooms: RoomItem[];
-  bookings: BookingListItem[];
-};
-
-const workspaceSidebarStateCache = new Map<string, WorkspaceSidebarState>();
-const WORKSPACE_SIDEBAR_STORAGE_PREFIX = 'openspace:workspace-sidebar:';
 let sharedSelectedDateKey: string | null = null;
 let sharedSelectedMonthKey: string | null = null;
 const MAX_BOOKING_DAYS_AHEAD = 365;
-
-function getWorkspaceSidebarStorageKey(workspaceId: string): string {
-  return `${WORKSPACE_SIDEBAR_STORAGE_PREFIX}${workspaceId}`;
-}
-
-function readWorkspaceSidebarState(workspaceId: string): WorkspaceSidebarState | undefined {
-  const cached = workspaceSidebarStateCache.get(workspaceId);
-  if (cached) {
-    return cached;
-  }
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  try {
-    const raw = window.sessionStorage.getItem(getWorkspaceSidebarStorageKey(workspaceId));
-    if (!raw) {
-      return undefined;
-    }
-
-    const parsed = JSON.parse(raw) as Partial<WorkspaceSidebarState> | null;
-    if (!parsed || !Array.isArray(parsed.rooms) || !Array.isArray(parsed.bookings)) {
-      return undefined;
-    }
-
-    const state: WorkspaceSidebarState = {
-      rooms: parsed.rooms as RoomItem[],
-      bookings: parsed.bookings as BookingListItem[],
-    };
-    workspaceSidebarStateCache.set(workspaceId, state);
-    return state;
-  } catch {
-    return undefined;
-  }
-}
-
-function writeWorkspaceSidebarState(workspaceId: string, state: WorkspaceSidebarState): void {
-  workspaceSidebarStateCache.set(workspaceId, state);
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(getWorkspaceSidebarStorageKey(workspaceId), JSON.stringify(state));
-  } catch {
-    // Ignore storage write failures and fall back to in-memory cache.
-  }
-}
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
@@ -249,11 +198,11 @@ function WorkspaceBookingDashboard({
   const [bookings, setBookings] = useState<BookingListItem[]>(
     () => cachedSidebarState?.bookings ?? [],
   );
-  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(
-    () => (cachedSidebarState && workspace ? workspace.id : null),
+  const [roomsWorkspaceId, setRoomsWorkspaceId] = useState<string | null>(() =>
+    cachedSidebarState && workspace ? workspace.id : null,
   );
-  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(
-    () => (cachedSidebarState && workspace ? workspace.id : null),
+  const [bookingsWorkspaceId, setBookingsWorkspaceId] = useState<string | null>(() =>
+    cachedSidebarState && workspace ? workspace.id : null,
   );
   const [hasLoadedRooms, setHasLoadedRooms] = useState(Boolean(cachedSidebarState));
   const [hasLoadedBookings, setHasLoadedBookings] = useState(Boolean(cachedSidebarState));
@@ -333,10 +282,17 @@ function WorkspaceBookingDashboard({
   const scheduleStart = scheduleStartMinutes(schedule);
   const scheduleEnd = scheduleEndMinutes(schedule);
   const workspaceCreatedDateKey = useMemo(
-    () => (workspace ? DateTime.fromISO(workspace.createdAt, { zone: 'utc' }).setZone(timezone).toFormat('yyyy-LL-dd') : null),
+    () =>
+      workspace
+        ? DateTime.fromISO(workspace.createdAt, { zone: 'utc' })
+            .setZone(timezone)
+            .toFormat('yyyy-LL-dd')
+        : null,
     [timezone, workspace],
   );
-  const isBeforeWorkspaceCreation = Boolean(workspaceCreatedDateKey && dateKey < workspaceCreatedDateKey);
+  const isBeforeWorkspaceCreation = Boolean(
+    workspaceCreatedDateKey && dateKey < workspaceCreatedDateKey,
+  );
   const todayDateKey = useMemo(() => workspaceTodayDateKey(timezone), [timezone]);
   const canCreateBookings = enabled && !isBeforeWorkspaceCreation && dateKey >= todayDateKey;
   const isTooFarInFuture = useMemo(() => {
@@ -360,93 +316,99 @@ function WorkspaceBookingDashboard({
     });
   }, [workspace, rooms, bookings]);
 
-  const loadRooms = useCallback(async (selected: WorkspaceItem) => {
-    setIsLoadingRooms(true);
-    const query = new URLSearchParams({ date: dateKey });
-    const response = await fetch(`/api/workspaces/${selected.id}/rooms?${query.toString()}`, {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    const payload = await safeReadJson(response);
+  const loadRooms = useCallback(
+    async (selected: WorkspaceItem) => {
+      setIsLoadingRooms(true);
+      const query = new URLSearchParams({ date: dateKey });
+      const response = await fetch(`/api/workspaces/${selected.id}/rooms?${query.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+      });
+      const payload = await safeReadJson(response);
 
-    if (workspaceIdRef.current !== selected.id) {
-      return;
-    }
-
-    if (!response.ok) {
-      const normalized = normalizeErrorPayload(payload, response.status);
-      if (isUserSuspendedError(normalized)) {
-        await logoutSuspendedUser(router);
+      if (workspaceIdRef.current !== selected.id) {
         return;
       }
-      setPageError(normalized);
-      setRooms([]);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        setPageError(normalized);
+        setRooms([]);
+        setRoomsWorkspaceId(selected.id);
+        setHasLoadedRooms(true);
+        setIsLoadingRooms(false);
+        return;
+      }
+
+      if (!isRoomListPayload(payload)) {
+        setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected rooms payload' });
+        setRooms([]);
+        setRoomsWorkspaceId(selected.id);
+        setHasLoadedRooms(true);
+        setIsLoadingRooms(false);
+        return;
+      }
+
+      setRooms(payload.items.slice().sort((a, b) => a.name.localeCompare(b.name)));
       setRoomsWorkspaceId(selected.id);
       setHasLoadedRooms(true);
       setIsLoadingRooms(false);
-      return;
-    }
+    },
+    [dateKey, router],
+  );
 
-    if (!isRoomListPayload(payload)) {
-      setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected rooms payload' });
-      setRooms([]);
-      setRoomsWorkspaceId(selected.id);
-      setHasLoadedRooms(true);
-      setIsLoadingRooms(false);
-      return;
-    }
+  const loadBookings = useCallback(
+    async (selected: WorkspaceItem) => {
+      setIsLoadingBookings(true);
+      const query = new URLSearchParams({
+        mine: 'false',
+        includePast: 'true',
+      });
 
-    setRooms(payload.items.slice().sort((a, b) => a.name.localeCompare(b.name)));
-    setRoomsWorkspaceId(selected.id);
-    setHasLoadedRooms(true);
-    setIsLoadingRooms(false);
-  }, [dateKey, router]);
+      const response = await fetch(`/api/workspaces/${selected.id}/bookings?${query.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+      });
+      const payload = await safeReadJson(response);
 
-  const loadBookings = useCallback(async (selected: WorkspaceItem) => {
-    setIsLoadingBookings(true);
-    const query = new URLSearchParams({
-      mine: 'false',
-      includePast: 'true',
-    });
-
-    const response = await fetch(`/api/workspaces/${selected.id}/bookings?${query.toString()}`, {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    const payload = await safeReadJson(response);
-
-    if (workspaceIdRef.current !== selected.id) {
-      return;
-    }
-
-    if (!response.ok) {
-      const normalized = normalizeErrorPayload(payload, response.status);
-      if (isUserSuspendedError(normalized)) {
-        await logoutSuspendedUser(router);
+      if (workspaceIdRef.current !== selected.id) {
         return;
       }
-      setPageError(normalized);
-      setBookings([]);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(payload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        setPageError(normalized);
+        setBookings([]);
+        setBookingsWorkspaceId(selected.id);
+        setHasLoadedBookings(true);
+        setIsLoadingBookings(false);
+        return;
+      }
+
+      if (!isBookingListPayload(payload)) {
+        setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected bookings payload' });
+        setBookings([]);
+        setBookingsWorkspaceId(selected.id);
+        setHasLoadedBookings(true);
+        setIsLoadingBookings(false);
+        return;
+      }
+
+      setBookings(payload.items);
       setBookingsWorkspaceId(selected.id);
       setHasLoadedBookings(true);
       setIsLoadingBookings(false);
-      return;
-    }
-
-    if (!isBookingListPayload(payload)) {
-      setPageError({ code: 'BAD_GATEWAY', message: 'Unexpected bookings payload' });
-      setBookings([]);
-      setBookingsWorkspaceId(selected.id);
-      setHasLoadedBookings(true);
-      setIsLoadingBookings(false);
-      return;
-    }
-
-    setBookings(payload.items);
-    setBookingsWorkspaceId(selected.id);
-    setHasLoadedBookings(true);
-    setIsLoadingBookings(false);
-  }, [router]);
+    },
+    [router],
+  );
 
   const refreshData = useCallback(async () => {
     if (!workspace || !enabled) {
@@ -1076,7 +1038,9 @@ function WorkspaceBookingDashboard({
               <div className="mt-4 h-[480px] rounded-xl bg-slate-100" />
             </div>
           ) : (
-            <div className={`h-full transition-opacity ${isRefreshingSchedule ? 'opacity-95' : 'opacity-100'}`}>
+            <div
+              className={`h-full transition-opacity ${isRefreshingSchedule ? 'opacity-95' : 'opacity-100'}`}
+            >
               <DaySchedule
                 rooms={hasCurrentRooms ? visibleRooms : []}
                 bookings={hasCurrentBookings ? visibleBookings : []}
@@ -1128,17 +1092,14 @@ function WorkspaceBookingDashboard({
   };
 }
 
-function resolveScheduleWindowForDate(
-  workspace: WorkspaceItem | null,
-  selectedDateKey: string,
-) {
+function resolveScheduleWindowForDate(workspace: WorkspaceItem | null, selectedDateKey: string) {
   if (!workspace) {
     return { startHour: 8, endHour: 18 };
   }
 
-  const scheduleVersions = (workspace.scheduleVersions ?? []).slice().sort((left, right) =>
-    left.effectiveFrom.localeCompare(right.effectiveFrom),
-  );
+  const scheduleVersions = (workspace.scheduleVersions ?? [])
+    .slice()
+    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
   const matchingVersion =
     scheduleVersions
       .filter(

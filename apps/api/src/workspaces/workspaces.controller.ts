@@ -29,18 +29,13 @@ export class WorkspacesController {
   constructor(private readonly workspacesService: WorkspacesService) {}
 
   @Post()
-  async createWorkspace(
-    @Req() request: AuthenticatedRequest,
-    @Body() body: CreateWorkspaceDto,
-  ) {
+  async createWorkspace(@Req() request: AuthenticatedRequest, @Body() body: CreateWorkspaceDto) {
     return this.workspacesService.createWorkspace(this.extractAuthUser(request), body);
   }
 
   @Get()
   async listVisibleWorkspaces(@Req() request: AuthenticatedRequest) {
-    return this.workspacesService.listVisibleWorkspaces(
-      this.extractAuthUser(request),
-    );
+    return this.workspacesService.listVisibleWorkspaces(this.extractAuthUser(request));
   }
 
   @Post('order')
@@ -48,10 +43,7 @@ export class WorkspacesController {
     @Req() request: AuthenticatedRequest,
     @Body() body: ReorderVisibleWorkspacesDto,
   ) {
-    return this.workspacesService.reorderVisibleWorkspaces(
-      this.extractAuthUser(request),
-      body,
-    );
+    return this.workspacesService.reorderVisibleWorkspaces(this.extractAuthUser(request), body);
   }
 
   @Get(':workspaceId')
@@ -59,10 +51,7 @@ export class WorkspacesController {
     @Req() request: AuthenticatedRequest,
     @Param('workspaceId') workspaceId: string,
   ) {
-    return this.workspacesService.getVisibleWorkspace(
-      this.extractAuthUser(request),
-      workspaceId,
-    );
+    return this.workspacesService.getVisibleWorkspace(this.extractAuthUser(request), workspaceId);
   }
 
   @Patch(':workspaceId')
@@ -71,11 +60,7 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
     @Body() body: UpdateWorkspaceDto,
   ) {
-    return this.workspacesService.updateWorkspace(
-      this.extractAuthUser(request),
-      workspaceId,
-      body,
-    );
+    return this.workspacesService.updateWorkspace(this.extractAuthUser(request), workspaceId, body);
   }
 
   @Post(':workspaceId/cancel')
@@ -84,11 +69,7 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
     @Body() body: CancelWorkspaceDto,
   ) {
-    return this.workspacesService.cancelWorkspace(
-      this.extractAuthUser(request),
-      workspaceId,
-      body,
-    );
+    return this.workspacesService.cancelWorkspace(this.extractAuthUser(request), workspaceId, body);
   }
 
   @Post(':workspaceId/leave')
@@ -97,11 +78,7 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
     @Body() body: LeaveWorkspaceDto,
   ) {
-    return this.workspacesService.leaveWorkspace(
-      this.extractAuthUser(request),
-      workspaceId,
-      body,
-    );
+    return this.workspacesService.leaveWorkspace(this.extractAuthUser(request), workspaceId, body);
   }
 
   @Post(':workspaceId/invitations')
@@ -110,10 +87,17 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
     @Body() body: InviteUserDto,
   ) {
-    return this.workspacesService.inviteUser(
+    return this.workspacesService.inviteUser(this.extractAuthUser(request), workspaceId, body);
+  }
+
+  @Get(':workspaceId/admin-summary')
+  async getWorkspaceAdminSummary(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspacesService.getWorkspaceAdminSummary(
       this.extractAuthUser(request),
       workspaceId,
-      body,
     );
   }
 
@@ -122,10 +106,7 @@ export class WorkspacesController {
     @Req() request: AuthenticatedRequest,
     @Param('workspaceId') workspaceId: string,
   ) {
-    return this.workspacesService.listWorkspaceMembers(
-      this.extractAuthUser(request),
-      workspaceId,
-    );
+    return this.workspacesService.listWorkspaceMembers(this.extractAuthUser(request), workspaceId);
   }
 
   @Get(':workspaceId/invitations')
@@ -144,10 +125,7 @@ export class WorkspacesController {
     @Req() request: AuthenticatedRequest,
     @Param('invitationId') invitationId: string,
   ) {
-    return this.workspacesService.acceptInvitation(
-      this.extractAuthUser(request),
-      invitationId,
-    );
+    return this.workspacesService.acceptInvitation(this.extractAuthUser(request), invitationId);
   }
 
   @Post('invitations/:invitationId/reject')
@@ -155,10 +133,7 @@ export class WorkspacesController {
     @Req() request: AuthenticatedRequest,
     @Param('invitationId') invitationId: string,
   ) {
-    return this.workspacesService.rejectInvitation(
-      this.extractAuthUser(request),
-      invitationId,
-    );
+    return this.workspacesService.rejectInvitation(this.extractAuthUser(request), invitationId);
   }
 
   private extractAuthUser(request: AuthenticatedRequest): { userId: string } {

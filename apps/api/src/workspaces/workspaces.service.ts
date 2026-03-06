@@ -12,6 +12,7 @@ import {
   MembershipStatus,
   Prisma,
   RateLimitOperationType,
+  RoomStatus,
   UserStatus,
   WorkspaceRole,
   WorkspaceStatus,
@@ -220,14 +221,20 @@ export class WorkspacesService {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const now = new Date();
-    await this.expirePendingInvitations(now, { workspaceId: normalizedWorkspaceId, email: user.email });
+    await this.expirePendingInvitations(now, {
+      workspaceId: normalizedWorkspaceId,
+      email: user.email,
+    });
 
     const workspace = await this.prismaService.workspace.findUnique({
       where: { id: normalizedWorkspaceId },
       select: this.workspaceDetailSelect(),
     });
     if (!workspace || workspace.status !== WorkspaceStatus.ACTIVE) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
 
     const membership = await this.prismaService.workspaceMember.findFirst({
@@ -259,7 +266,10 @@ export class WorkspacesService {
         });
 
     if (!membership && !invitation) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
 
     return this.toVisibleWorkspaceItem(workspace, membership, invitation);
@@ -273,11 +283,17 @@ export class WorkspacesService {
     );
 
     if (workspaceIds.length !== visibleWorkspaceIds.size) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
     for (const workspaceId of workspaceIds) {
       if (!visibleWorkspaceIds.has(workspaceId)) {
-        throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+        throw new ForbiddenException({
+          code: 'WORKSPACE_NOT_VISIBLE',
+          message: 'Workspace not visible',
+        });
       }
     }
 
@@ -300,7 +316,8 @@ export class WorkspacesService {
     const current = await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
 
     const name = dto.name !== undefined ? this.requireString(dto.name, 'name') : undefined;
-    const timezone = dto.timezone !== undefined ? this.requireTimezone(dto.timezone) : current.timezone;
+    const timezone =
+      dto.timezone !== undefined ? this.requireTimezone(dto.timezone) : current.timezone;
     const schedule = this.resolveScheduleHours({
       scheduleStartHour: dto.scheduleStartHour ?? current.scheduleStartHour,
       scheduleEndHour: dto.scheduleEndHour ?? current.scheduleEndHour,
@@ -400,7 +417,10 @@ export class WorkspacesService {
 
   async cancelWorkspace(authUser: AuthUser, workspaceId: string, dto: CancelWorkspaceDto) {
     const user = await this.requireVerifiedUser(authUser.userId);
-    const workspace = await this.assertWorkspaceAdmin(this.requireUuid(workspaceId, 'workspaceId'), user);
+    const workspace = await this.assertWorkspaceAdmin(
+      this.requireUuid(workspaceId, 'workspaceId'),
+      user,
+    );
     const workspaceName = this.requireString(dto.workspaceName, 'workspaceName');
     const email = this.normalizeEmail(dto.email);
     const password = this.requireString(dto.password, 'password');
@@ -510,6 +530,87 @@ export class WorkspacesService {
     return invitation;
   }
 
+  async getWorkspaceAdminSummary(authUser: AuthUser, workspaceId: string) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    const now = new Date();
+    await this.expirePendingInvitations(now, { workspaceId: normalizedWorkspaceId });
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+
+    const [rooms, members, invitations] = await this.prismaService.$transaction([
+      this.prismaService.room.findMany({
+        where: {
+          workspaceId: normalizedWorkspaceId,
+          status: RoomStatus.ACTIVE,
+          workspace: { status: WorkspaceStatus.ACTIVE },
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+          name: true,
+          description: true,
+          status: true,
+          cancelledAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prismaService.workspaceMember.findMany({
+        where: {
+          workspaceId: normalizedWorkspaceId,
+          status: MembershipStatus.ACTIVE,
+          workspace: { status: WorkspaceStatus.ACTIVE },
+        },
+        select: {
+          userId: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          user: { select: { firstName: true, lastName: true, email: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prismaService.invitation.findMany({
+        where: {
+          workspaceId: normalizedWorkspaceId,
+          status: InvitationStatus.PENDING,
+          expiresAt: { gt: now },
+          workspace: { status: WorkspaceStatus.ACTIVE },
+        },
+        select: {
+          id: true,
+          email: true,
+          status: true,
+          expiresAt: true,
+          invitedByUserId: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    return {
+      rooms: {
+        items: rooms,
+      },
+      members: {
+        items: members.map((member) => ({
+          userId: member.userId,
+          firstName: member.user.firstName,
+          lastName: member.user.lastName,
+          email: member.user.email,
+          role: member.role,
+          status: member.status,
+          joinedAt: member.createdAt,
+        })),
+      },
+      invitations: {
+        items: invitations,
+      },
+    };
+  }
+
   async listWorkspaceMembers(authUser: AuthUser, workspaceId: string) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
@@ -596,17 +697,26 @@ export class WorkspacesService {
       invitation.email !== user.email ||
       invitation.workspace.status !== WorkspaceStatus.ACTIVE
     ) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new ConflictException({ code: 'INVITATION_NOT_PENDING', message: 'Invitation is not pending' });
+      throw new ConflictException({
+        code: 'INVITATION_NOT_PENDING',
+        message: 'Invitation is not pending',
+      });
     }
     if (invitation.expiresAt <= now) {
       await this.prismaService.invitation.update({
         where: { id: invitation.id },
         data: { status: InvitationStatus.EXPIRED },
       });
-      throw new ConflictException({ code: 'INVITATION_EXPIRED', message: 'Invitation has expired' });
+      throw new ConflictException({
+        code: 'INVITATION_EXPIRED',
+        message: 'Invitation has expired',
+      });
     }
 
     await this.assertWorkspaceUserCapacity(invitation.workspaceId);
@@ -644,10 +754,16 @@ export class WorkspacesService {
       invitation.email !== user.email ||
       invitation.workspace.status !== WorkspaceStatus.ACTIVE
     ) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new ConflictException({ code: 'INVITATION_NOT_PENDING', message: 'Invitation is not pending' });
+      throw new ConflictException({
+        code: 'INVITATION_NOT_PENDING',
+        message: 'Invitation is not pending',
+      });
     }
 
     await this.prismaService.invitation.update({
@@ -672,7 +788,10 @@ export class WorkspacesService {
       select: { id: true, role: true },
     });
     if (!membership) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
     if (membership.role === WorkspaceRole.ADMIN) {
       throw new ForbiddenException({
@@ -730,7 +849,10 @@ export class WorkspacesService {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Invalid access token' });
     }
     if (user.status !== UserStatus.ACTIVE) {
-      throw new ForbiddenException({ code: 'ACCOUNT_CANCELLED', message: 'Account is no longer active' });
+      throw new ForbiddenException({
+        code: 'ACCOUNT_CANCELLED',
+        message: 'Account is no longer active',
+      });
     }
     if (!user.emailVerifiedAt) {
       throw new ForbiddenException({
@@ -771,7 +893,10 @@ export class WorkspacesService {
         message: 'Only workspace admins can perform this action',
       });
     }
-    throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+    throw new ForbiddenException({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
   }
 
   private async findActiveWorkspaceOrThrow(workspaceId: string) {
@@ -780,7 +905,10 @@ export class WorkspacesService {
       select: { ...this.workspaceSelect(), status: true },
     });
     if (!workspace || workspace.status !== WorkspaceStatus.ACTIVE) {
-      throw new ForbiddenException({ code: 'WORKSPACE_NOT_VISIBLE', message: 'Workspace not visible' });
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
     }
     return workspace;
   }

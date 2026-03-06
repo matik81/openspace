@@ -191,8 +191,7 @@ function createDefaultState(): MockWorkspaceAppState {
   const createdAt = today.minus({ days: 14 }).toUTC().toISO() ?? '2026-01-01T00:00:00.000Z';
   const invitationCreatedAt =
     today.minus({ days: 1 }).toUTC().toISO() ?? '2026-01-01T00:00:00.000Z';
-  const invitationExpiresAt =
-    today.plus({ days: 3 }).toUTC().toISO() ?? '2026-01-05T00:00:00.000Z';
+  const invitationExpiresAt = today.plus({ days: 3 }).toUTC().toISO() ?? '2026-01-05T00:00:00.000Z';
 
   const adminWorkspace: WorkspaceItem = {
     id: MOCK_IDS.adminWorkspace,
@@ -427,8 +426,9 @@ function activeRoomName(
   roomId: string,
 ): string | null {
   return (
-    state.roomsByWorkspaceId[workspaceId]?.find((room) => room.id === roomId && room.status === 'ACTIVE')
-      ?.name ?? null
+    state.roomsByWorkspaceId[workspaceId]?.find(
+      (room) => room.id === roomId && room.status === 'ACTIVE',
+    )?.name ?? null
   );
 }
 
@@ -443,10 +443,7 @@ function visibleWorkspaces(state: MockWorkspaceAppState): WorkspaceItem[] {
   );
 }
 
-export async function installMockWorkspaceApp(
-  page: Page,
-  options: MockWorkspaceAppOptions = {},
-) {
+export async function installMockWorkspaceApp(page: Page, options: MockWorkspaceAppOptions = {}) {
   const state = createDefaultState();
 
   await page.route('**/api/**', async (route) => {
@@ -650,6 +647,22 @@ export async function installMockWorkspaceApp(
       return responseJson(route, 200, cloneJson(workspace));
     }
 
+    const adminSummaryMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/admin-summary$/);
+    if (adminSummaryMatch && method === 'GET') {
+      const workspaceId = adminSummaryMatch[1];
+      return responseJson(route, 200, {
+        rooms: {
+          items: cloneJson(activeRooms(state, workspaceId)),
+        },
+        members: {
+          items: cloneJson(state.membersByWorkspaceId[workspaceId] ?? []),
+        },
+        invitations: {
+          items: cloneJson(state.invitationsByWorkspaceId[workspaceId] ?? []),
+        },
+      });
+    }
+
     const roomsMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/rooms$/);
     if (roomsMatch && method === 'GET') {
       const workspaceId = roomsMatch[1];
@@ -676,7 +689,10 @@ export async function installMockWorkspaceApp(
         createdAt,
         updatedAt: createdAt,
       };
-      state.roomsByWorkspaceId[workspaceId] = [...(state.roomsByWorkspaceId[workspaceId] ?? []), room];
+      state.roomsByWorkspaceId[workspaceId] = [
+        ...(state.roomsByWorkspaceId[workspaceId] ?? []),
+        room,
+      ];
       return responseJson(route, 201, cloneJson(room));
     }
 
@@ -695,7 +711,11 @@ export async function installMockWorkspaceApp(
 
       room.name = String(body?.name ?? room.name);
       room.description =
-        body?.description === undefined ? room.description : body?.description === null ? null : String(body.description);
+        body?.description === undefined
+          ? room.description
+          : body?.description === null
+            ? null
+            : String(body.description);
       room.updatedAt = DateTime.now().toUTC().toISO() ?? room.updatedAt;
       for (const booking of state.bookingsByWorkspaceId[workspaceId] ?? []) {
         if (booking.roomId === roomId) {
@@ -788,7 +808,7 @@ export async function installMockWorkspaceApp(
         startAt: String(body?.startAt ?? createdAt),
         endAt: String(body?.endAt ?? createdAt),
         subject: String(body?.subject ?? 'New booking'),
-        criticality: (String(body?.criticality ?? 'MEDIUM') as BookingCriticality),
+        criticality: String(body?.criticality ?? 'MEDIUM') as BookingCriticality,
         status: 'ACTIVE',
         createdAt,
         updatedAt: createdAt,
@@ -803,7 +823,9 @@ export async function installMockWorkspaceApp(
     const bookingDetailMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/bookings\/([^/]+)$/);
     if (bookingDetailMatch && method === 'PATCH') {
       const [, workspaceId, bookingId] = bookingDetailMatch;
-      const booking = state.bookingsByWorkspaceId[workspaceId]?.find((item) => item.id === bookingId);
+      const booking = state.bookingsByWorkspaceId[workspaceId]?.find(
+        (item) => item.id === bookingId,
+      );
       const body = parseBody(route);
 
       if (!booking) {
@@ -829,7 +851,9 @@ export async function installMockWorkspaceApp(
     );
     if (bookingCancelMatch && method === 'POST') {
       const [, workspaceId, bookingId] = bookingCancelMatch;
-      const booking = state.bookingsByWorkspaceId[workspaceId]?.find((item) => item.id === bookingId);
+      const booking = state.bookingsByWorkspaceId[workspaceId]?.find(
+        (item) => item.id === bookingId,
+      );
       if (!booking) {
         return responseJson(route, 404, {
           code: 'NOT_FOUND',

@@ -1,5 +1,6 @@
 import { isRecord } from './api-contract';
 import type {
+  WorkspaceAdminSummaryPayload,
   BookingListPayload,
   RoomListPayload,
   WorkspaceInvitationListPayload,
@@ -98,6 +99,20 @@ export function isWorkspaceInvitationListPayload(
   return payload.items.every(isInvitation);
 }
 
+export function isWorkspaceAdminSummaryPayload(
+  payload: unknown,
+): payload is WorkspaceAdminSummaryPayload {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  return (
+    isRoomListPayload(payload.rooms) &&
+    isWorkspaceMemberListPayload(payload.members) &&
+    isWorkspaceInvitationListPayload(payload.invitations)
+  );
+}
+
 export function isBookingListPayload(payload: unknown): payload is BookingListPayload {
   if (!isRecord(payload) || !Array.isArray(payload.items)) {
     return false;
@@ -128,9 +143,7 @@ export function isBookingListPayload(payload: unknown): payload is BookingListPa
 
 function isMembership(payload: unknown): boolean {
   return (
-    isRecord(payload) &&
-    typeof payload.role === 'string' &&
-    typeof payload.status === 'string'
+    isRecord(payload) && typeof payload.role === 'string' && typeof payload.status === 'string'
   );
 }
 
