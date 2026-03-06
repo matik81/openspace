@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent } from 'react';
+import { FormEvent, useState } from 'react';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload } from '@/lib/types';
 
@@ -32,6 +32,8 @@ export function AccountSettingsModal({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteAccount: () => void;
 }) {
+  const [passwordFieldsUnlocked, setPasswordFieldsUnlocked] = useState(false);
+
   if (!open) {
     return null;
   }
@@ -62,16 +64,6 @@ export function AccountSettingsModal({
         </div>
 
         <form className="mt-4 space-y-4" autoComplete="off" onSubmit={onSubmit}>
-          <div className="hidden" aria-hidden="true">
-            <input
-              type="email"
-              name="username"
-              autoComplete="username"
-              value={form.email}
-              readOnly
-              tabIndex={-1}
-            />
-          </div>
           {error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
               {getErrorDisplayMessage(error)}
@@ -107,7 +99,7 @@ export function AccountSettingsModal({
                 required
                 type="email"
                 name="account-email"
-                autoComplete="email"
+                autoComplete="off"
                 value={form.email}
                 readOnly
                 aria-readonly="true"
@@ -119,9 +111,13 @@ export function AccountSettingsModal({
               <span className="mb-1 block text-sm font-medium text-slate-700">Current password</span>
               <input
                 type="password"
-                name="current-password"
-                autoComplete="current-password"
+                name="account-current-secret"
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                readOnly={!passwordFieldsUnlocked}
                 value={form.currentPassword}
+                onFocus={() => setPasswordFieldsUnlocked(true)}
                 onChange={(event) => onChange({ ...form, currentPassword: event.target.value })}
                 placeholder="Required only to change password"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -137,9 +133,13 @@ export function AccountSettingsModal({
               <input
                 minLength={8}
                 type="password"
-                name="new-password"
-                autoComplete="new-password"
+                name="account-new-secret"
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                readOnly={!passwordFieldsUnlocked}
                 value={form.newPassword}
+                onFocus={() => setPasswordFieldsUnlocked(true)}
                 onChange={(event) => onChange({ ...form, newPassword: event.target.value })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
               />
@@ -152,9 +152,13 @@ export function AccountSettingsModal({
               <input
                 minLength={8}
                 type="password"
-                name="confirm-new-password"
-                autoComplete="new-password"
+                name="account-confirm-secret"
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                readOnly={!passwordFieldsUnlocked}
                 value={form.confirmNewPassword}
+                onFocus={() => setPasswordFieldsUnlocked(true)}
                 onChange={(event) =>
                   onChange({ ...form, confirmNewPassword: event.target.value })
                 }
