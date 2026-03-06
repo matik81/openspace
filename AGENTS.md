@@ -2,6 +2,14 @@
 
 This file defines mandatory project constraints and workflow rules for repository work.
 
+Additional project guidance lives in `docs/`.
+
+Relevant files include:
+
+- `docs/ARCHITECTURE.md`
+- `docs/PROJECT_BRIEF.md`
+- `docs/TESTING_STRATEGY.md`
+
 ## 0. Private Folder Boundary
 
 Codex must treat `.private/` as off-limits.
