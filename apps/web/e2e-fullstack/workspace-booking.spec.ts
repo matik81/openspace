@@ -4,6 +4,7 @@ import { expect, FULLSTACK_E2E, test } from './support/scenario';
 test('creates and cancels a booking against the real API', async ({ page }) => {
   await loginAsSeededAdmin(page);
   await page.goto(`/workspaces/${FULLSTACK_E2E.workspaces.admin.id}`);
+  await page.getByRole('button', { name: 'Today' }).first().click();
 
   const createBookingTrigger = page.getByRole('button', {
     name: `Create booking in ${FULLSTACK_E2E.rooms.focus.name}`,

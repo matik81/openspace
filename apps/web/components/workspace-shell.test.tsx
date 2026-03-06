@@ -79,7 +79,7 @@ describe('WorkspaceShell', () => {
   });
 
   it('does not render guest auth actions while authenticated shell data is still loading', async () => {
-    let releaseFetches: (() => void) | null = null;
+    let releaseFetches!: () => void;
     const fetchGate = new Promise<void>((resolve) => {
       releaseFetches = resolve;
     });
@@ -127,7 +127,7 @@ describe('WorkspaceShell', () => {
     expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument();
 
-    releaseFetches?.();
+    releaseFetches();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Ada Lovelace/i })).toBeVisible();

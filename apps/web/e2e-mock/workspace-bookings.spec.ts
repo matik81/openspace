@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 test('creates, edits, and cancels a booking from the workspace page', async ({ page }) => {
   await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await page.getByRole('button', { name: 'Today' }).first().click();
 
   const createBookingTrigger = page.getByRole('button', { name: 'Create booking in Focus Room' });
   await expect(createBookingTrigger).toBeVisible();
