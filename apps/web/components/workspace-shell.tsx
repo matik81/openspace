@@ -149,8 +149,19 @@ export function WorkspaceShell({
     setIsLoading((current) => current || workspaceItemsCache === null);
     setError(null);
 
-    const response = await fetch('/api/workspaces', { method: 'GET', cache: 'no-store' });
-    const payload = await safeReadJson(response);
+    const [workspaceResult, meResult] = await Promise.all([
+      (async () => {
+        const response = await fetch('/api/workspaces', { method: 'GET', cache: 'no-store' });
+        const payload = await safeReadJson(response);
+        return { response, payload };
+      })(),
+      (async () => {
+        const response = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+        const payload = await safeReadJson(response);
+        return { response, payload };
+      })(),
+    ]);
+    const { response, payload } = workspaceResult;
 
     if (!response.ok) {
       const normalized = normalizeErrorPayload(payload, response.status);
@@ -184,9 +195,7 @@ export function WorkspaceShell({
 
     setItems(payload.items);
     workspaceItemsCache = payload.items;
-
-    const meResponse = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
-    const mePayload = await safeReadJson(meResponse);
+    const { response: meResponse, payload: mePayload } = meResult;
     if (meResponse.ok && isAuthUserSummary(mePayload)) {
       setCurrentUser(mePayload);
       currentUserCache = mePayload;
@@ -776,6 +785,7 @@ export function WorkspaceShell({
         onToggleLeftSidebar={() => setIsLeftSidebarOpenMobile(true)}
         onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
         userActions={userMenuActions}
+        showGuestActions={false}
       />
 
       <div className="flex h-full pt-16">

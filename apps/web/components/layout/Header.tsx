@@ -33,6 +33,7 @@ export function Header({
   guestActions,
   userActions,
   brandHref = '/dashboard',
+  showGuestActions = true,
 }: {
   user: HeaderUser;
   onLogout: () => void;
@@ -41,6 +42,7 @@ export function Header({
   guestActions?: HeaderGuestAction[];
   userActions?: HeaderUserAction[];
   brandHref?: string;
+  showGuestActions?: boolean;
 }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -109,46 +111,49 @@ export function Header({
 
           {!user ? (
             <>
-              {(guestActions ?? [
-                {
-                  key: 'login',
-                  label: 'Login',
-                  href: '/login',
-                  className: 'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100',
-                },
-                {
-                  key: 'register',
-                  label: 'Sign up',
-                  href: '/register',
-                  className:
-                    'rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50',
-                },
-              ]).map((action) =>
-                action.href ? (
-                  <Link
-                    key={action.key}
-                    href={action.href}
-                    className={
-                      action.className ??
-                      'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100'
-                    }
-                  >
-                    {action.label}
-                  </Link>
-                ) : (
-                  <button
-                    key={action.key}
-                    type="button"
-                    onClick={action.onClick}
-                    className={
-                      action.className ??
-                      'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100'
-                    }
-                  >
-                    {action.label}
-                  </button>
-                ),
-              )}
+              {showGuestActions
+                ? (guestActions ?? [
+                    {
+                      key: 'login',
+                      label: 'Login',
+                      href: '/login',
+                      className:
+                        'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100',
+                    },
+                    {
+                      key: 'register',
+                      label: 'Sign up',
+                      href: '/register',
+                      className:
+                        'rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50',
+                    },
+                  ]).map((action) =>
+                    action.href ? (
+                      <Link
+                        key={action.key}
+                        href={action.href}
+                        className={
+                          action.className ??
+                          'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100'
+                        }
+                      >
+                        {action.label}
+                      </Link>
+                    ) : (
+                      <button
+                        key={action.key}
+                        type="button"
+                        onClick={action.onClick}
+                        className={
+                          action.className ??
+                          'rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100'
+                        }
+                      >
+                        {action.label}
+                      </button>
+                    ),
+                  )
+                : null}
             </>
           ) : (
             <div ref={userMenuRef} className="relative">
