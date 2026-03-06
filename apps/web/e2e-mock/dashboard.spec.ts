@@ -10,6 +10,31 @@ test.beforeEach(async ({ page }) => {
   await installMockWorkspaceApp(page);
 });
 
+test('keeps dashboard sidebar content visible while bookings refresh in the background', async ({
+  page,
+}) => {
+  await installMockWorkspaceApp(page, {
+    delays: {
+      bookingsMs: 400,
+    },
+  });
+
+  const todayDateKey = DateTime.now().setZone('Europe/Rome').toFormat('yyyy-LL-dd');
+  const todayMarker = page.locator(`button[aria-label="Select ${todayDateKey}"] .rounded-full`);
+
+  await page.goto('/dashboard');
+  await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible();
+  await expect(todayMarker).toHaveCount(1);
+
+  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await expect(page).toHaveURL(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible({ timeout: 150 });
+  await expect(todayMarker).toHaveCount(1, { timeout: 150 });
+});
+
 test('shows dashboard data and accepts a pending invitation', async ({ page }) => {
   await page.goto('/dashboard');
 

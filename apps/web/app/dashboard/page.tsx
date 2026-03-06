@@ -6,6 +6,10 @@ import { WorkspaceShell } from '@/components/workspace-shell';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { safeReadJson } from '@/lib/client-http';
+import {
+  readDashboardSidebarState,
+  writeDashboardSidebarState,
+} from '@/lib/dashboard-sidebar-state';
 import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import {
   buildMarkerCountByDateKey,
@@ -152,15 +156,24 @@ function DashboardRightSidebar({
   currentUserId: string;
   timezone: string;
 }) {
-  const [myBookings, setMyBookings] = useState<BookingListItem[]>([]);
+  const visibleMemberWorkspaces = useMemo(
+    () => items.filter((item) => item.membership?.status === 'ACTIVE'),
+    [items],
+  );
+  const visibleMemberWorkspaceIds = useMemo(
+    () => visibleMemberWorkspaces.map((workspace) => workspace.id),
+    [visibleMemberWorkspaces],
+  );
+  const visibleMemberWorkspaceIdsKey = visibleMemberWorkspaceIds.join('|');
+  const [myBookings, setMyBookings] = useState<BookingListItem[]>(
+    () => readDashboardSidebarState(currentUserId, visibleMemberWorkspaceIds)?.bookings ?? [],
+  );
   const { dateKey, monthKey, setDateKey, setMonthKey, goToToday } = useSharedSelectedDate(timezone);
 
   useEffect(() => {
     let isCancelled = false;
 
     async function loadMyBookings() {
-      const visibleMemberWorkspaces = items.filter((item) => item.membership?.status === 'ACTIVE');
-
       if (visibleMemberWorkspaces.length === 0 || !currentUserId) {
         if (!isCancelled) {
           setMyBookings([]);
@@ -204,7 +217,31 @@ function DashboardRightSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [currentUserId, items]);
+  }, [currentUserId, visibleMemberWorkspaces]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setMyBookings([]);
+      return;
+    }
+
+    const cachedState = readDashboardSidebarState(currentUserId, visibleMemberWorkspaceIds);
+    setMyBookings((previous) => {
+      const next = cachedState?.bookings ?? [];
+      if (
+        previous.length === next.length &&
+        previous.every((booking, index) => booking.id === next[index]?.id)
+      ) {
+        return previous;
+      }
+
+      return next;
+    });
+  }, [currentUserId, visibleMemberWorkspaceIds, visibleMemberWorkspaceIdsKey]);
+
+  useEffect(() => {
+    writeDashboardSidebarState(currentUserId, { bookings: myBookings });
+  }, [currentUserId, myBookings]);
 
   const miniCalendarCells = useMemo(
     () =>

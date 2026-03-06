@@ -134,6 +134,9 @@ type MockWorkspaceAppOptions = {
     workspaces?: ResponseOverride;
     me?: ResponseOverride;
   };
+  delays?: {
+    bookingsMs?: number;
+  };
 };
 
 const DEFAULT_TIMEZONE = 'Europe/Rome';
@@ -787,6 +790,9 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
       const items = (state.bookingsByWorkspaceId[workspaceId] ?? []).filter((booking) =>
         mine ? booking.createdByUserId === state.user.id : true,
       );
+      if ((options.delays?.bookingsMs ?? 0) > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.delays?.bookingsMs));
+      }
       return responseJson(route, 200, {
         items: cloneJson(items),
       });
