@@ -1,6 +1,5 @@
 'use client';
 
-import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
@@ -19,7 +18,6 @@ import {
 import { Header } from '@/components/layout/Header';
 import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
-import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
@@ -68,8 +66,6 @@ type WorkspaceShellProps = {
   children: (context: WorkspaceShellRenderContext) => ReactNode | WorkspaceShellPageLayout;
 };
 
-const SHELL_CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 const createWorkspaceInitialState: CreateWorkspaceFormState = {
   name: '',
   timezone: 'UTC',
@@ -99,121 +95,6 @@ function isAuthUserSummary(value: unknown): value is AuthUserSummary {
     typeof value.email === 'string' &&
     typeof value.firstName === 'string' &&
     typeof value.lastName === 'string'
-  );
-}
-
-function WorkspaceShellMiniCalendar({ timezone }: { timezone: string }) {
-  const {
-    dateKey: selectedDateKey,
-    monthKey: calendarMonthKey,
-    setDateKey,
-    setMonthKey,
-    goToToday,
-  } = useSharedSelectedDate(timezone);
-
-  const todayDateKey = useMemo(
-    () => DateTime.now().setZone(timezone).toFormat('yyyy-LL-dd'),
-    [timezone],
-  );
-  const calendarMonth = useMemo(() => {
-    const parsed = DateTime.fromISO(`${calendarMonthKey}-01`, { zone: timezone });
-    if (parsed.isValid) {
-      return parsed.startOf('month');
-    }
-
-    return DateTime.now().setZone(timezone).startOf('month');
-  }, [calendarMonthKey, timezone]);
-
-  const calendarDayCells = useMemo(() => {
-    const monthStart = calendarMonth.startOf('month');
-    const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
-
-    return Array.from({ length: 42 }, (_, index) => {
-      const day = gridStart.plus({ days: index });
-      const dateKey = day.toFormat('yyyy-LL-dd');
-
-      return {
-        dateKey,
-        dayNumber: day.day,
-        isCurrentMonth: day.month === monthStart.month,
-        isToday: dateKey === todayDateKey,
-        isSelected: dateKey === selectedDateKey,
-      };
-    });
-  }, [calendarMonth, selectedDateKey, todayDateKey]);
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
-      <p className="mt-1 text-sm text-slate-900">{timezone}</p>
-
-      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-900">
-            {calendarMonth.toFormat('LLLL yyyy')}
-          </p>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={goToToday}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => setMonthKey(calendarMonth.minus({ months: 1 }).toFormat('yyyy-LL'))}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-              aria-label="Previous month"
-            >
-              {'<'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMonthKey(calendarMonth.plus({ months: 1 }).toFormat('yyyy-LL'))}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-              aria-label="Next month"
-            >
-              {'>'}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1">
-          {SHELL_CALENDAR_WEEKDAY_LABELS.map((label) => (
-            <div
-              key={label}
-              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-            >
-              {label}
-            </div>
-          ))}
-
-          {calendarDayCells.map((cell) => (
-            <button
-              key={cell.dateKey}
-              type="button"
-              onClick={() => {
-                setDateKey(cell.dateKey);
-                setMonthKey(cell.dateKey.slice(0, 7));
-              }}
-              className={`relative h-8 rounded-md border text-xs font-medium transition ${
-                cell.isSelected
-                  ? 'border-brand bg-cyan-100 text-cyan-900'
-                  : cell.isToday
-                    ? 'border-slate-400 bg-white text-slate-900'
-                    : cell.isCurrentMonth
-                      ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                      : 'border-transparent bg-transparent text-slate-400 hover:bg-white/60'
-              }`}
-              aria-label={`Select ${cell.dateKey}`}
-            >
-              {cell.dayNumber}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -774,11 +655,7 @@ export function WorkspaceShell({
   const pageRightSidebar = hasCustomLayout
     ? ((renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null)
     : null;
-  const effectiveRightSidebar = pageRightSidebar ?? (
-    <WorkspaceShellMiniCalendar
-      timezone={selectedWorkspace?.timezone ?? resolveDefaultTimezone()}
-    />
-  );
+  const effectiveRightSidebar = pageRightSidebar ?? null;
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
   const workspaceRowActionsById = items.reduce<
