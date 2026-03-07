@@ -4,9 +4,9 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
-  params: {
+  params: Promise<{
     workspaceId: string;
-  };
+  }>;
 };
 
 export async function GET(
@@ -14,7 +14,8 @@ export async function GET(
   context: WorkspaceRouteContext,
 ): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
         {
@@ -45,7 +46,8 @@ export async function PATCH(
   context: WorkspaceRouteContext,
 ): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
         {

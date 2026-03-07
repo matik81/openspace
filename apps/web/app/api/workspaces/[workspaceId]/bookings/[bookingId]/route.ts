@@ -4,10 +4,10 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type BookingRouteContext = {
-  params: {
+  params: Promise<{
     workspaceId: string;
     bookingId: string;
-  };
+  }>;
 };
 
 export async function PATCH(
@@ -15,8 +15,9 @@ export async function PATCH(
   context: BookingRouteContext,
 ): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
-    const bookingId = context.params.bookingId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
+    const bookingId = params.bookingId?.trim();
     if (!workspaceId || !bookingId) {
       return NextResponse.json<ErrorPayload>(
         {

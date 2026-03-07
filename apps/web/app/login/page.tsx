@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation';
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { reason?: string };
+  searchParams?: Promise<{ reason?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const params = new URLSearchParams({ auth: 'login' });
-  if (searchParams?.reason) {
-    params.set('reason', searchParams.reason);
+  if (resolvedSearchParams?.reason) {
+    params.set('reason', resolvedSearchParams.reason);
   }
 
   redirect(`/?${params.toString()}`);

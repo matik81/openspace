@@ -4,11 +4,12 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type RouteContext = {
-  params: { workspaceId: string };
+  params: Promise<{ workspaceId: string }>;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const workspaceId = context.params.workspaceId?.trim();
+  const params = await context.params;
+  const workspaceId = params.workspaceId?.trim();
   if (!workspaceId) {
     return NextResponse.json<ErrorPayload>(
       {

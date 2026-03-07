@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 import { installMockWorkspaceApp, MOCK_IDS, MOCK_NAMES } from './support/mock-workspace-app';
 
 async function openUserMenu(page: Page) {
-  await page.locator('button[aria-haspopup="menu"]').click();
+  await page.locator('button[aria-haspopup="menu"]:not([data-nextjs-dev-tools-button])').click();
 }
 
 test.beforeEach(async ({ page }) => {

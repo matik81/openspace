@@ -4,16 +4,17 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type RoomRouteContext = {
-  params: {
+  params: Promise<{
     workspaceId: string;
     roomId: string;
-  };
+  }>;
 };
 
 export async function PATCH(request: NextRequest, context: RoomRouteContext): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
-    const roomId = context.params.roomId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
+    const roomId = params.roomId?.trim();
 
     if (!workspaceId || !roomId) {
       return NextResponse.json<ErrorPayload>(
@@ -104,8 +105,9 @@ export async function PATCH(request: NextRequest, context: RoomRouteContext): Pr
 
 export async function DELETE(request: NextRequest, context: RoomRouteContext): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
-    const roomId = context.params.roomId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
+    const roomId = params.roomId?.trim();
     if (!workspaceId || !roomId) {
       return NextResponse.json<ErrorPayload>(
         {

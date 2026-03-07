@@ -589,7 +589,7 @@ function WorkspaceBookingDashboard({
       setDateKey(local.dateKey);
       setMonthKey(local.dateKey.slice(0, 7));
     },
-    [getBookingAnchorPoint, timezone],
+    [getBookingAnchorPoint, setDateKey, setMonthKey, timezone],
   );
 
   useEffect(() => {
@@ -1079,7 +1079,6 @@ function resolveScheduleWindowForDate(workspace: WorkspaceItem | null, selectedD
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WorkspaceRightSidebar({
   timezone,
   monthKey,

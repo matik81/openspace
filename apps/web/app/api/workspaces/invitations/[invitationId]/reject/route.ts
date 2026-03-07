@@ -3,14 +3,15 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type InvitationRouteContext = {
-  params: {
+  params: Promise<{
     invitationId: string;
-  };
+  }>;
 };
 
 export async function POST(request: NextRequest, context: InvitationRouteContext): Promise<NextResponse> {
   try {
-    const invitationId = context.params.invitationId?.trim();
+    const params = await context.params;
+    const invitationId = params.invitationId?.trim();
     if (!invitationId) {
       return NextResponse.json<ErrorPayload>(
         {

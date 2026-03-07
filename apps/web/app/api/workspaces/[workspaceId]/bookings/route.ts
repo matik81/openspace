@@ -4,14 +4,15 @@ import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
-  params: {
+  params: Promise<{
     workspaceId: string;
-  };
+  }>;
 };
 
 export async function GET(request: NextRequest, context: WorkspaceRouteContext): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
         {
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest, context: WorkspaceRouteContext):
 
 export async function POST(request: NextRequest, context: WorkspaceRouteContext): Promise<NextResponse> {
   try {
-    const workspaceId = context.params.workspaceId?.trim();
+    const params = await context.params;
+    const workspaceId = params.workspaceId?.trim();
     if (!workspaceId) {
       return NextResponse.json<ErrorPayload>(
         {
