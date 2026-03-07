@@ -16,6 +16,17 @@ const ROOM: RoomItem = {
   updatedAt: '2026-03-01T08:00:00.000Z',
 };
 
+const SECOND_ROOM: RoomItem = {
+  id: 'room-2',
+  workspaceId: 'workspace-1',
+  name: 'Board Room',
+  description: null,
+  status: 'ACTIVE',
+  cancelledAt: null,
+  createdAt: '2026-03-01T08:00:00.000Z',
+  updatedAt: '2026-03-01T08:00:00.000Z',
+};
+
 function createBooking(overrides: Partial<BookingListItem> = {}): BookingListItem {
   return {
     id: 'booking-1',
@@ -36,12 +47,14 @@ function createBooking(overrides: Partial<BookingListItem> = {}): BookingListIte
 }
 
 function renderSchedule({
+  rooms = [ROOM],
   bookings = [],
   ownedBookingIds = new Set<string>(),
   editableBookingIds = new Set<string>(),
   draftPreview = null,
   onOpenBooking = vi.fn(),
 }: {
+  rooms?: RoomItem[];
   bookings?: BookingListItem[];
   ownedBookingIds?: ReadonlySet<string>;
   editableBookingIds?: ReadonlySet<string>;
@@ -50,7 +63,7 @@ function renderSchedule({
 }) {
   render(
     <DaySchedule
-      rooms={[ROOM]}
+      rooms={rooms}
       bookings={bookings}
       timezone="UTC"
       schedule={{ startHour: 8, endHour: 18 }}
@@ -165,5 +178,34 @@ describe('DaySchedule', () => {
     const conflictPreview = screen.getByRole('button', { name: /New booking/i });
     expect(conflictPreview).toHaveClass('bg-rose-100/90');
     expect(conflictPreview).toHaveClass('border-rose-400');
+  });
+
+  it('toggles room visibility from the filter menu without persisting it', async () => {
+    renderSchedule({ rooms: [ROOM, SECOND_ROOM] });
+
+    const user = userEvent.setup();
+    const filterButton = screen.getByRole('button', { name: /^Filter/ });
+
+    expect(
+      screen.getByRole('button', { name: 'Create booking in Focus Room' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Create booking in Board Room' }),
+    ).toBeInTheDocument();
+    expect(filterButton).not.toHaveTextContent('1/2');
+
+    await user.click(filterButton);
+    await user.click(screen.getByRole('checkbox', { name: 'Board Room' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Create booking in Focus Room' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Create booking in Board Room' }),
+    ).not.toBeInTheDocument();
+    expect(filterButton).toHaveTextContent('1/2');
+    expect(
+      screen.queryByText('No rooms selected. Use Filter to show at least one room.'),
+    ).not.toBeInTheDocument();
   });
 });

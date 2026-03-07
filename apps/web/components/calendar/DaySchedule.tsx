@@ -122,16 +122,31 @@ export function DaySchedule({
   onInlineError: (message: string) => void;
 }) {
   const columnsRef = useRef<HTMLDivElement | null>(null);
+  const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const suppressedClickBookingIdRef = useRef<string | null>(null);
   const [interaction, setInteraction] = useState<ActiveInteraction | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [commitPreview, setCommitPreview] = useState<PreviewState | null>(null);
   const [committingBookingId, setCommittingBookingId] = useState<string | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [hiddenRoomIds, setHiddenRoomIds] = useState<Set<string>>(() => new Set());
   const scheduleStart = scheduleStartMinutes(schedule);
   const scheduleEnd = scheduleEndMinutes(schedule);
   const trackHeightPx = scheduleRowMinHeightPx(schedule);
+  const visibleRooms = useMemo(
+    () => rooms.filter((room) => !hiddenRoomIds.has(room.id)),
+    [hiddenRoomIds, rooms],
+  );
+  const activeFilterCount = hiddenRoomIds.size;
+  const visibleRoomEmptyStateMessage =
+    rooms.length > 0 && visibleRooms.length === 0
+      ? 'No rooms selected. Use Filter to show at least one room.'
+      : emptyStateMessage;
 
-  const roomsById = useMemo(() => new Map(rooms.map((room) => [room.id, room])), [rooms]);
+  const roomsById = useMemo(
+    () => new Map(visibleRooms.map((room) => [room.id, room])),
+    [visibleRooms],
+  );
   const activeBookings = useMemo(
     () => bookings.filter((booking) => booking.status === 'ACTIVE'),
     [bookings],
@@ -143,7 +158,7 @@ export function DaySchedule({
 
   const dayBookingsByRoom = useMemo(() => {
     const byRoom = new Map<string, PositionedBooking[]>();
-    for (const room of rooms) {
+    for (const room of visibleRooms) {
       byRoom.set(room.id, []);
     }
 
@@ -182,7 +197,7 @@ export function DaySchedule({
     }
 
     return byRoom;
-  }, [rooms, activeBookings, timezone, selectedDateKey, scheduleEnd, scheduleStart]);
+  }, [visibleRooms, activeBookings, timezone, selectedDateKey, scheduleEnd, scheduleStart]);
 
   const currentTimeOffsetPx = useMemo(() => {
     const now = DateTime.now().setZone(timezone);
@@ -218,7 +233,7 @@ export function DaySchedule({
 
   const getRoomIdFromClientX = useCallback(
     (clientX: number): string | null => {
-      if (!columnsRef.current || rooms.length === 0) {
+      if (!columnsRef.current || visibleRooms.length === 0) {
         return null;
       }
       const rect = columnsRef.current.getBoundingClientRect();
@@ -226,15 +241,74 @@ export function DaySchedule({
         return null;
       }
       const relativeX = clientX - rect.left;
-      const columnWidth = rect.width / rooms.length;
+      const columnWidth = rect.width / visibleRooms.length;
       if (columnWidth <= 0) {
         return null;
       }
-      const index = Math.max(0, Math.min(rooms.length - 1, Math.floor(relativeX / columnWidth)));
-      return rooms[index]?.id ?? null;
+      const index = Math.max(
+        0,
+        Math.min(visibleRooms.length - 1, Math.floor(relativeX / columnWidth)),
+      );
+      return visibleRooms[index]?.id ?? null;
     },
-    [rooms],
+    [visibleRooms],
   );
+
+  useEffect(() => {
+    setHiddenRoomIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+
+      const next = new Set<string>();
+      for (const roomId of current) {
+        if (rooms.some((room) => room.id === roomId)) {
+          next.add(roomId);
+        }
+      }
+
+      return next.size === current.size ? current : next;
+    });
+  }, [rooms]);
+
+  useEffect(() => {
+    if (!isFilterOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (filterMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setIsFilterOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFilterOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFilterOpen]);
+
+  const toggleRoomVisibility = useCallback((roomId: string) => {
+    setHiddenRoomIds((current) => {
+      const next = new Set(current);
+      if (next.has(roomId)) {
+        next.delete(roomId);
+      } else {
+        next.add(roomId);
+      }
+      return next;
+    });
+  }, []);
 
   const computePreviewFromPointer = useCallback(
     (
@@ -569,6 +643,80 @@ export function DaySchedule({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative" ref={filterMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen((current) => !current)}
+              className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-slate-50 ${
+                activeFilterCount > 0
+                  ? 'border-amber-300 bg-amber-50 text-amber-900'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+              aria-expanded={isFilterOpen}
+              aria-haspopup="dialog"
+            >
+              Filter
+              {activeFilterCount > 0 ? (
+                <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-amber-900">
+                  {visibleRooms.length}/{rooms.length}
+                </span>
+              ) : null}
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`h-4 w-4 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              >
+                <path d="m5 8 5 5 5-5" />
+              </svg>
+            </button>
+            {isFilterOpen ? (
+              <div
+                className="absolute right-0 top-full z-40 mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
+                style={{
+                  width: 'max-content',
+                  minWidth: '12rem',
+                  maxWidth: 'min(28rem, calc(100vw - 2rem))',
+                }}
+              >
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setHiddenRoomIds(new Set())}
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                  >
+                    Show all
+                  </button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {rooms.map((room) => {
+                    const isVisible = !hiddenRoomIds.has(room.id);
+
+                    return (
+                      <label
+                        key={room.id}
+                        className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => toggleRoomVisibility(room.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                        />
+                        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-slate-700">
+                          {room.name}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onToday}
@@ -620,8 +768,8 @@ export function DaySchedule({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {rooms.length === 0 ? (
-          <div className="p-4 text-sm text-slate-600">{emptyStateMessage}</div>
+        {visibleRooms.length === 0 ? (
+          <div className="p-4 text-sm text-slate-600">{visibleRoomEmptyStateMessage}</div>
         ) : (
           <div className="min-w-[720px]">
             <div className="flex">
@@ -642,7 +790,7 @@ export function DaySchedule({
               </div>
               <div className="min-w-0 flex-1">
                 <RoomColumns
-                  rooms={rooms}
+                  rooms={visibleRooms}
                   trackHeightPx={trackHeightPx}
                   currentTimeOffsetPx={currentTimeOffsetPx}
                   columnContainerRef={columnsRef}
