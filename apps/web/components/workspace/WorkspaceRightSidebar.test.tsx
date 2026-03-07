@@ -68,6 +68,7 @@ describe('WorkspaceRightSidebar', () => {
     const user = userEvent.setup();
 
     expect(screen.getByText('March 2026')).toBeVisible();
+    expect(screen.queryByText('UTC')).not.toBeInTheDocument();
     expect(screen.getByText('Live')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Select 2026-03-19' }));

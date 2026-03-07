@@ -42,7 +42,6 @@ export function WorkspaceRightSidebar({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calendar</p>
             <p className="text-sm font-semibold text-slate-900">{monthLabel}</p>
-            <p className="text-xs text-slate-500">{timezone}</p>
           </div>
           <div className="flex items-center gap-1">
             <button
