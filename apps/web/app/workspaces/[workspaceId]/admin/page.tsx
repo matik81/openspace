@@ -64,6 +64,25 @@ type AdminRightSidebarState = {
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
 
+function buildWorkspaceSettingsState({
+  name,
+  timezone,
+  scheduleStartHour,
+  scheduleEndHour,
+}: {
+  name?: string | null;
+  timezone?: string | null;
+  scheduleStartHour?: number | null;
+  scheduleEndHour?: number | null;
+}): WorkspaceSettingsState {
+  return {
+    name: name ?? '',
+    timezone: timezone ?? 'UTC',
+    scheduleStartHour: scheduleStartHour ?? 8,
+    scheduleEndHour: scheduleEndHour ?? 18,
+  };
+}
+
 const adminRightSidebarStateCache = new Map<string, AdminRightSidebarState>();
 const adminWorkspaceDataCache = new Map<string, AdminWorkspaceDataState>();
 const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) => index);
@@ -130,12 +149,14 @@ function WorkspaceAdminContent({
   const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
     useState<DeleteRoomConfirmationState | null>(null);
   const [isDeleteRoomCredentialsUnlocked, setIsDeleteRoomCredentialsUnlocked] = useState(false);
-  const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>({
-    name: '',
-    timezone: 'UTC',
-    scheduleStartHour: 8,
-    scheduleEndHour: 18,
-  });
+  const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>(() =>
+    buildWorkspaceSettingsState({
+      name: selectedWorkspace?.name,
+      timezone: selectedWorkspace?.timezone,
+      scheduleStartHour: selectedWorkspace?.scheduleStartHour,
+      scheduleEndHour: selectedWorkspace?.scheduleEndHour,
+    }),
+  );
   const [isCancelWorkspaceFormVisible, setIsCancelWorkspaceFormVisible] = useState(false);
   const [isCancellingWorkspace, setIsCancellingWorkspace] = useState(false);
   const [isCancelWorkspaceCredentialsUnlocked, setIsCancelWorkspaceCredentialsUnlocked] =
@@ -267,18 +288,20 @@ function WorkspaceAdminContent({
 
     setMyBookings(adminRightSidebarStateCache.get(selectedWorkspaceId)?.myBookings ?? []);
 
+    const nextWorkspaceSettingsForm = buildWorkspaceSettingsState({
+      name: selectedWorkspaceName,
+      timezone: selectedWorkspaceTimezone,
+      scheduleStartHour: selectedWorkspaceScheduleStartHour,
+      scheduleEndHour: selectedWorkspaceScheduleEndHour,
+    });
+
     setWorkspaceSettingsForm((previous) =>
-      previous.name === selectedWorkspaceName &&
-      previous.timezone === selectedWorkspaceTimezone &&
-      previous.scheduleStartHour === selectedWorkspaceScheduleStartHour &&
-      previous.scheduleEndHour === selectedWorkspaceScheduleEndHour
+      previous.name === nextWorkspaceSettingsForm.name &&
+      previous.timezone === nextWorkspaceSettingsForm.timezone &&
+      previous.scheduleStartHour === nextWorkspaceSettingsForm.scheduleStartHour &&
+      previous.scheduleEndHour === nextWorkspaceSettingsForm.scheduleEndHour
         ? previous
-        : {
-            name: selectedWorkspaceName,
-            timezone: selectedWorkspaceTimezone,
-            scheduleStartHour: selectedWorkspaceScheduleStartHour ?? 8,
-            scheduleEndHour: selectedWorkspaceScheduleEndHour ?? 18,
-          },
+        : nextWorkspaceSettingsForm,
     );
 
     if (lastSelectedWorkspaceIdRef.current !== selectedWorkspaceId) {
@@ -791,7 +814,7 @@ function WorkspaceAdminContent({
                 Create Room
               </button>
             </form>
-            {!isLoadingData && rooms.length === 0 ? (
+            {hasLoadedAdminData && rooms.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
             ) : null}
 
@@ -930,9 +953,9 @@ function WorkspaceAdminContent({
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Active Members</h4>
-                {members.length === 0 ? (
+                {hasLoadedAdminData && members.length === 0 ? (
                   <p className="mt-2 text-xs text-slate-600">No active members.</p>
-                ) : (
+                ) : members.length > 0 ? (
                   <ul className="mt-2 space-y-2">
                     {members.map((member) => (
                       <li
@@ -949,14 +972,14 @@ function WorkspaceAdminContent({
                       </li>
                     ))}
                   </ul>
-                )}
+                ) : null}
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Pending Invitations</h4>
-                {pendingInvitations.length === 0 ? (
+                {hasLoadedAdminData && pendingInvitations.length === 0 ? (
                   <p className="mt-2 text-xs text-slate-600">No pending invitations.</p>
-                ) : (
+                ) : pendingInvitations.length > 0 ? (
                   <ul className="mt-2 space-y-2">
                     {pendingInvitations.map((invitation) => (
                       <li
@@ -971,7 +994,7 @@ function WorkspaceAdminContent({
                       </li>
                     ))}
                   </ul>
-                )}
+                ) : null}
               </div>
             </div>
           </section>
