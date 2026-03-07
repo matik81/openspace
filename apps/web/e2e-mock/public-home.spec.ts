@@ -14,6 +14,10 @@ test('opens and closes the login modal from the public home page', async ({ page
   await page.goto('/');
 
   await expect(page.getByText('Guest preview')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Login' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Register' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Verify email' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Reset password' })).toBeHidden();
   await page.getByRole('button', { name: 'Login' }).click();
 
   await expect(page).toHaveURL(/auth=login/);
