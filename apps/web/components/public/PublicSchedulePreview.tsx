@@ -9,6 +9,7 @@ import {
 import type { BookingListItem } from '@/lib/types';
 
 const EMPTY_EDITABLE_BOOKING_IDS = new Set<string>();
+const EMPTY_OWNED_BOOKING_IDS = new Set<string>();
 
 export function PublicSchedulePreview({
   selectedDateKey,
@@ -30,6 +31,7 @@ export function PublicSchedulePreview({
       timezone={PUBLIC_TIMEZONE}
       schedule={PUBLIC_SCHEDULE}
       selectedDateKey={selectedDateKey}
+      ownedBookingIds={EMPTY_OWNED_BOOKING_IDS}
       editableBookingIds={EMPTY_EDITABLE_BOOKING_IDS}
       selectedBookingId={null}
       isMutating={false}

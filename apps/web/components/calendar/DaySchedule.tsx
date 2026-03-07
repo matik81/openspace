@@ -77,6 +77,7 @@ export function DaySchedule({
   schedule,
   selectedDateKey,
   emptyStateMessage = 'No rooms available for this workspace yet.',
+  ownedBookingIds,
   editableBookingIds,
   selectedBookingId,
   isMutating,
@@ -96,6 +97,7 @@ export function DaySchedule({
   schedule: ScheduleWindow;
   selectedDateKey: string;
   emptyStateMessage?: string;
+  ownedBookingIds: ReadonlySet<string>;
   editableBookingIds: ReadonlySet<string>;
   selectedBookingId: string | null;
   isMutating: boolean;
@@ -490,7 +492,8 @@ export function DaySchedule({
           if (hiddenBookingId === item.booking.id) {
             return null;
           }
-          const isMine = editableBookingIds.has(item.booking.id);
+          const isOwned = ownedBookingIds.has(item.booking.id);
+          const isEditable = editableBookingIds.has(item.booking.id);
           return (
             <BookingBlock
               key={item.booking.id}
@@ -499,16 +502,17 @@ export function DaySchedule({
               subtitle={item.booking.createdByDisplayName}
               meta={item.timeLabel}
               layout={{ topPx: item.topPx, heightPx: item.heightPx }}
-              variant={isMine ? 'mine' : 'default'}
-              isInteractive={isMine}
+              variant={isOwned ? 'mine' : 'default'}
+              isInteractive={isEditable}
+              isClickable={isOwned}
               isSelected={selectedBookingId === item.booking.id}
-              showResizeHandles={isMine}
-              onClick={isMine ? () => handleBookingClick(item.booking) : undefined}
+              showResizeHandles={isEditable}
+              onClick={isOwned ? () => handleBookingClick(item.booking) : undefined}
               onDragPointerDown={
-                isMine ? (event) => beginInteraction(event, item.booking, 'drag') : undefined
+                isEditable ? (event) => beginInteraction(event, item.booking, 'drag') : undefined
               }
               onResizePointerDown={
-                isMine
+                isEditable
                   ? (edge, event) =>
                       beginInteraction(
                         event,
@@ -528,9 +532,7 @@ export function DaySchedule({
             subtitle={effectivePreview.subtitle}
             meta={formatTimeRangeLabel(effectivePreview.startMinutes, effectivePreview.endMinutes)}
             layout={{
-              topPx:
-                (effectivePreview.startMinutes - scheduleStart) *
-                SCHEDULE_PIXELS_PER_MINUTE,
+              topPx: (effectivePreview.startMinutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE,
               heightPx:
                 (effectivePreview.endMinutes - effectivePreview.startMinutes) *
                 SCHEDULE_PIXELS_PER_MINUTE,
@@ -546,8 +548,7 @@ export function DaySchedule({
             subtitle={draftPreview.subtitle ?? null}
             meta={formatTimeRangeLabel(draftPreview.startMinutes, draftPreview.endMinutes)}
             layout={{
-              topPx:
-                (draftPreview.startMinutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE,
+              topPx: (draftPreview.startMinutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE,
               heightPx:
                 (draftPreview.endMinutes - draftPreview.startMinutes) * SCHEDULE_PIXELS_PER_MINUTE,
             }}

@@ -17,7 +17,7 @@ export function getBookingBlockVariantClass(
     case 'mine':
       return 'border-amber-300 bg-amber-100 text-amber-950';
     case 'preview':
-      return 'border-amber-400 bg-amber-100/90 text-amber-950 border-dashed';
+      return 'border-emerald-400 bg-emerald-100/90 text-emerald-950 border-dashed';
     case 'preview-error':
       return 'border-rose-400 bg-rose-100/90 text-rose-950 border-dashed';
     case 'default':
@@ -34,6 +34,7 @@ export const BookingBlock = memo(function BookingBlock({
   layout,
   variant,
   isInteractive = false,
+  isClickable = false,
   isSelected = false,
   showResizeHandles = false,
   onClick,
@@ -47,6 +48,7 @@ export const BookingBlock = memo(function BookingBlock({
   layout: BookingBlockLayout;
   variant: 'mine' | 'default' | 'preview' | 'preview-error';
   isInteractive?: boolean;
+  isClickable?: boolean;
   isSelected?: boolean;
   showResizeHandles?: boolean;
   onClick?: () => void;
@@ -75,7 +77,7 @@ export const BookingBlock = memo(function BookingBlock({
           data-booking-id={bookingId}
           onClick={onClick}
           onPointerDown={onDragPointerDown}
-          className={`relative flex h-full w-full flex-col overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${getBookingBlockVariantClass(variant)} ${isInteractive ? 'cursor-grab active:cursor-grabbing hover:shadow' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand/40' : ''}`}
+          className={`relative flex h-full w-full flex-col overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${getBookingBlockVariantClass(variant)} ${isInteractive ? 'cursor-grab active:cursor-grabbing hover:shadow' : isClickable ? 'cursor-pointer hover:shadow' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand/40' : ''}`}
           title={[title, subtitle, meta].filter(Boolean).join(' · ')}
           aria-label={[title, subtitle, meta].filter(Boolean).join(' · ')}
         >

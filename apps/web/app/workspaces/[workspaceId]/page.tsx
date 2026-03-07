@@ -448,6 +448,17 @@ function WorkspaceBookingDashboard({
   const isRefreshingSchedule = !showScheduleSkeleton && (isLoadingRooms || isLoadingBookings);
 
   const currentUserId = currentUser?.id ?? '';
+  const ownedBookingIds = useMemo(
+    () =>
+      new Set(
+        bookings
+          .filter(
+            (booking) => booking.createdByUserId === currentUserId && booking.status === 'ACTIVE',
+          )
+          .map((booking) => booking.id),
+      ),
+    [bookings, currentUserId],
+  );
   const editableBookingIds = useMemo(
     () =>
       new Set(
@@ -1011,6 +1022,7 @@ function WorkspaceBookingDashboard({
                 schedule={schedule}
                 selectedDateKey={dateKey}
                 emptyStateMessage={emptyScheduleMessage}
+                ownedBookingIds={ownedBookingIds}
                 editableBookingIds={editableBookingIds}
                 selectedBookingId={selectedBookingId}
                 isMutating={dialog.open && dialog.isSubmitting}
