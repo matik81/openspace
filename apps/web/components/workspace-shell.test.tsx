@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceShell } from '@/components/workspace-shell';
 
@@ -132,5 +133,83 @@ describe('WorkspaceShell', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Ada Lovelace/i })).toBeVisible();
     });
+  });
+
+  it('opens leave workspace with an empty email field', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/workspaces') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'workspace-1',
+                name: 'Focus Lab',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'MEMBER',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      if (url === '/api/auth/me') {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'ada@example.com',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <WorkspaceShell
+        selectedWorkspaceId="workspace-1"
+        pageTitle=""
+        pageDescription=""
+      >
+        {() => <p>Workspace content</p>}
+      </WorkspaceShell>,
+    );
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ada Lovelace/i })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Ada Lovelace/i }));
+    await user.click(screen.getByRole('menuitem', { name: 'Leave workspace' }));
+
+    expect(await screen.findByRole('heading', { name: 'Leave Workspace' })).toBeVisible();
+    expect(screen.getByLabelText('Email')).toHaveValue('');
   });
 });

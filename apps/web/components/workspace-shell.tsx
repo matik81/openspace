@@ -745,7 +745,7 @@ export function WorkspaceShell({
                 label: 'Leave workspace',
                 onClick: () => {
                   setCriticalActionForm({
-                    email: currentUser.email,
+                    email: '',
                     password: '',
                   });
                   setCriticalActionError(null);

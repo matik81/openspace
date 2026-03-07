@@ -54,6 +54,34 @@ describe('PublicAuthModal', () => {
     expect(await screen.findByText('The password confirmation does not match.')).toBeVisible();
   });
 
+  it('marks registration credential fields to resist browser autofill', () => {
+    render(
+      <PublicAuthModal
+        mode="register"
+        searchParams={createSearchParams()}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+      />,
+    );
+
+    const form = screen.getByLabelText('Confirm password').closest('form');
+
+    expect(form).not.toBeNull();
+    expect(form).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('name', 'register-email');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('name', 'register-password');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
+      'name',
+      'register-confirm-password',
+    );
+    expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
+      'autocomplete',
+      'new-password',
+    );
+  });
+
   it('submits registration and switches to verify-email mode on success', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {

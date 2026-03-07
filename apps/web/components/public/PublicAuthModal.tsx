@@ -63,6 +63,7 @@ export function PublicAuthModal({
   const didPointerDownOnOverlayRef = useRef(false);
   const [loginForm, setLoginForm] = useState<LoginFormState>(initialLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(initialRegisterForm);
+  const [registerPasswordFieldsUnlocked, setRegisterPasswordFieldsUnlocked] = useState(false);
   const [verificationToken, setVerificationToken] = useState('');
   const [resetPasswordForm, setResetPasswordForm] =
     useState<ResetPasswordFormState>(initialResetPasswordForm);
@@ -83,6 +84,9 @@ export function PublicAuthModal({
 
     if (mode === 'verify-email') {
       setVerificationToken(searchParams.get('token') ?? '');
+    }
+    if (mode !== 'register') {
+      setRegisterPasswordFieldsUnlocked(false);
     }
     if (mode === 'reset-password') {
       setResetPasswordForm((current) => ({
@@ -441,7 +445,16 @@ export function PublicAuthModal({
         ) : null}
 
         {mode === 'register' ? (
-          <form className="mt-6 space-y-4" onSubmit={(event) => void handleRegisterSubmit(event)}>
+          <form
+            className="mt-6 space-y-4"
+            autoComplete="off"
+            onSubmit={(event) => void handleRegisterSubmit(event)}
+          >
+            <div className="hidden" aria-hidden="true">
+              <input type="text" name="username" autoComplete="username" tabIndex={-1} />
+              <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">First name</span>
@@ -469,6 +482,12 @@ export function PublicAuthModal({
               <input
                 required
                 type="email"
+                name="register-email"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                data-1p-ignore="true"
+                data-lpignore="true"
                 value={registerForm.email}
                 onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -482,6 +501,12 @@ export function PublicAuthModal({
                   required
                   minLength={8}
                   type="password"
+                  name="register-password"
+                  autoComplete="new-password"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  readOnly={!registerPasswordFieldsUnlocked}
+                  onFocus={() => setRegisterPasswordFieldsUnlocked(true)}
                   value={registerForm.password}
                   onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -494,6 +519,12 @@ export function PublicAuthModal({
                   required
                   minLength={8}
                   type="password"
+                  name="register-confirm-password"
+                  autoComplete="new-password"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  readOnly={!registerPasswordFieldsUnlocked}
+                  onFocus={() => setRegisterPasswordFieldsUnlocked(true)}
                   value={registerForm.confirmPassword}
                   onChange={(event) =>
                     setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))
