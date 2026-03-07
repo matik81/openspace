@@ -662,6 +662,27 @@ describe('Booking overlap integration', () => {
       status: 'CANCELLED',
     });
 
+    const workspace = await prismaService.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { timezone: true },
+    });
+    const futureBookingDateKey = toLocalDateKey(
+      new Date(activeFutureBookingResponse.body.startAt as string),
+      workspace?.timezone ?? 'UTC',
+    );
+    const filteredRangeResponse = await request(app.getHttpServer())
+      .get(
+        `/api/workspaces/${workspaceId}/bookings?mine=true&includeCancelled=true&fromDate=${futureBookingDateKey}&toDate=${futureBookingDateKey}`,
+      )
+      .set('Authorization', `Bearer ${memberToken}`);
+
+    expect(filteredRangeResponse.status).toBe(200);
+    expect(filteredRangeResponse.body.items).toHaveLength(2);
+    expect(filteredRangeResponse.body.items.map((item: { id: string }) => item.id)).toEqual([
+      activeFutureBookingId,
+      cancelledFutureBookingId,
+    ]);
+
     const pendingListResponse = await request(app.getHttpServer())
       .get(`/api/workspaces/${workspaceId}/bookings`)
       .set('Authorization', `Bearer ${pendingToken}`);

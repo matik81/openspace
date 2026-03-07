@@ -31,6 +31,7 @@ import {
   SCHEDULE_INTERVAL_MINUTES,
   scheduleEndMinutes,
   scheduleStartMinutes,
+  resolveBookingLoadDateRange,
   workspaceTodayDateKey,
 } from '@/lib/time';
 import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
@@ -187,6 +188,10 @@ function WorkspaceBookingDashboard({
   const cachedSidebarState = workspace ? readWorkspaceSidebarState(workspace.id) : undefined;
   const { dateKey, monthKey, setDateKey, setMonthKey, goToToday, goToPreviousDay, goToNextDay } =
     useSharedSelectedDate(timezone);
+  const bookingLoadDateRange = useMemo(
+    () => resolveBookingLoadDateRange({ timezone, monthKey }),
+    [monthKey, timezone],
+  );
   const [rooms, setRooms] = useState<RoomItem[]>(() => cachedSidebarState?.rooms ?? []);
   const [bookings, setBookings] = useState<BookingListItem[]>(
     () => cachedSidebarState?.bookings ?? [],
@@ -351,7 +356,8 @@ function WorkspaceBookingDashboard({
       setIsLoadingBookings(true);
       const query = new URLSearchParams({
         mine: 'false',
-        includePast: 'true',
+        fromDate: bookingLoadDateRange.fromDate,
+        toDate: bookingLoadDateRange.toDate,
       });
 
       const response = await fetch(`/api/workspaces/${selected.id}/bookings?${query.toString()}`, {
@@ -392,16 +398,8 @@ function WorkspaceBookingDashboard({
       setHasLoadedBookings(true);
       setIsLoadingBookings(false);
     },
-    [router],
+    [bookingLoadDateRange.fromDate, bookingLoadDateRange.toDate, router],
   );
-
-  const refreshData = useCallback(async () => {
-    if (!workspace || !enabled) {
-      return;
-    }
-    setPageError(null);
-    await Promise.all([loadRooms(workspace), loadBookings(workspace)]);
-  }, [enabled, loadBookings, loadRooms, workspace]);
 
   useEffect(() => {
     if (!workspace || !enabled) {
@@ -410,9 +408,18 @@ function WorkspaceBookingDashboard({
     setPageBanner(null);
     setPageError(null);
     setHasLoadedRooms(false);
+    void loadRooms(workspace);
+  }, [enabled, loadRooms, workspace]);
+
+  useEffect(() => {
+    if (!workspace || !enabled) {
+      return;
+    }
+    setPageBanner(null);
+    setPageError(null);
     setHasLoadedBookings(false);
-    void refreshData();
-  }, [enabled, refreshData, workspace]);
+    void loadBookings(workspace);
+  }, [enabled, loadBookings, workspace]);
 
   useEffect(() => {
     if (rooms.length === 0) {

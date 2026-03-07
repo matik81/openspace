@@ -787,9 +787,27 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
     if (bookingsMatch && method === 'GET') {
       const workspaceId = bookingsMatch[1];
       const mine = url.searchParams.get('mine') === 'true';
-      const items = (state.bookingsByWorkspaceId[workspaceId] ?? []).filter((booking) =>
-        mine ? booking.createdByUserId === state.user.id : true,
-      );
+      const fromDate = url.searchParams.get('fromDate');
+      const toDate = url.searchParams.get('toDate');
+      const workspaceTimezone =
+        state.workspaces.find((workspace) => workspace.id === workspaceId)?.timezone ?? 'UTC';
+      const items = (state.bookingsByWorkspaceId[workspaceId] ?? []).filter((booking) => {
+        if (mine && booking.createdByUserId !== state.user.id) {
+          return false;
+        }
+
+        const localDateKey = DateTime.fromISO(booking.startAt, { zone: 'utc' })
+          .setZone(workspaceTimezone)
+          .toFormat('yyyy-LL-dd');
+        if (fromDate && localDateKey < fromDate) {
+          return false;
+        }
+        if (toDate && localDateKey > toDate) {
+          return false;
+        }
+
+        return true;
+      });
       if ((options.delays?.bookingsMs ?? 0) > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.delays?.bookingsMs));
       }

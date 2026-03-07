@@ -32,6 +32,8 @@ export class BookingsController {
     @Query('mine') mine: string | undefined,
     @Query('includePast') includePast: string | undefined,
     @Query('includeCancelled') includeCancelled: string | undefined,
+    @Query('fromDate') fromDate: string | undefined,
+    @Query('toDate') toDate: string | undefined,
   ) {
     return this.bookingsService.listBookings(
       this.extractAuthUser(request),
@@ -40,6 +42,8 @@ export class BookingsController {
         mine,
         includePast,
         includeCancelled,
+        fromDate,
+        toDate,
       },
     );
   }

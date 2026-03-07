@@ -15,6 +15,7 @@ import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
+  resolveBookingLoadDateRange,
 } from '@/lib/time';
 import type { BookingListItem, WorkspaceItem } from '@/lib/types';
 import { isBookingListPayload } from '@/lib/workspace-payloads';
@@ -169,6 +170,10 @@ function DashboardRightSidebar({
     () => readDashboardSidebarState(currentUserId, visibleMemberWorkspaceIds)?.bookings ?? [],
   );
   const { dateKey, monthKey, setDateKey, setMonthKey, goToToday } = useSharedSelectedDate(timezone);
+  const bookingLoadDateRange = useMemo(
+    () => resolveBookingLoadDateRange({ timezone, monthKey, paddingDays: 2 }),
+    [monthKey, timezone],
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -185,7 +190,8 @@ function DashboardRightSidebar({
         visibleMemberWorkspaces.map(async (workspace) => {
           const query = new URLSearchParams({
             mine: 'true',
-            includePast: 'true',
+            fromDate: bookingLoadDateRange.fromDate,
+            toDate: bookingLoadDateRange.toDate,
           });
 
           const response = await fetch(
@@ -217,7 +223,7 @@ function DashboardRightSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [currentUserId, visibleMemberWorkspaces]);
+  }, [bookingLoadDateRange.fromDate, bookingLoadDateRange.toDate, currentUserId, visibleMemberWorkspaces]);
 
   useEffect(() => {
     if (!currentUserId) {

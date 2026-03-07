@@ -17,6 +17,7 @@ import {
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
+  resolveBookingLoadDateRange,
 } from '@/lib/time';
 import type {
   BookingListItem,
@@ -183,6 +184,11 @@ function WorkspaceAdminContent({
   const isResolvingSelectedWorkspace =
     isLoading && (!selectedWorkspace || selectedWorkspace.id !== workspaceId);
   const currentUserId = currentUser?.id ?? '';
+  const rightSidebarTimezone = selectedWorkspace?.timezone ?? 'UTC';
+  const bookingLoadDateRange = useMemo(
+    () => resolveBookingLoadDateRange({ timezone: rightSidebarTimezone, monthKey }),
+    [monthKey, rightSidebarTimezone],
+  );
 
   useEffect(() => {
     if (!selectedWorkspaceId) {
@@ -244,7 +250,8 @@ function WorkspaceAdminContent({
 
     const query = new URLSearchParams({
       mine: 'true',
-      includePast: 'true',
+      fromDate: bookingLoadDateRange.fromDate,
+      toDate: bookingLoadDateRange.toDate,
     });
 
     const response = await fetch(
@@ -262,7 +269,7 @@ function WorkspaceAdminContent({
     }
 
     setMyBookings(payload.items);
-  }, [selectedWorkspaceId, isAdmin]);
+  }, [bookingLoadDateRange.fromDate, bookingLoadDateRange.toDate, selectedWorkspaceId, isAdmin]);
 
   useEffect(() => {
     if (isResolvingSelectedWorkspace) {
@@ -600,7 +607,6 @@ function WorkspaceAdminContent({
     ],
   );
 
-  const rightSidebarTimezone = selectedWorkspace?.timezone ?? 'UTC';
   const miniCalendarCells = useMemo(
     () =>
       buildMiniCalendarCells({

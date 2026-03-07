@@ -32,7 +32,13 @@ import { UpdateBookingDto } from './dto/update-booking.dto';
 
 type AuthUser = { userId: string };
 type VerifiedUser = { id: string; email: string };
-type ListBookingsQuery = { mine?: string; includePast?: string; includeCancelled?: string };
+type ListBookingsQuery = {
+  mine?: string;
+  includePast?: string;
+  includeCancelled?: string;
+  fromDate?: string;
+  toDate?: string;
+};
 
 @Injectable()
 export class BookingsService {
@@ -64,13 +70,30 @@ export class BookingsService {
     });
     const todayDateKey = toLocalDateKey(new Date(), workspace.timezone);
     const includePast = this.parseBooleanQuery(query.includePast, false, 'includePast');
+    const fromDate = this.parseDateKeyQuery(query.fromDate, 'fromDate');
+    const toDate = this.parseDateKeyQuery(query.toDate, 'toDate');
+
+    if (fromDate && toDate && fromDate > toDate) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message: 'fromDate must be on or before toDate',
+      });
+    }
+
+    const effectiveFromDate = fromDate ?? (includePast ? null : todayDateKey);
 
     return {
       items: bookings
-        .filter(
-          (booking) =>
-            includePast || toLocalDateKey(booking.startAt, workspace.timezone) >= todayDateKey,
-        )
+        .filter((booking) => {
+          const bookingDateKey = toLocalDateKey(booking.startAt, workspace.timezone);
+          if (effectiveFromDate && bookingDateKey < effectiveFromDate) {
+            return false;
+          }
+          if (toDate && bookingDateKey > toDate) {
+            return false;
+          }
+          return true;
+        })
         .map((booking) => ({
           id: booking.id,
           workspaceId: booking.workspaceId,
@@ -467,6 +490,22 @@ export class BookingsService {
     throw new BadRequestException({
       code: 'BAD_REQUEST',
       message: `${fieldName} must be a boolean`,
+    });
+  }
+
+  private parseDateKeyQuery(value: string | undefined, fieldName: string) {
+    if (value === undefined) {
+      return null;
+    }
+
+    const normalized = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      return normalized;
+    }
+
+    throw new BadRequestException({
+      code: 'BAD_REQUEST',
+      message: `${fieldName} must be a valid date key`,
     });
   }
 

@@ -5,6 +5,7 @@ import {
   buildMiniCalendarCells,
   getBookingConflictMessage,
   groupMyBookingsForSidebar,
+  resolveBookingLoadDateRange,
 } from '@/lib/time';
 import type { BookingListItem } from '@/lib/types';
 
@@ -119,10 +120,22 @@ describe('time helpers', () => {
           endAt: '2026-03-19T10:00:00.000Z',
         }),
         createBooking({
+          id: 'later',
+          subject: 'Later booking',
+          startAt: '2026-04-07T09:00:00.000Z',
+          endAt: '2026-04-07T10:00:00.000Z',
+        }),
+        createBooking({
           id: 'earlier',
           subject: 'Earlier booking',
           startAt: '2026-03-17T09:00:00.000Z',
           endAt: '2026-03-17T10:00:00.000Z',
+        }),
+        createBooking({
+          id: 'next-week',
+          subject: 'Next week booking',
+          startAt: '2026-03-24T09:00:00.000Z',
+          endAt: '2026-03-24T10:00:00.000Z',
         }),
         createBooking({
           id: 'cancelled',
@@ -155,11 +168,30 @@ describe('time helpers', () => {
         items: [expect.objectContaining({ id: 'tomorrow' })],
       },
       {
-        key: 'earlier',
-        label: 'Earlier',
-        items: [expect.objectContaining({ id: 'earlier' })],
+        key: 'nextWeek',
+        label: 'Next week',
+        items: [expect.objectContaining({ id: 'next-week' })],
       },
     ]);
+  });
+
+  it('resolves a booking load range that covers next week and the visible mini-calendar grid', () => {
+    Settings.now = () => FIXED_NOW;
+
+    expect(resolveBookingLoadDateRange({ timezone: 'UTC', monthKey: '2026-03' })).toEqual({
+      fromDate: '2026-03-18',
+      toDate: '2026-04-05',
+    });
+    expect(
+      resolveBookingLoadDateRange({
+        timezone: 'UTC',
+        monthKey: '2026-03',
+        paddingDays: 2,
+      }),
+    ).toEqual({
+      fromDate: '2026-03-16',
+      toDate: '2026-04-07',
+    });
   });
 
   it('counts marker dots only for active bookings and optional current user scope', () => {

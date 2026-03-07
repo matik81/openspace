@@ -281,6 +281,38 @@ export function getBookingConflictMessage(options: {
   return null;
 }
 
+function resolveMiniCalendarGridWindow(timezone: string, monthKey: string) {
+  const parsedMonth = DateTime.fromISO(`${monthKey}-01`, { zone: timezone });
+  const monthStart = parsedMonth.isValid
+    ? parsedMonth.startOf('month')
+    : DateTime.now().setZone(timezone).startOf('month');
+  const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
+  const gridEnd = gridStart.plus({ days: 41 });
+
+  return { monthStart, gridStart, gridEnd };
+}
+
+export function resolveBookingLoadDateRange(options: {
+  timezone: string;
+  monthKey: string;
+  paddingDays?: number;
+}): {
+  fromDate: string;
+  toDate: string;
+} {
+  const { timezone, monthKey, paddingDays = 0 } = options;
+  const today = DateTime.now().setZone(timezone).startOf('day');
+  const startOfNextWeek = today.plus({ days: 7 - (today.weekday - 1) }).startOf('day');
+  const endOfNextWeek = startOfNextWeek.plus({ days: 6 });
+  const { gridEnd } = resolveMiniCalendarGridWindow(timezone, monthKey);
+  const effectiveEnd = gridEnd.toMillis() > endOfNextWeek.toMillis() ? gridEnd : endOfNextWeek;
+
+  return {
+    fromDate: today.minus({ days: paddingDays }).toFormat('yyyy-LL-dd'),
+    toDate: effectiveEnd.plus({ days: paddingDays }).toFormat('yyyy-LL-dd'),
+  };
+}
+
 export function buildMiniCalendarCells(options: {
   timezone: string;
   monthKey: string;
@@ -288,10 +320,7 @@ export function buildMiniCalendarCells(options: {
   markerCountByDateKey?: ReadonlyMap<string, number>;
 }): CalendarDayCell[] {
   const { timezone, monthKey, selectedDateKey, markerCountByDateKey } = options;
-  const monthStart = DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month').isValid
-    ? DateTime.fromISO(`${monthKey}-01`, { zone: timezone }).startOf('month')
-    : DateTime.now().setZone(timezone).startOf('month');
-  const gridStart = monthStart.minus({ days: monthStart.weekday - 1 });
+  const { monthStart, gridStart } = resolveMiniCalendarGridWindow(timezone, monthKey);
   const today = workspaceTodayDateKey(timezone);
 
   return Array.from({ length: 42 }, (_, index) => {
@@ -364,19 +393,15 @@ export function groupMyBookingsForSidebar(
     tomorrow: [],
     thisWeek: [],
     nextWeek: [],
-    later: [],
-    earlier: [],
   };
 
   for (const item of mine) {
     const start = item.local.start;
 
-    if (start < startOfToday) {
-      grouped.earlier.push(item.booking);
-      continue;
-    }
     if (start < startOfTomorrow) {
-      grouped.today.push(item.booking);
+      if (start >= startOfToday) {
+        grouped.today.push(item.booking);
+      }
       continue;
     }
     if (start < startOfTomorrow.plus({ days: 1 })) {
@@ -391,7 +416,6 @@ export function groupMyBookingsForSidebar(
       grouped.nextWeek.push(item.booking);
       continue;
     }
-    grouped.later.push(item.booking);
   }
 
   return [
@@ -399,8 +423,6 @@ export function groupMyBookingsForSidebar(
     { key: 'tomorrow', label: 'Tomorrow', items: grouped.tomorrow },
     { key: 'thisWeek', label: 'This week', items: grouped.thisWeek },
     { key: 'nextWeek', label: 'Next week', items: grouped.nextWeek },
-    { key: 'later', label: 'Later', items: grouped.later },
-    { key: 'earlier', label: 'Earlier', items: grouped.earlier },
   ].filter((group) => group.items.length > 0);
 }
 
