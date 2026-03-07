@@ -972,9 +972,6 @@ function WorkspaceAdminContent({
                           {member.firstName} {member.lastName}
                         </p>
                         <p className="text-xs text-slate-600">{member.email}</p>
-                        <p className="text-xs text-slate-600">
-                          {member.role} / {member.status}
-                        </p>
                       </li>
                     ))}
                   </ul>
