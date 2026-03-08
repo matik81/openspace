@@ -27,7 +27,6 @@ jobs:
       NODE_ENV: test
       API_PORT: 3001
       DATABASE_URL: postgresql://openspace:openspace@localhost:5432/openspace?schema=public
-      REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: 1234567890abcdef
       JWT_REFRESH_SECRET: abcdef1234567890
       JWT_ACCESS_TTL: 15m

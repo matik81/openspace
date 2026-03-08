@@ -7,7 +7,6 @@ type ValidatedEnv = {
   NODE_ENV: 'development' | 'test' | 'production';
   API_PORT: number;
   DATABASE_URL: string;
-  REDIS_URL: string;
   TRUSTED_PROXY_IPS: string[];
   JWT_ACCESS_SECRET: string;
   JWT_REFRESH_SECRET: string;
@@ -144,19 +143,12 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
   }
 
   let databaseUrl = '';
-  let redisUrl = '';
   let trustedProxyIps = defaultTrustedProxyIps(nodeEnv);
   let jwtAccessSecret = '';
   let jwtRefreshSecret = '';
 
   try {
     databaseUrl = assertUrl('DATABASE_URL', config.DATABASE_URL);
-  } catch (error) {
-    errors.push((error as Error).message);
-  }
-
-  try {
-    redisUrl = assertUrl('REDIS_URL', config.REDIS_URL, 'redis://localhost:6379');
   } catch (error) {
     errors.push((error as Error).message);
   }
@@ -295,7 +287,6 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     NODE_ENV: nodeEnv,
     API_PORT: apiPort,
     DATABASE_URL: databaseUrl,
-    REDIS_URL: redisUrl,
     TRUSTED_PROXY_IPS: trustedProxyIps,
     JWT_ACCESS_SECRET: jwtAccessSecret,
     JWT_REFRESH_SECRET: jwtRefreshSecret,

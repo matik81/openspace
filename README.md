@@ -11,7 +11,7 @@ apps/
 packages/
   shared   Shared enums, types, and contracts
 infra/
-  docker   Local Postgres + Redis compose setup
+  docker   Local PostgreSQL compose setup
 docs/
   *.md     Technical and functional documentation
 ```
@@ -21,11 +21,10 @@ docs/
 - Backend: NestJS, Prisma, PostgreSQL
 - Frontend: Next.js App Router, React 18, Tailwind CSS
 - Tooling: pnpm, Turborepo, TypeScript, ESLint, Jest
-- Local infra: Docker Compose for PostgreSQL and Redis
+- Local infra: Docker Compose for PostgreSQL
 
 Current note:
 - PostgreSQL is required by the application and by API integration tests.
-- Redis is provisioned in local Docker Compose and validated in environment parsing, but it is not yet used by the runtime code.
 
 ## Quick Start
 
@@ -187,4 +186,4 @@ CI workflow:
 - runs tests
 - runs build
 
-CI currently provisions PostgreSQL. Redis is not required by the current automated test suites.
+CI currently provisions PostgreSQL for the API integration suites and full-stack E2E environment.

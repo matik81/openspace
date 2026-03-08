@@ -9,7 +9,6 @@ const apiEnv = {
   ...process.env,
   API_PORT: '3001',
   DATABASE_URL: FULLSTACK_DATABASE_URL,
-  REDIS_URL: 'redis://localhost:6379',
   TRUSTED_PROXY_IPS: '127.0.0.1,::1,::ffff:127.0.0.1',
   JWT_ACCESS_SECRET: 'playwright-access-secret',
   JWT_REFRESH_SECRET: 'playwright-refresh-secret',

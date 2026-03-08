@@ -60,7 +60,6 @@ Infrastructure requirements for API integration tests:
 
 Current note:
 
-- Redis is not required by the current test suites
 - web and shared test scripts are placeholders and currently print `No tests yet`
 
 ## CI

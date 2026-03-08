@@ -6,7 +6,6 @@ describe('validateEnv', () => {
       NODE_ENV: 'development',
       API_PORT: '4000',
       DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
-      REDIS_URL: 'redis://localhost:6379',
       JWT_ACCESS_SECRET: '1234567890abcdef',
       JWT_REFRESH_SECRET: 'abcdef1234567890',
     });
@@ -17,23 +16,10 @@ describe('validateEnv', () => {
     expect(result.JWT_REFRESH_TTL).toBe('7d');
   });
 
-  it('defaults REDIS_URL when not provided', () => {
-    const result = validateEnv({
-      NODE_ENV: 'development',
-      API_PORT: '4000',
-      DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
-      JWT_ACCESS_SECRET: '1234567890abcdef',
-      JWT_REFRESH_SECRET: 'abcdef1234567890',
-    });
-
-    expect(result.REDIS_URL).toBe('redis://localhost:6379');
-  });
-
   it('parses TRUSTED_PROXY_IPS when provided', () => {
     const result = validateEnv({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
-      REDIS_URL: 'redis://localhost:6379',
       TRUSTED_PROXY_IPS: '10.0.0.10, 10.0.0.11',
       JWT_ACCESS_SECRET: '1234567890abcdef',
       JWT_REFRESH_SECRET: 'abcdef1234567890',
@@ -46,19 +32,7 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({
         DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
-        REDIS_URL: 'redis://localhost:6379',
         TRUSTED_PROXY_IPS: '127.0.0.1, not-an-ip',
-        JWT_ACCESS_SECRET: '1234567890abcdef',
-        JWT_REFRESH_SECRET: 'abcdef1234567890',
-      }),
-    ).toThrow('Invalid environment variables');
-  });
-
-  it('throws when REDIS_URL is invalid', () => {
-    expect(() =>
-      validateEnv({
-        DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
-        REDIS_URL: 'not-a-url',
         JWT_ACCESS_SECRET: '1234567890abcdef',
         JWT_REFRESH_SECRET: 'abcdef1234567890',
       }),
@@ -69,7 +43,6 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({
         DATABASE_URL: 'not-a-url',
-        REDIS_URL: 'redis://localhost:6379',
         JWT_ACCESS_SECRET: 'short',
       }),
     ).toThrow('Invalid environment variables');

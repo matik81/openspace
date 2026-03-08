@@ -64,7 +64,6 @@ describe('Booking overlap integration', () => {
     process.env.API_PORT ??= '3001';
     process.env.DATABASE_URL ??=
       'postgresql://openspace:openspace@localhost:5432/openspace?schema=public';
-    process.env.REDIS_URL ??= 'redis://localhost:6379';
     process.env.JWT_ACCESS_SECRET ??= '1234567890abcdef';
     process.env.JWT_REFRESH_SECRET ??= 'abcdef1234567890';
     process.env.JWT_ACCESS_TTL ??= '15m';

@@ -101,12 +101,10 @@ Local development infrastructure is defined in `infra/docker/docker-compose.yml`
 Provided services:
 
 - PostgreSQL
-- Redis
 
 Current usage:
 
 - PostgreSQL is required and used by the application
-- Redis is provisioned but not yet used by the runtime code
 
 ## API Surface and Documentation
 
