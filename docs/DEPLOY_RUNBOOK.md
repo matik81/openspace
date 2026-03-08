@@ -18,17 +18,17 @@ This runbook documents the current production deployment shape implemented in th
 
 ## Recommended Hostnames
 
-Assuming the production domain is `example.com`:
+The production domain is `openspaceapp.io`:
 
-- `example.com`: primary web application on Vercel
-- `www.example.com`: alias to the primary web application
-- `api.example.com`: public API origin on Railway
-- `mail.example.com` or `updates.example.com`: Resend sending subdomain
+- `openspaceapp.io`: primary web application on Vercel
+- `www.openspaceapp.io`: alias to the primary web application
+- `api.openspaceapp.io`: public API origin on Railway
+- `mail.openspaceapp.io` or `updates.openspaceapp.io`: Resend sending subdomain
 
 Recommended `RESEND_FROM_EMAIL` examples:
 
-- `noreply@mail.example.com`
-- `noreply@updates.example.com`
+- `noreply@mail.openspaceapp.io`
+- `noreply@updates.openspaceapp.io`
 
 ## Required Environment Variables
 
@@ -38,7 +38,7 @@ The current web app requires one deployment-specific variable:
 
 | Variable | Required | Example | Notes |
 | --- | --- | --- | --- |
-| `OPENSPACE_API_BASE_URL` | yes | `https://api.example.com` | Used by server-side proxy routes in `apps/web/lib/backend-api.ts`. No `NEXT_PUBLIC_*` variables are currently required for production. |
+| `OPENSPACE_API_BASE_URL` | yes | `https://api.openspaceapp.io` | Used by server-side proxy routes in `apps/web/lib/backend-api.ts`. No `NEXT_PUBLIC_*` variables are currently required for production. |
 
 ### API (`apps/api` on Railway)
 
@@ -52,7 +52,7 @@ The API validates environment variables in `apps/api/src/config/env.validation.t
 | `JWT_REFRESH_SECRET` | yes | generated secret | Must be at least 16 characters. |
 | `EMAIL_PROVIDER` | recommended | `resend` | Not strictly required in production because the validator defaults to `resend`, but setting it explicitly is safer. |
 | `RESEND_API_KEY` | yes in production with Resend | `re_...` | Required when `EMAIL_PROVIDER=resend`, which is the effective production path. |
-| `RESEND_FROM_EMAIL` | yes in production with Resend | `noreply@mail.example.com` | Must belong to a verified Resend sending domain or subdomain. |
+| `RESEND_FROM_EMAIL` | yes in production with Resend | `noreply@mail.openspaceapp.io` | Must belong to a verified Resend sending domain or subdomain. |
 | `RESEND_FROM_NAME` | recommended | `OpenSpace` | Defaults to `OpenSpace` if omitted. |
 
 Current optional API overrides already implemented in code:
@@ -119,8 +119,8 @@ Operational notes:
 
 - Create a Vercel project for the monorepo web app.
 - Point the project at `apps/web`.
-- Set `OPENSPACE_API_BASE_URL=https://api.example.com`.
-- Attach both `example.com` and `www.example.com` to the project.
+- Set `OPENSPACE_API_BASE_URL=https://api.openspaceapp.io`.
+- Attach both `openspaceapp.io` and `www.openspaceapp.io` to the project.
 - Apply the exact DNS records requested by Vercel in Cloudflare.
 
 ### 3. Railway
@@ -128,7 +128,7 @@ Operational notes:
 - Create a Railway service for the API.
 - Point the service at `apps/api`.
 - Set the API environment variables listed above.
-- Expose the service on `api.example.com`.
+- Expose the service on `api.openspaceapp.io`.
 - Apply the exact DNS records requested by Railway in Cloudflare.
 - Use `GET /api/health` as the basic health endpoint.
 
@@ -141,7 +141,7 @@ Operational notes:
 
 ### 5. Resend
 
-- Verify a sending domain or subdomain such as `mail.example.com` or `updates.example.com`.
+- Verify a sending domain or subdomain such as `mail.openspaceapp.io` or `updates.openspaceapp.io`.
 - Set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` in Railway after domain verification is complete.
 - Resend DNS verification records must be added manually in Cloudflare.
 
