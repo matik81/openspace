@@ -188,7 +188,9 @@ CREATE TABLE "PasswordResetToken" (
 
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE INDEX "Workspace_createdByUserId_idx" ON "Workspace"("createdByUserId");
-CREATE UNIQUE INDEX "Workspace_name_key" ON "Workspace"("name");
+CREATE UNIQUE INDEX "Workspace_active_name_key"
+  ON "Workspace"("name")
+  WHERE ("status" = 'ACTIVE');
 CREATE INDEX "UserWorkspacePreference_userId_sortOrder_idx" ON "UserWorkspacePreference"("userId", "sortOrder");
 CREATE INDEX "UserWorkspacePreference_workspaceId_idx" ON "UserWorkspacePreference"("workspaceId");
 CREATE UNIQUE INDEX "UserWorkspacePreference_userId_workspaceId_key" ON "UserWorkspacePreference"("userId", "workspaceId");
@@ -196,7 +198,9 @@ CREATE INDEX "WorkspaceMember_userId_status_idx" ON "WorkspaceMember"("userId", 
 CREATE UNIQUE INDEX "WorkspaceMember_workspaceId_userId_key" ON "WorkspaceMember"("workspaceId", "userId");
 CREATE INDEX "Invitation_workspaceId_email_status_idx" ON "Invitation"("workspaceId", "email", "status");
 CREATE INDEX "Room_workspaceId_idx" ON "Room"("workspaceId");
-CREATE UNIQUE INDEX "Room_workspaceId_name_key" ON "Room"("workspaceId", "name");
+CREATE UNIQUE INDEX "Room_active_workspaceId_name_key"
+  ON "Room"("workspaceId", "name")
+  WHERE ("status" = 'ACTIVE');
 CREATE INDEX "Booking_roomId_startAt_idx" ON "Booking"("roomId", "startAt");
 CREATE INDEX "Booking_workspaceId_status_idx" ON "Booking"("workspaceId", "status");
 CREATE UNIQUE INDEX "WorkspaceScheduleVersion_workspaceId_effectiveFrom_key"
