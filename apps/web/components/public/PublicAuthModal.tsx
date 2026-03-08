@@ -63,7 +63,6 @@ export function PublicAuthModal({
   const didPointerDownOnOverlayRef = useRef(false);
   const [loginForm, setLoginForm] = useState<LoginFormState>(initialLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(initialRegisterForm);
-  const [registerPasswordFieldsUnlocked, setRegisterPasswordFieldsUnlocked] = useState(false);
   const [verificationToken, setVerificationToken] = useState('');
   const [resetPasswordForm, setResetPasswordForm] =
     useState<ResetPasswordFormState>(initialResetPasswordForm);
@@ -84,9 +83,6 @@ export function PublicAuthModal({
 
     if (mode === 'verify-email') {
       setVerificationToken(searchParams.get('token') ?? '');
-    }
-    if (mode !== 'register') {
-      setRegisterPasswordFieldsUnlocked(false);
     }
     if (mode === 'reset-password') {
       setResetPasswordForm((current) => ({
@@ -505,8 +501,6 @@ export function PublicAuthModal({
                   autoComplete="new-password"
                   data-1p-ignore="true"
                   data-lpignore="true"
-                  readOnly={!registerPasswordFieldsUnlocked}
-                  onFocus={() => setRegisterPasswordFieldsUnlocked(true)}
                   value={registerForm.password}
                   onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -523,8 +517,6 @@ export function PublicAuthModal({
                   autoComplete="new-password"
                   data-1p-ignore="true"
                   data-lpignore="true"
-                  readOnly={!registerPasswordFieldsUnlocked}
-                  onFocus={() => setRegisterPasswordFieldsUnlocked(true)}
                   value={registerForm.confirmPassword}
                   onChange={(event) =>
                     setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))
