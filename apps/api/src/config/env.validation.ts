@@ -3,8 +3,11 @@ import { isIP } from 'net';
 
 type EnvInput = Record<string, unknown>;
 
+export type EmailProviderName = 'console' | 'resend';
+
 type ValidatedEnv = {
   NODE_ENV: 'development' | 'test' | 'production';
+  PORT?: number;
   API_PORT: number;
   DATABASE_URL: string;
   TRUSTED_PROXY_IPS: string[];
@@ -12,6 +15,10 @@ type ValidatedEnv = {
   JWT_REFRESH_SECRET: string;
   JWT_ACCESS_TTL: string;
   JWT_REFRESH_TTL: string;
+  EMAIL_PROVIDER: EmailProviderName;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  RESEND_FROM_NAME: string;
   EMAIL_VERIFICATION_TTL_MINUTES: number;
   PASSWORD_RESET_TTL_MINUTES: number;
   MAX_WORKSPACES_PER_USER: number;
@@ -32,17 +39,29 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function parsePort(value: unknown, fallback: number): number {
+function parsePort(value: unknown, fieldName: string, fallback?: number): number {
   if (value === undefined || value === null || value === '') {
-    return fallback;
+    if (fallback !== undefined) {
+      return fallback;
+    }
+
+    throw new Error(`${fieldName} is required`);
   }
 
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    throw new Error('API_PORT must be an integer between 1 and 65535');
+    throw new Error(`${fieldName} must be an integer between 1 and 65535`);
   }
 
   return parsed;
+}
+
+function parseOptionalPort(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  return parsePort(value, fieldName);
 }
 
 function parsePositiveInteger(
@@ -90,6 +109,35 @@ function assertSecret(name: string, value: unknown): string {
   return value;
 }
 
+function assertEmailAddress(name: string, value: unknown): string {
+  if (!isNonEmptyString(value)) {
+    throw new Error(`${name} is required`);
+  }
+
+  const normalized = value.trim();
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(normalized)) {
+    throw new Error(`${name} must be a valid email address`);
+  }
+
+  return normalized;
+}
+
+function resolveEmailProviderName(
+  value: unknown,
+  nodeEnv: ValidatedEnv['NODE_ENV'],
+): EmailProviderName {
+  if (value === undefined || value === null || value === '') {
+    return nodeEnv === 'production' ? 'resend' : 'console';
+  }
+
+  if (value === 'console' || value === 'resend') {
+    return value;
+  }
+
+  throw new Error('EMAIL_PROVIDER must be one of: console, resend');
+}
+
 function defaultTrustedProxyIps(
   nodeEnv: 'development' | 'test' | 'production',
 ): string[] {
@@ -135,9 +183,16 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     }
   }
 
+  let port: number | undefined;
   let apiPort = 3001;
   try {
-    apiPort = parsePort(config.API_PORT, 3001);
+    port = parseOptionalPort(config.PORT, 'PORT');
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+
+  try {
+    apiPort = parsePort(config.API_PORT, 'API_PORT', 3001);
   } catch (error) {
     errors.push((error as Error).message);
   }
@@ -178,6 +233,35 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     isNonEmptyString(config.JWT_ACCESS_TTL) ? config.JWT_ACCESS_TTL : '15m';
   const jwtRefreshTtl =
     isNonEmptyString(config.JWT_REFRESH_TTL) ? config.JWT_REFRESH_TTL : '7d';
+  let emailProvider: EmailProviderName = nodeEnv === 'production' ? 'resend' : 'console';
+  try {
+    emailProvider = resolveEmailProviderName(config.EMAIL_PROVIDER, nodeEnv);
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+
+  let resendApiKey: string | undefined;
+  let resendFromEmail: string | undefined;
+  const resendFromName =
+    isNonEmptyString(config.RESEND_FROM_NAME) ? config.RESEND_FROM_NAME.trim() : 'OpenSpace';
+
+  if (emailProvider === 'resend') {
+    try {
+      resendApiKey = assertSecret('RESEND_API_KEY', config.RESEND_API_KEY);
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+
+    try {
+      resendFromEmail = assertEmailAddress(
+        'RESEND_FROM_EMAIL',
+        config.RESEND_FROM_EMAIL,
+      );
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+  }
+
   let emailVerificationTtlMinutes = BACKEND_POLICY_DEFAULTS.EMAIL_VERIFICATION_TTL_MINUTES;
   let passwordResetTtlMinutes = BACKEND_POLICY_DEFAULTS.PASSWORD_RESET_TTL_MINUTES;
   let maxWorkspacesPerUser = BACKEND_POLICY_DEFAULTS.MAX_WORKSPACES_PER_USER;
@@ -285,6 +369,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
 
   return {
     NODE_ENV: nodeEnv,
+    PORT: port,
     API_PORT: apiPort,
     DATABASE_URL: databaseUrl,
     TRUSTED_PROXY_IPS: trustedProxyIps,
@@ -292,6 +377,10 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     JWT_REFRESH_SECRET: jwtRefreshSecret,
     JWT_ACCESS_TTL: jwtAccessTtl,
     JWT_REFRESH_TTL: jwtRefreshTtl,
+    EMAIL_PROVIDER: emailProvider,
+    RESEND_API_KEY: resendApiKey,
+    RESEND_FROM_EMAIL: resendFromEmail,
+    RESEND_FROM_NAME: resendFromName,
     EMAIL_VERIFICATION_TTL_MINUTES: emailVerificationTtlMinutes,
     PASSWORD_RESET_TTL_MINUTES: passwordResetTtlMinutes,
     MAX_WORKSPACES_PER_USER: maxWorkspacesPerUser,

@@ -5,7 +5,9 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ConsoleEmailProvider } from './email/console-email.provider';
+import { selectEmailProvider } from './email/email-provider.factory';
 import { EMAIL_PROVIDER } from './email/email-provider.interface';
+import { ResendEmailProvider } from './email/resend-email.provider';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -27,7 +29,12 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtStrategy,
     {
       provide: EMAIL_PROVIDER,
-      useClass: ConsoleEmailProvider,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        selectEmailProvider(configService, {
+          console: () => new ConsoleEmailProvider(),
+          resend: () => new ResendEmailProvider(configService),
+        }),
     },
   ],
   exports: [AuthService, JwtModule, PassportModule],
