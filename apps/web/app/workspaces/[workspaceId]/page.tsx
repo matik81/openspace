@@ -14,6 +14,7 @@ import { WorkspaceShell, type WorkspaceShellRenderContext } from '@/components/w
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
   readWorkspaceSidebarState,
@@ -111,7 +112,7 @@ function WorkspacePageContent({
   if (!selectedWorkspace || selectedWorkspace.id !== workspaceId) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        WORKSPACE_NOT_VISIBLE: Workspace not visible.
+        Workspace not visible.
       </p>
     );
   }
@@ -164,7 +165,7 @@ function WorkspacePageContent({
   if (!isActiveMember) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        UNAUTHORIZED: Only active members can manage reservations.
+        Only active members can manage reservations.
       </p>
     );
   }
@@ -994,7 +995,7 @@ function WorkspaceBookingDashboard({
         ) : null}
         {pageError ? (
           <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {pageError.code}: {pageError.message}
+            {getErrorDisplayMessage(pageError)}
           </p>
         ) : null}
       </div>

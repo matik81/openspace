@@ -636,7 +636,7 @@ function WorkspaceAdminContent({
   if (!selectedWorkspace || selectedWorkspace.id !== workspaceId) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        WORKSPACE_NOT_VISIBLE: Workspace not visible.
+        Workspace not visible.
       </p>
     );
   }
@@ -644,7 +644,7 @@ function WorkspaceAdminContent({
   if (!isAdmin) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        UNAUTHORIZED: Only workspace admins can access this page.
+        Only workspace admins can access this page.
       </p>
     );
   }

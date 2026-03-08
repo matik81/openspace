@@ -16,6 +16,7 @@ import {
 import { PublicRightSidebar } from '@/components/public/PublicRightSidebar';
 import { PublicSchedulePreview } from '@/components/public/PublicSchedulePreview';
 import { readErrorPayload, safeReadJson } from '@/lib/client-http';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import { addDaysToDateKey, buildMarkerCountByDateKey, buildMiniCalendarCells } from '@/lib/time';
 import type { ErrorPayload } from '@/lib/types';
 
@@ -214,7 +215,7 @@ function PublicHomePageContent() {
               <div className="flex h-full min-h-0 flex-col gap-3">
                 {ipRegistrationError ? (
                   <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {ipRegistrationError.code}: {ipRegistrationError.message}
+                    {getErrorDisplayMessage(ipRegistrationError)}
                   </p>
                 ) : null}
 
