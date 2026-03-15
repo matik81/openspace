@@ -1,4 +1,4 @@
-# Codex Agent Instructions - OpenSpace
+# Coding Agent Instructions - OpenSpace
 
 This file defines mandatory project constraints and workflow rules for repository work.
 
@@ -12,7 +12,7 @@ Relevant files include:
 
 ## 0. Private Folder Boundary
 
-Codex must treat `.private/` as off-limits.
+The coding agent must treat `.private/` as off-limits.
 
 - do not read files in `.private/`
 - do not write or modify files in `.private/`
@@ -165,3 +165,10 @@ Examples:
 - `feat(api): enforce email verification on login`
 - `fix(web): hide workspace data from non-members`
 - `test(api): cover booking overlap constraint`
+
+## 7. Git Safety
+
+Before pushing to `main`, the coding agent must always ask for explicit confirmation from the operator.
+
+- do not push to `main` without a direct user confirmation in the current conversation
+- this confirmation requirement applies even if the requested changes are already committed and ready
