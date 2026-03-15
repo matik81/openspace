@@ -69,11 +69,11 @@ describe('validateEnv', () => {
       JWT_ACCESS_SECRET: '1234567890abcdef',
       JWT_REFRESH_SECRET: 'abcdef1234567890',
       RESEND_API_KEY: 're_1234567890abcdef',
-      RESEND_FROM_EMAIL: 'noreply@example.com',
+      RESEND_FROM_EMAIL: 'noreply@openspaceapp.io',
     });
 
     expect(result.EMAIL_PROVIDER).toBe('resend');
     expect(result.RESEND_API_KEY).toBe('re_1234567890abcdef');
-    expect(result.RESEND_FROM_EMAIL).toBe('noreply@example.com');
+    expect(result.RESEND_FROM_EMAIL).toBe('noreply@openspaceapp.io');
   });
 });

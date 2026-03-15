@@ -8,6 +8,25 @@ This runbook documents the current production deployment shape implemented in th
 - Neon Postgres for the database
 - Resend for transactional email
 
+## Branch Deployment Strategy
+
+Use branch-based environments with a strict separation between production and staging:
+
+- `main` is the only production branch.
+- `develop` is the shared integration branch for staging and preview validation.
+- Feature branches should merge into `develop` first, then `develop` should be promoted into `main`.
+- Production domains and production data must stay attached to `main` only.
+- Staging and preview deployments must use separate hosts, secrets, and databases.
+
+Current provider behavior should follow this rule set:
+
+- Vercel production deployments must continue to use `main`.
+- Vercel preview deployments should validate changes from `develop` and other non-production branches.
+- Railway production must continue to run from `main`.
+- Railway staging must be a separate service or environment connected to `develop`.
+
+Do not repoint the existing Railway production service from `main` to `develop`. That would move the live API at `api.openspaceapp.io` onto the development branch.
+
 ## Current Production Topology
 
 - `apps/web` is the public frontend and should be the primary website.
@@ -23,13 +42,12 @@ The production domain is `openspaceapp.io`:
 - `openspaceapp.io`: primary web application on Vercel
 - `www.openspaceapp.io`: alias to the primary web application
 - `api.openspaceapp.io`: public API origin on Railway
-- `mail.openspaceapp.io` or `updates.openspaceapp.io`: Resend sending subdomain
+- `openspaceapp.io`: Resend verified sending domain for transactional email
 
-Recommended `RESEND_FROM_EMAIL` examples:
+Recommended staging hostnames for `develop`:
 
-- `noreply@mail.openspaceapp.io`
-- `noreply@updates.openspaceapp.io`
-
+- `develop.openspaceapp.io`: optional stable Vercel branch domain for the web preview
+- `api-develop.openspaceapp.io`: optional stable Railway staging host for the API
 ## Required Environment Variables
 
 ### Web (`apps/web` on Vercel)
@@ -39,6 +57,13 @@ The current web app requires one deployment-specific variable:
 | Variable | Required | Example | Notes |
 | --- | --- | --- | --- |
 | `OPENSPACE_API_BASE_URL` | yes | `https://api.openspaceapp.io` | Used by server-side proxy routes in `apps/web/lib/backend-api.ts`. No `NEXT_PUBLIC_*` variables are currently required for production. |
+
+Recommended values by environment:
+
+- production on `main`: `OPENSPACE_API_BASE_URL=https://api.openspaceapp.io`
+- preview or staging from `develop`: `OPENSPACE_API_BASE_URL=https://<staging-api-host>`
+
+Preview web deployments must not call the production API origin.
 
 ### API (`apps/api` on Railway)
 
@@ -52,7 +77,7 @@ The API validates environment variables in `apps/api/src/config/env.validation.t
 | `JWT_REFRESH_SECRET` | yes | generated secret | Must be at least 16 characters. |
 | `EMAIL_PROVIDER` | recommended | `resend` | Not strictly required in production because the validator defaults to `resend`, but setting it explicitly is safer. |
 | `RESEND_API_KEY` | yes in production with Resend | `re_...` | Required when `EMAIL_PROVIDER=resend`, which is the effective production path. |
-| `RESEND_FROM_EMAIL` | yes in production with Resend | `noreply@mail.openspaceapp.io` | Must belong to a verified Resend sending domain or subdomain. |
+| `RESEND_FROM_EMAIL` | yes in production with Resend | `noreply@openspaceapp.io` | Must belong to a verified Resend sending domain. |
 | `RESEND_FROM_NAME` | recommended | `OpenSpace` | Defaults to `OpenSpace` if omitted. |
 
 Current optional API overrides already implemented in code:
@@ -64,6 +89,13 @@ Current optional API overrides already implemented in code:
 - `PASSWORD_RESET_TTL_MINUTES` default `60`
 - `TRUSTED_PROXY_IPS` default empty in production
 - backend policy limit variables such as `MAX_WORKSPACES_PER_USER`, `MAX_BOOKING_DAYS_AHEAD`, and the other `MAX_*` or `RATE_LIMIT_*` settings
+
+Staging API guidance:
+
+- use a separate staging database, never the production database
+- use separate JWT secrets from production
+- use a non-production host such as a Railway-generated domain or a dedicated staging subdomain
+- prefer `NODE_ENV=production` if you want staging behavior to match production validation and cookie/security behavior as closely as possible
 
 ## Monorepo Build, Start, and Migration Commands
 
@@ -119,16 +151,31 @@ Operational notes:
 
 - Create a Vercel project for the monorepo web app.
 - Point the project at `apps/web`.
-- Set `OPENSPACE_API_BASE_URL=https://api.openspaceapp.io`.
+- Keep the Vercel production branch set to `main`.
+- Set the production value `OPENSPACE_API_BASE_URL=https://api.openspaceapp.io`.
+- Set the preview value `OPENSPACE_API_BASE_URL=https://<staging-api-host>`.
+- Let `develop` deploy as a Vercel Preview branch. If desired, assign a branch domain such as `develop.openspaceapp.io` to that branch.
 - Attach both `openspaceapp.io` and `www.openspaceapp.io` to the project.
 - Apply the exact DNS records requested by Vercel in Cloudflare.
 
+Minimal `develop` setup on Vercel:
+
+- confirm `main` remains the Production Branch in project Git settings
+- create or update `OPENSPACE_API_BASE_URL` in Environment Variables
+- scope `https://api.openspaceapp.io` to `Production`
+- scope `https://<staging-api-host>` to `Preview`
+- push a commit to `develop` and verify the preview deployment talks to the staging API
+- optionally assign `develop.openspaceapp.io` to the `develop` branch for a fixed preview URL
+
 ### 3. Railway
 
-- Create a Railway service for the API.
-- Point the service at `apps/api`.
-- Set the API environment variables listed above.
-- Expose the service on `api.openspaceapp.io`.
+- Keep the current production Railway service connected to `main`.
+- Create a second Railway service for staging from the same repository.
+- Point both services at `apps/api`.
+- Set the staging service source branch to `develop`.
+- Set the API environment variables listed above in both services, but use separate secrets and a separate database for staging.
+- Expose production on `api.openspaceapp.io`.
+- Expose staging on a non-production host such as a Railway-generated domain or a dedicated staging subdomain.
 - Apply the exact DNS records requested by Railway in Cloudflare.
 - Use `GET /api/health` as the basic health endpoint.
 
@@ -139,9 +186,15 @@ Operational notes:
 - The current Prisma schema does not define a separate `directUrl`, so runtime and migrations both use the same `DATABASE_URL`.
 - The database must allow the migration SQL in `apps/api/prisma/migrations/0001_init/migration.sql`, including `pgcrypto`, `btree_gist`, `tstzrange`, and exclusion constraints.
 
+Recommended staging setup for `develop`:
+
+- keep production on the primary branch or project already in use
+- create a persistent Neon branch for `develop`, or a separate staging project if you want stronger isolation
+- use the staging branch connection string only in the Railway staging service
+
 ### 5. Resend
 
-- Verify a sending domain or subdomain such as `mail.openspaceapp.io` or `updates.openspaceapp.io`.
+- Verify the sending domain `openspaceapp.io`.
 - Set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` in Railway after domain verification is complete.
 - Resend DNS verification records must be added manually in Cloudflare.
 
@@ -151,10 +204,13 @@ The repository does not currently include deployment infrastructure as code for 
 
 - creating the Vercel project
 - creating the Railway service
+- creating any staging branch domains or staging service hosts
 - creating the Neon database
+- creating a separate staging database when `develop` is deployed outside local development
 - verifying the Resend sending domain
 - adding provider-generated DNS records in Cloudflare
 - storing and rotating production secrets in each provider UI
+- storing and rotating separate staging secrets in each provider UI
 - deciding how and when `prisma migrate deploy` runs during Railway deployments
 
 Current application assumptions and gaps that matter in production:
