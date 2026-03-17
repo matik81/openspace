@@ -16,6 +16,12 @@ After registration:
 - a verification token is issued
 - login remains blocked until email verification succeeds
 
+Repeated registration rules:
+
+- if the email belongs to an active verified user, registration is rejected
+- if the email belongs to an active unverified user, the same user record is updated and a new verification token is issued
+- previous unconsumed verification tokens for that user are invalidated when registration restarts
+
 Reactivation rules:
 
 - if the email belongs to a logically cancelled user, the same user record is reactivated

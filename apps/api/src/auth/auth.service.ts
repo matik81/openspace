@@ -84,10 +84,11 @@ export class AuthService {
       select: {
         id: true,
         status: true,
+        emailVerifiedAt: true,
       },
     });
 
-    if (existingUser && existingUser.status !== UserStatus.CANCELLED) {
+    if (existingUser?.status === UserStatus.ACTIVE && existingUser.emailVerifiedAt) {
       throw new ConflictException({
         code: 'USER_ALREADY_EXISTS',
         message: 'A user with this email already exists',
@@ -99,7 +100,7 @@ export class AuthService {
     const verificationTokenCreatedAt = new Date();
     const user = await this.prismaService.$transaction(async (tx) => {
       const persistedUser =
-        existingUser?.status === UserStatus.CANCELLED
+        existingUser
           ? await tx.user.update({
               where: { id: existingUser.id },
               data: {

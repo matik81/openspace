@@ -26,6 +26,7 @@ Current gaps:
 The API integration suite currently covers:
 
 - email verification flow
+- registration restart for active unverified accounts with verification token rotation
 - cancelled account reactivation on register
 - account update flow
 - password reset request flow

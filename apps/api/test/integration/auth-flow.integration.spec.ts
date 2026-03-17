@@ -139,7 +139,7 @@ function createPrismaMock(): PrismaService {
           where,
           data,
         }: {
-          where: { userId: string; consumedAt: null; id: { not: string } };
+          where: { userId: string; consumedAt: null; id?: { not: string } };
           data: { consumedAt: Date };
         }) => {
           let count = 0;
@@ -147,7 +147,7 @@ function createPrismaMock(): PrismaService {
             if (
               token.userId === where.userId &&
               token.consumedAt === null &&
-              token.id !== where.id.not
+              token.id !== where.id?.not
             ) {
               token.consumedAt = data.consumedAt;
               count += 1;
@@ -395,6 +395,65 @@ describe('Auth flow integration', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('INVALID_VERIFICATION_TOKEN');
+  });
+
+  it('allows restarting registration for an active user whose email is not verified', async () => {
+    const firstRegisterResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'pending@example.com',
+      password: 'strong-password',
+    });
+    expect(firstRegisterResponse.status).toBe(201);
+    const firstUserId = firstRegisterResponse.body.id as string;
+    const firstVerificationToken = sentVerificationToken;
+
+    const secondRegisterResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'pending@example.com',
+      password: 'next-strong-password',
+    });
+    expect(secondRegisterResponse.status).toBe(201);
+    expect(secondRegisterResponse.body.id).toBe(firstUserId);
+    expect(sentVerificationToken).toEqual(expect.any(String));
+    expect(sentVerificationToken).not.toBe(firstVerificationToken);
+
+    const verifyWithOldToken = await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: firstVerificationToken });
+    expect(verifyWithOldToken.status).toBe(400);
+    expect(verifyWithOldToken.body).toEqual({
+      code: 'INVALID_VERIFICATION_TOKEN',
+      message: 'Verification token is invalid or expired',
+    });
+
+    const loginWithOldPassword = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'pending@example.com',
+      password: 'strong-password',
+    });
+    expect(loginWithOldPassword.status).toBe(401);
+
+    const loginBeforeVerification = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'pending@example.com',
+      password: 'next-strong-password',
+    });
+    expect(loginBeforeVerification.status).toBe(403);
+    expect(loginBeforeVerification.body).toEqual({
+      code: 'EMAIL_NOT_VERIFIED',
+      message: 'Email must be verified before login',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/auth/verify-email')
+      .send({ token: sentVerificationToken })
+      .expect(201, { verified: true });
+
+    const loginAfterVerification = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'pending@example.com',
+      password: 'next-strong-password',
+    });
+    expect(loginAfterVerification.status).toBe(201);
   });
 
   it('reactivates a cancelled account on register and requires email verification again', async () => {

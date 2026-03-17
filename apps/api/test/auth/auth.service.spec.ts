@@ -229,6 +229,106 @@ describe('AuthService', () => {
     });
   });
 
+  it('restarts registration for an active user whose email is not verified', async () => {
+    const prismaService = createPrismaService();
+    const emailProvider: EmailProvider = {
+      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    };
+    const transactionDelegates = {
+      user: {
+        update: jest.fn().mockResolvedValue({
+          id: 'pending-user-id',
+          email: 'user@example.com',
+        }),
+        create: jest.fn(),
+      },
+      emailVerificationToken: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        create: jest.fn().mockResolvedValue({ id: 'token-id' }),
+      },
+    };
+
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'pending-user-id',
+      status: 'ACTIVE',
+      emailVerifiedAt: null,
+    });
+    (prismaService.$transaction as jest.Mock).mockImplementation(
+      async (callback: (tx: typeof transactionDelegates) => Promise<unknown>) =>
+        callback(transactionDelegates),
+    );
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      emailProvider,
+    );
+
+    const result = await service.register({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'user@example.com',
+      password: 'strong-password',
+    });
+
+    expect(transactionDelegates.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pending-user-id' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          cancelledAt: null,
+          emailVerifiedAt: null,
+          refreshTokenHash: null,
+          refreshTokenExpiresAt: null,
+        }),
+      }),
+    );
+    expect(transactionDelegates.user.create).not.toHaveBeenCalled();
+    expect(emailProvider.sendVerificationEmail).toHaveBeenCalled();
+    expect(result).toEqual({
+      id: 'pending-user-id',
+      email: 'user@example.com',
+      requiresEmailVerification: true,
+    });
+  });
+
+  it('rejects registration when the existing user email is already verified', async () => {
+    const prismaService = createPrismaService();
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'verified-user-id',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date('2026-03-18T10:00:00.000Z'),
+    });
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      {
+        sendVerificationEmail: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
+      },
+    );
+
+    await expect(
+      service.register({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'user@example.com',
+        password: 'strong-password',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'USER_ALREADY_EXISTS',
+        message: 'A user with this email already exists',
+      },
+    });
+  });
+
   it('updates account details after confirming the current password for password changes', async () => {
     const prismaService = createPrismaService();
     (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
