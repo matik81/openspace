@@ -46,19 +46,28 @@ describe('ResendEmailProvider', () => {
       token: 'verification-token',
     });
 
+    const sentEmail = mockSend.mock.calls[0]?.[0];
+
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         from: 'OpenSpace <noreply@openspaceapp.io>',
         to: 'User+test@example.com',
         subject: 'Verify your OpenSpace email',
-        text: expect.stringContaining(
-          'https://openspaceapp.io/verify-email?token=verification-token&email=User%2Btest%40example.com',
-        ),
-        html: expect.stringContaining(
-          'href="https://openspaceapp.io/verify-email?token=verification-token&amp;email=User%2Btest%40example.com"',
-        ),
       }),
     );
+    expect(sentEmail.text).toContain(
+      'https://openspaceapp.io/verify-email?token=verification-token&email=User%2Btest%40example.com',
+    );
+    expect(sentEmail.text).toContain(
+      'If needed, copy and paste the following token into the email verification form in OpenSpace:\n\nverification-token',
+    );
+    expect(sentEmail.html).toContain(
+      'href="https://openspaceapp.io/verify-email?token=verification-token&amp;email=User%2Btest%40example.com"',
+    );
+    expect(sentEmail.html).toContain(
+      'If needed, copy and paste the following token into the email verification form in OpenSpace:',
+    );
+    expect(sentEmail.html).toContain('<code>verification-token</code>');
   });
 
   it('sends a clickable password reset link pointing to the web app', async () => {
@@ -69,19 +78,28 @@ describe('ResendEmailProvider', () => {
       token: 'reset-token',
     });
 
+    const sentEmail = mockSend.mock.calls[0]?.[0];
+
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         from: 'OpenSpace <noreply@openspaceapp.io>',
         to: 'user@example.com',
         subject: 'Reset your OpenSpace password',
-        text: expect.stringContaining(
-          'https://openspaceapp.io/?auth=reset-password&token=reset-token&email=user%40example.com',
-        ),
-        html: expect.stringContaining(
-          'href="https://openspaceapp.io/?auth=reset-password&amp;token=reset-token&amp;email=user%40example.com"',
-        ),
       }),
     );
+    expect(sentEmail.text).toContain(
+      'https://openspaceapp.io/?auth=reset-password&token=reset-token&email=user%40example.com',
+    );
+    expect(sentEmail.text).toContain(
+      'If needed, copy and paste the following token into the password reset form in OpenSpace:\n\nreset-token',
+    );
+    expect(sentEmail.html).toContain(
+      'href="https://openspaceapp.io/?auth=reset-password&amp;token=reset-token&amp;email=user%40example.com"',
+    );
+    expect(sentEmail.html).toContain(
+      'If needed, copy and paste the following token into the password reset form in OpenSpace:',
+    );
+    expect(sentEmail.html).toContain('<code>reset-token</code>');
   });
 
   it('preserves a configured path prefix in generated links', async () => {

@@ -35,11 +35,14 @@ export class ResendEmailProvider implements EmailProvider {
       html: [
         '<p>Confirm your OpenSpace email address by opening this link:</p>',
         `<p><a href="${this.escapeHtml(verificationUrl)}">${this.escapeHtml(verificationUrl)}</a></p>`,
-        '<p>This link uses the same verification token your account already expects.</p>',
+        '<p>If needed, copy and paste the following token into the email verification form in OpenSpace:</p>',
+        `<p><code>${this.escapeHtml(payload.token)}</code></p>`,
       ].join(''),
       text: [
         'Open this link to confirm your OpenSpace email address:',
         verificationUrl,
+        'If needed, copy and paste the following token into the email verification form in OpenSpace:',
+        payload.token,
       ].join('\n\n'),
     });
   }
@@ -53,11 +56,14 @@ export class ResendEmailProvider implements EmailProvider {
       html: [
         '<p>Reset your OpenSpace password by opening this link:</p>',
         `<p><a href="${this.escapeHtml(passwordResetUrl)}">${this.escapeHtml(passwordResetUrl)}</a></p>`,
-        '<p>This link uses the same password reset token your account already expects.</p>',
+        '<p>If needed, copy and paste the following token into the password reset form in OpenSpace:</p>',
+        `<p><code>${this.escapeHtml(payload.token)}</code></p>`,
       ].join(''),
       text: [
         'Open this link to reset your OpenSpace password:',
         passwordResetUrl,
+        'If needed, copy and paste the following token into the password reset form in OpenSpace:',
+        payload.token,
       ].join('\n\n'),
     });
   }
