@@ -11,12 +11,13 @@ jest.mock('resend', () => ({
   })),
 }));
 
-function createConfigService(): ConfigService {
+function createConfigService(overrides: Partial<Record<string, string>> = {}): ConfigService {
   const values: Record<string, string> = {
     RESEND_API_KEY: 're_1234567890abcdef',
     RESEND_FROM_EMAIL: 'noreply@openspaceapp.io',
     RESEND_FROM_NAME: 'OpenSpace',
-    WEB_BASE_URL: 'https://openspaceapp.io/app/',
+    WEB_BASE_URL: 'https://openspaceapp.io',
+    ...overrides,
   };
 
   return {
@@ -51,10 +52,10 @@ describe('ResendEmailProvider', () => {
         to: 'User+test@example.com',
         subject: 'Verify your OpenSpace email',
         text: expect.stringContaining(
-          'https://openspaceapp.io/app/verify-email?token=verification-token&email=User%2Btest%40example.com',
+          'https://openspaceapp.io/verify-email?token=verification-token&email=User%2Btest%40example.com',
         ),
         html: expect.stringContaining(
-          'href="https://openspaceapp.io/app/verify-email?token=verification-token&amp;email=User%2Btest%40example.com"',
+          'href="https://openspaceapp.io/verify-email?token=verification-token&amp;email=User%2Btest%40example.com"',
         ),
       }),
     );
@@ -74,10 +75,29 @@ describe('ResendEmailProvider', () => {
         to: 'user@example.com',
         subject: 'Reset your OpenSpace password',
         text: expect.stringContaining(
-          'https://openspaceapp.io/app/?auth=reset-password&token=reset-token&email=user%40example.com',
+          'https://openspaceapp.io/?auth=reset-password&token=reset-token&email=user%40example.com',
         ),
         html: expect.stringContaining(
-          'href="https://openspaceapp.io/app/?auth=reset-password&amp;token=reset-token&amp;email=user%40example.com"',
+          'href="https://openspaceapp.io/?auth=reset-password&amp;token=reset-token&amp;email=user%40example.com"',
+        ),
+      }),
+    );
+  });
+
+  it('preserves a configured path prefix in generated links', async () => {
+    const provider = new ResendEmailProvider(
+      createConfigService({ WEB_BASE_URL: 'https://openspaceapp.io/app/' }),
+    );
+
+    await provider.sendVerificationEmail({
+      to: 'user@example.com',
+      token: 'verification-token',
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          'https://openspaceapp.io/app/verify-email?token=verification-token&email=user%40example.com',
         ),
       }),
     );
