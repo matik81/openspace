@@ -73,6 +73,7 @@ The API validates environment variables in `apps/api/src/config/env.validation.t
 | --- | --- | --- | --- |
 | `NODE_ENV` | yes | `production` | In production, the API defaults email delivery to Resend if `EMAIL_PROVIDER` is not set. |
 | `DATABASE_URL` | yes | `postgresql://...` | Prisma uses this single variable for both runtime and `prisma migrate deploy`. |
+| `WEB_BASE_URL` | yes in production with Resend | `https://openspaceapp.io` | Used to build clickable email verification and password reset links that point back to the web app. |
 | `JWT_ACCESS_SECRET` | yes | generated secret | Must be at least 16 characters. |
 | `JWT_REFRESH_SECRET` | yes | generated secret | Must be at least 16 characters. |
 | `EMAIL_PROVIDER` | recommended | `resend` | Not strictly required in production because the validator defaults to `resend`, but setting it explicitly is safer. |
@@ -85,6 +86,7 @@ Current optional API overrides already implemented in code:
 - `JWT_ACCESS_TTL` default `15m`
 - `JWT_REFRESH_TTL` default `7d`
 - `API_PORT` default `3001`
+- `WEB_BASE_URL` is only required when the API sends Resend emails
 - `EMAIL_VERIFICATION_TTL_MINUTES` default `60`
 - `PASSWORD_RESET_TTL_MINUTES` default `60`
 - `TRUSTED_PROXY_IPS` default empty in production
@@ -174,6 +176,7 @@ Minimal `develop` setup on Vercel:
 - Point both services at `apps/api`.
 - Set the staging service source branch to `develop`.
 - Set the API environment variables listed above in both services, but use separate secrets and a separate database for staging.
+- Set `WEB_BASE_URL` to the matching web origin in each environment, for example `https://openspaceapp.io` in production and the preview or staging web host outside production.
 - Expose production on `api.openspaceapp.io`.
 - Expose staging on a non-production host such as a Railway-generated domain or a dedicated staging subdomain.
 - Apply the exact DNS records requested by Railway in Cloudflare.
@@ -215,7 +218,6 @@ The repository does not currently include deployment infrastructure as code for 
 
 Current application assumptions and gaps that matter in production:
 
-- Verification and password reset emails currently send raw tokens, not clickable frontend links. Users must open the web UI and paste the token into the verification or reset form.
 - The API trusts forwarded client IPs only when `TRUSTED_PROXY_IPS` explicitly matches the immediate proxy IP. This repository does not manage provider proxy IP ranges.
 - The web proxy does not currently forward the original browser IP to the API, so API-side IP-based limits will reflect the upstream web runtime path rather than a guaranteed end-user IP.
 - There is no deployment manifest in the repo for Vercel or Railway, so build/start/migration wiring lives in provider configuration.

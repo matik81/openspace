@@ -65,6 +65,7 @@ describe('validateEnv', () => {
   it('accepts resend configuration when provider is resend', () => {
     const result = validateEnv({
       NODE_ENV: 'production',
+      WEB_BASE_URL: 'https://openspaceapp.io',
       DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
       JWT_ACCESS_SECRET: '1234567890abcdef',
       JWT_REFRESH_SECRET: 'abcdef1234567890',
@@ -73,6 +74,7 @@ describe('validateEnv', () => {
     });
 
     expect(result.EMAIL_PROVIDER).toBe('resend');
+    expect(result.WEB_BASE_URL).toBe('https://openspaceapp.io');
     expect(result.RESEND_API_KEY).toBe('re_1234567890abcdef');
     expect(result.RESEND_FROM_EMAIL).toBe('noreply@openspaceapp.io');
   });

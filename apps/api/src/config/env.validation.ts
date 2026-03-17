@@ -9,6 +9,7 @@ type ValidatedEnv = {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT?: number;
   API_PORT: number;
+  WEB_BASE_URL?: string;
   DATABASE_URL: string;
   TRUSTED_PROXY_IPS: string[];
   JWT_ACCESS_SECRET: string;
@@ -198,6 +199,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
   }
 
   let databaseUrl = '';
+  let webBaseUrl: string | undefined;
   let trustedProxyIps = defaultTrustedProxyIps(nodeEnv);
   let jwtAccessSecret = '';
   let jwtRefreshSecret = '';
@@ -246,6 +248,12 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     isNonEmptyString(config.RESEND_FROM_NAME) ? config.RESEND_FROM_NAME.trim() : 'OpenSpace';
 
   if (emailProvider === 'resend') {
+    try {
+      webBaseUrl = assertUrl('WEB_BASE_URL', config.WEB_BASE_URL);
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+
     try {
       resendApiKey = assertSecret('RESEND_API_KEY', config.RESEND_API_KEY);
     } catch (error) {
@@ -371,6 +379,7 @@ export function validateEnv(config: EnvInput): ValidatedEnv {
     NODE_ENV: nodeEnv,
     PORT: port,
     API_PORT: apiPort,
+    WEB_BASE_URL: webBaseUrl,
     DATABASE_URL: databaseUrl,
     TRUSTED_PROXY_IPS: trustedProxyIps,
     JWT_ACCESS_SECRET: jwtAccessSecret,
