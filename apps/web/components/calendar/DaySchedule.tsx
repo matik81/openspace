@@ -130,6 +130,7 @@ export function DaySchedule({
   const [committingBookingId, setCommittingBookingId] = useState<string | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [hiddenRoomIds, setHiddenRoomIds] = useState<Set<string>>(() => new Set());
+  const [currentTime, setCurrentTime] = useState<DateTime | null>(null);
   const scheduleStart = scheduleStartMinutes(schedule);
   const scheduleEnd = scheduleEndMinutes(schedule);
   const trackHeightPx = scheduleRowMinHeightPx(schedule);
@@ -199,28 +200,34 @@ export function DaySchedule({
     return byRoom;
   }, [visibleRooms, activeBookings, timezone, selectedDateKey, scheduleEnd, scheduleStart]);
 
+  useEffect(() => {
+    const updateCurrentTime = () => {
+      setCurrentTime(DateTime.now().setZone(timezone));
+    };
+
+    updateCurrentTime();
+    const intervalId = window.setInterval(updateCurrentTime, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [timezone]);
+
   const currentTimeOffsetPx = useMemo(() => {
-    const now = DateTime.now().setZone(timezone);
-    if (!now.isValid || now.toFormat('yyyy-LL-dd') !== selectedDateKey) {
+    if (!currentTime?.isValid || currentTime.toFormat('yyyy-LL-dd') !== selectedDateKey) {
       return null;
     }
-    const minutes = now.hour * 60 + now.minute + now.second / 60;
+    const minutes = currentTime.hour * 60 + currentTime.minute + currentTime.second / 60;
     if (minutes < scheduleStart || minutes > scheduleEnd) {
       return null;
     }
     return (minutes - scheduleStart) * SCHEDULE_PIXELS_PER_MINUTE;
-  }, [timezone, selectedDateKey, scheduleEnd, scheduleStart]);
+  }, [currentTime, selectedDateKey, scheduleEnd, scheduleStart]);
 
   const currentTimeLabel = useMemo(() => {
-    if (currentTimeOffsetPx === null) {
+    if (currentTimeOffsetPx === null || !currentTime?.isValid) {
       return null;
     }
-    const now = DateTime.now().setZone(timezone);
-    if (!now.isValid) {
-      return null;
-    }
-    return now.toFormat('HH:mm');
-  }, [currentTimeOffsetPx, timezone]);
+    return currentTime.toFormat('HH:mm');
+  }, [currentTime, currentTimeOffsetPx]);
 
   const visibleDateLabel = useMemo(
     () => formatSelectedDateLabel(selectedDateKey, timezone),

@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DaySchedule } from '@/components/calendar/DaySchedule';
 import type { BookingListItem, RoomItem } from '@/lib/types';
 
@@ -86,6 +86,10 @@ function renderSchedule({
 }
 
 describe('DaySchedule', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('keeps past personal bookings styled as personal while leaving them read-only', async () => {
     const booking = createBooking();
     const onOpenBooking = vi.fn();
@@ -207,5 +211,58 @@ describe('DaySchedule', () => {
     expect(
       screen.queryByText('No rooms selected. Use Filter to show at least one room.'),
     ).not.toBeInTheDocument();
+  });
+
+  it('renders the current time marker only for the selected day after mount', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-18T14:15:00.000Z'));
+
+    const { rerender } = render(
+      <DaySchedule
+        rooms={[ROOM]}
+        bookings={[]}
+        timezone="UTC"
+        schedule={{ startHour: 8, endHour: 18 }}
+        selectedDateKey="2026-03-18"
+        ownedBookingIds={new Set()}
+        editableBookingIds={new Set()}
+        selectedBookingId={null}
+        isMutating={false}
+        onPrevDay={vi.fn()}
+        onNextDay={vi.fn()}
+        onToday={vi.fn()}
+        canCreateBookings
+        onCreateSlot={vi.fn()}
+        onOpenBooking={vi.fn()}
+        onUpdateBooking={vi.fn(async () => undefined)}
+        onInlineError={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('14:15')).toBeInTheDocument();
+
+    rerender(
+      <DaySchedule
+        rooms={[ROOM]}
+        bookings={[]}
+        timezone="UTC"
+        schedule={{ startHour: 8, endHour: 18 }}
+        selectedDateKey="2026-03-19"
+        ownedBookingIds={new Set()}
+        editableBookingIds={new Set()}
+        selectedBookingId={null}
+        isMutating={false}
+        onPrevDay={vi.fn()}
+        onNextDay={vi.fn()}
+        onToday={vi.fn()}
+        canCreateBookings
+        onCreateSlot={vi.fn()}
+        onOpenBooking={vi.fn()}
+        onUpdateBooking={vi.fn(async () => undefined)}
+        onInlineError={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('14:15')).not.toBeInTheDocument();
   });
 });
