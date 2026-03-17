@@ -54,6 +54,38 @@ describe('PublicAuthModal', () => {
     expect(await screen.findByText('The password confirmation does not match.')).toBeVisible();
   });
 
+  it('shows invalid credentials when login fails with the backend login error', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 'UNAUTHORIZED', message: 'Invalid credentials' }), {
+        status: 401,
+        headers: {
+          'content-type': 'application/json',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <PublicAuthModal
+        mode="login"
+        searchParams={createSearchParams()}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    const form = screen.getByLabelText('Password').closest('form');
+
+    expect(form).not.toBeNull();
+    await user.type(screen.getByLabelText('Email'), 'ada@example.com');
+    await user.type(screen.getByLabelText('Password'), 'wrong-password');
+    await user.click(within(form as HTMLFormElement).getByRole('button', { name: 'Login' }));
+
+    expect(await screen.findByText('Invalid credentials.')).toBeVisible();
+    expect(screen.queryByText('Your session is no longer valid. Please log in again.')).not.toBeInTheDocument();
+  });
+
   it('marks registration credential fields to resist browser autofill', () => {
     render(
       <PublicAuthModal
