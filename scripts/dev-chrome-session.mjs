@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,9 @@ const DEFAULT_PRISMA_STUDIO_URL =
   process.env.DEV_CHROME_PRISMA_STUDIO_URL ?? 'http://localhost:5555';
 const READY_TIMEOUT_MS = readPositiveIntEnv('DEV_CHROME_READY_TIMEOUT_MS', 120_000);
 const USE_TEMP_PROFILE = readBooleanEnv('DEV_CHROME_TEMP_PROFILE', false);
+const API_DIR = join(process.cwd(), 'apps', 'api');
+const API_ENV_PATH = join(API_DIR, '.env');
+const DATABASE_PORT = readDatabasePortFromApiEnv() ?? '5432';
 const PERSISTENT_PROFILE_DIR = USE_TEMP_PROFILE
   ? null
   : process.env.DEV_CHROME_PROFILE_DIR?.trim() || join(process.cwd(), '.chrome-dev-profile');
@@ -57,6 +60,31 @@ function readPortFromUrl(url, fallback) {
     return parsedUrl.port || fallback;
   } catch {
     return fallback;
+  }
+}
+
+function readDatabasePortFromApiEnv() {
+  if (!existsSync(API_ENV_PATH)) {
+    return null;
+  }
+
+  try {
+    const envFile = readFileSync(API_ENV_PATH, 'utf8');
+    const databaseUrlLine = envFile
+      .split(/\r?\n/)
+      .find((line) => line.trim().startsWith('DATABASE_URL='));
+
+    if (!databaseUrlLine) {
+      return null;
+    }
+
+    const rawUrl = databaseUrlLine.slice('DATABASE_URL='.length).trim();
+    const normalizedUrl = rawUrl.replace(/^['"]|['"]$/g, '');
+    const databaseUrl = new URL(normalizedUrl);
+
+    return databaseUrl.port || null;
+  } catch {
+    return null;
   }
 }
 
@@ -271,7 +299,12 @@ async function main() {
   }
 
   log('Starting database...');
-  await runCommand(PNPM_CMD, ['db:up']);
+  await runCommand(PNPM_CMD, ['db:up'], {
+    env: {
+      ...process.env,
+      POSTGRES_PORT: DATABASE_PORT,
+    },
+  });
 
   log('Starting development servers...');
   devProcess = spawn(PNPM_CMD, ['dev'], {
@@ -291,12 +324,9 @@ async function main() {
   prismaStudioProcess = spawn(
     PNPM_CMD,
     [
-      '--filter',
-      '@openspace/api',
       'exec',
       'prisma',
       'studio',
-      '--schema=prisma/schema.prisma',
       '--browser',
       'none',
       '--port',
@@ -305,6 +335,7 @@ async function main() {
     {
       stdio: 'inherit',
       shell: process.platform === 'win32',
+      cwd: API_DIR,
     },
   );
 
