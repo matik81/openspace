@@ -44,6 +44,8 @@ Recommended orchestration order:
 5. `Ledger` when docs changed materially
 6. review agent for risky or business-critical changes
 
+For changes to the multi-agent system itself, involve `Steward`.
+
 Use this principle throughout:
 
 - selective delegation
@@ -154,6 +156,20 @@ Best for:
 - official OpenAI/Codex usage questions
 
 This agent stays read-only and should rely on official documentation only.
+
+### `agent_system_tuner` (`Steward`)
+
+Use when the task is about the agent system itself rather than product functionality.
+
+Best for:
+
+- refining agent prompts and role boundaries
+- adjusting model choices or reasoning effort
+- evolving orchestration policy
+- simplifying overlapping agents
+- keeping `.codex` config and agent docs aligned over time
+
+This agent is for governance of the multi-agent setup, not delivery of app features.
 
 ## Backend Agents
 
@@ -429,6 +445,7 @@ Use this quick rule of thumb:
 - if you want a risk review, use `Aegis`
 - if the implementation is done and docs may be stale, use `Ledger`
 - if you are unsure how Next.js, React, Playwright, NestJS, Prisma, or OpenAI tooling behaves, use `Lumen`
+- if the change is about the multi-agent setup itself, use `Steward`
 
 ## Boundaries
 
@@ -440,6 +457,7 @@ Good practice:
 - use read-only agents to map, verify, and review
 - let schema work be owned by `Bedrock` when the database contract changes
 - use `Ledger` after behavior settles
+- use `Steward` for periodic maintenance of agent definitions and orchestration policy
 
 Bad practice:
 
@@ -448,6 +466,7 @@ Bad practice:
 - using `Chronos` for generic UI cleanup unrelated to booking or time behavior
 - using `Forge` for auth, booking-policy, or schema-heavy changes that have a more specific owner
 - using `Bedrock` without also checking the affected domain logic and tests
+- using `Steward` to make unrelated product changes
 - using `Ledger` to write speculative requirements
 
 ## Notes

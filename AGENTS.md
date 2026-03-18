@@ -217,6 +217,7 @@ Delegation guidance:
 - use exactly one primary implementation agent per touched area
 - involve `docs_sync_guard` when a completed change affects documented behavior
 - involve `framework_docs_researcher` when official docs are needed to avoid guessing
+- involve `agent_system_tuner` when the task is specifically about evolving agent definitions, orchestration policy, model choices, or the multi-agent setup itself
 - involve review agents when a task affects auth, authorization, booking rules, timezone handling, schema safety, or other high-risk behavior
 
 Code ownership guidance:
