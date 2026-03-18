@@ -17,7 +17,7 @@ test('redirects to login when the session is expired', async ({ page }) => {
   await page.goto('/dashboard');
 
   await expect(page).toHaveURL(/auth=login&reason=session-expired/);
-  await expect(page.getByText('Your session is missing or expired. Please log in again.')).toBeVisible();
+  await expect(page.getByText('Your session has expired. Please log in again.')).toBeVisible();
 });
 
 test('logs out suspended users and redirects them to login', async ({ page }) => {
@@ -37,6 +37,8 @@ test('logs out suspended users and redirects them to login', async ({ page }) =>
 
   await expect(page).toHaveURL(/auth=login&reason=user-suspended/);
   await expect(
-    page.getByText('Account suspended due to rate limits. Login is temporarily unavailable.'),
+    page.getByText(
+      'This account has been temporarily suspended due to rate limits. Login is unavailable right now.',
+    ),
   ).toBeVisible();
 });

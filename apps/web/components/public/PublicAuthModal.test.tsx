@@ -51,7 +51,7 @@ describe('PublicAuthModal', () => {
     await user.click(within(form as HTMLFormElement).getByRole('button', { name: 'Register' }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(await screen.findByText('The password confirmation does not match.')).toBeVisible();
+    expect(await screen.findByText('The passwords do not match.')).toBeVisible();
   });
 
   it('shows invalid credentials when login fails with the backend login error', async () => {
@@ -83,7 +83,7 @@ describe('PublicAuthModal', () => {
     await user.click(within(form as HTMLFormElement).getByRole('button', { name: 'Login' }));
 
     expect(await screen.findByText('Invalid credentials.')).toBeVisible();
-    expect(screen.queryByText('Your session is no longer valid. Please log in again.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your session has expired. Please log in again.')).not.toBeInTheDocument();
   });
 
   it('marks registration credential fields to resist browser autofill', () => {

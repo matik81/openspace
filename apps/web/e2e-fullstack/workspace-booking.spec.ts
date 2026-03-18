@@ -45,6 +45,6 @@ test('creates and cancels a booking against the real API', async ({ page }) => {
 
   await editDialog.getByRole('button', { name: 'Cancel Reservation' }).click();
 
-  await expect(page.getByText('Reservation cancelled.')).toBeVisible();
+  await expect(page.getByText('Booking cancelled.')).toBeVisible();
   await expect(myBookingsSection).not.toContainText('Full-stack booking');
 });

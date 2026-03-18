@@ -71,7 +71,7 @@ test('completes the register to verify-email smoke flow', async ({ page }) => {
     .click();
 
   await expect(page).toHaveURL(/auth=login/);
-  await expect(page.getByText('Email verified. You can now log in.')).toBeVisible();
+  await expect(page.getByText('Your email has been verified. You can now log in.')).toBeVisible();
 });
 
 test('completes invitation registration from a deep link', async ({ page }) => {
@@ -113,5 +113,7 @@ test('completes invitation registration from a deep link', async ({ page }) => {
     .click();
 
   await expect(page).toHaveURL(/auth=login/);
-  await expect(page.getByText(/Account created and email verified/i)).toBeVisible();
+  await expect(
+    page.getByText(/account has been created and your email has been verified/i),
+  ).toBeVisible();
 });

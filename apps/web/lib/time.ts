@@ -260,7 +260,7 @@ export function getBookingConflictMessage(options: {
       ignoreBookingId,
     })
   ) {
-    return 'Booking overlaps with an existing active booking';
+    return 'This booking overlaps an existing active booking';
   }
 
   if (
@@ -275,7 +275,7 @@ export function getBookingConflictMessage(options: {
       ignoreBookingId,
     })
   ) {
-    return 'User already has an active booking in this time range';
+    return 'You already have an active booking during this time';
   }
 
   return null;

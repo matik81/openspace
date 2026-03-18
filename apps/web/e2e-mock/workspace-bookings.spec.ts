@@ -51,7 +51,7 @@ test('creates, edits, and cancels a booking from the workspace page', async ({ p
   await myBookingsSection.getByRole('button', { name: /Ops Review Updated/i }).click();
   await editDialog.getByRole('button', { name: 'Cancel Reservation' }).click();
 
-  await expect(page.getByText('Reservation cancelled.')).toBeVisible();
+  await expect(page.getByText('Booking cancelled.')).toBeVisible();
   await expect(myBookingsSection.getByText('Ops Review Updated')).not.toBeVisible();
 });
 

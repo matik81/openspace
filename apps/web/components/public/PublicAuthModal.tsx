@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from '
 import { readErrorPayload } from '@/lib/client-http';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload, InvitationRegistrationDetails } from '@/lib/types';
+import { SESSION_EXPIRED_MESSAGE } from '@/lib/user-messages';
 
 export type AuthMode =
   | 'login'
@@ -343,7 +344,7 @@ export function PublicAuthModal({
     }
 
     setResetPasswordMessage(
-      'If the account exists and is active, a reset token has been sent by email.',
+      'If the account exists and is active, a password reset token has been sent by email.',
     );
     setIsSubmitting(false);
   }
@@ -500,46 +501,48 @@ export function PublicAuthModal({
 
         {reason === 'session-expired' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Your session is missing or expired. Please log in again.
+            {SESSION_EXPIRED_MESSAGE}
           </p>
         ) : null}
 
         {reason === 'account-deleted' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Account deleted. Login is no longer available for that user.
+            This account has been deleted. Login is no longer available.
           </p>
         ) : null}
 
         {reason === 'user-suspended' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Account suspended due to rate limits. Login is temporarily unavailable.
+            This account has been temporarily suspended due to rate limits. Login is unavailable
+            right now.
           </p>
         ) : null}
 
         {registered && registeredEmail && mode === 'verify-email' ? (
           <p className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-            Registration complete for <strong>{registeredEmail}</strong>. Paste your token here to
-            activate login access.
+            Registration complete for <strong>{registeredEmail}</strong>. Paste your verification
+            token below to activate login access.
           </p>
         ) : null}
 
         {verified && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Email verified. You can now log in.
+            Your email has been verified. You can now log in.
           </p>
         ) : null}
 
         {invitationRegistered && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Account created and email verified. Log in to access your invitation
+            Your account has been created and your email has been verified. Log in to access your
+            invitation
             {invitationWorkspaceName ? ` to ${invitationWorkspaceName}` : ''}.
-            {invitationInviterName ? ` ${invitationInviterName} sent this invitation.` : ''}
+            {invitationInviterName ? ` Invitation sent by ${invitationInviterName}.` : ''}
           </p>
         ) : null}
 
         {searchParams.get('reset') === '1' && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Password reset complete. You can now log in with the new password.
+            Your password has been reset. You can now log in with the new password.
           </p>
         ) : null}
 

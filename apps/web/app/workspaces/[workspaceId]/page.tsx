@@ -116,7 +116,7 @@ function WorkspacePageContent({
   if (!selectedWorkspace) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        Workspace not visible.
+        This workspace is not available to your account.
       </p>
     );
   }
@@ -169,7 +169,7 @@ function WorkspacePageContent({
   if (!isActiveMember) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        Only active members can manage reservations.
+        Only active members can manage bookings.
       </p>
     );
   }
@@ -911,7 +911,7 @@ function WorkspaceBookingDashboard({
     }
 
     await loadBookings(workspace);
-    setPageBanner('Reservation cancelled.');
+    setPageBanner('Booking cancelled.');
     closeDialog();
   };
 

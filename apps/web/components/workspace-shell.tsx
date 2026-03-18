@@ -443,7 +443,7 @@ export function WorkspaceShell({
       }
 
       closeCriticalActionModal();
-      setBanner('Workspace left.');
+      setBanner('You left the workspace.');
       await loadWorkspaces();
       router.replace('/dashboard');
     },

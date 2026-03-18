@@ -1,17 +1,15 @@
 import type { ErrorPayload } from './types';
-
-const ERROR_MESSAGE_BY_CODE: Record<string, string> = {
-  ACCOUNT_DELETE_CONFIRMATION_FAILED: 'The email or password you entered does not match your account.',
-  PASSWORD_MISMATCH: 'The password confirmation does not match.',
-  SERVICE_UNAVAILABLE: 'The service is temporarily unavailable. Please try again.',
-};
-
-const SESSION_EXPIRED_MESSAGE = 'Your session is no longer valid. Please log in again.';
+import {
+  ERROR_MESSAGE_BY_CODE,
+  ERROR_MESSAGE_BY_TEXT,
+  FALLBACK_ERROR_MESSAGE,
+  SESSION_EXPIRED_MESSAGE,
+} from './user-messages';
 
 function normalizeSentence(message: string): string {
   const trimmed = message.trim();
   if (!trimmed) {
-    return 'Something went wrong. Please try again.';
+    return FALLBACK_ERROR_MESSAGE;
   }
 
   const first = trimmed.charAt(0).toUpperCase();
@@ -23,7 +21,7 @@ function normalizeSentence(message: string): string {
 
 export function getErrorDisplayMessage(error: ErrorPayload | null | undefined): string {
   if (!error) {
-    return 'Something went wrong. Please try again.';
+    return FALLBACK_ERROR_MESSAGE;
   }
 
   if (error.code === 'UNAUTHORIZED') {
@@ -34,6 +32,6 @@ export function getErrorDisplayMessage(error: ErrorPayload | null | undefined): 
     return SESSION_EXPIRED_MESSAGE;
   }
 
-  const mappedMessage = ERROR_MESSAGE_BY_CODE[error.code] ?? error.message;
+  const mappedMessage = ERROR_MESSAGE_BY_CODE[error.code] ?? ERROR_MESSAGE_BY_TEXT[error.message] ?? error.message;
   return normalizeSentence(mappedMessage);
 }

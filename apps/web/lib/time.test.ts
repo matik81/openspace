@@ -87,7 +87,7 @@ describe('time helpers', () => {
         endMinutes: 630,
         userId: 'user-3',
       }),
-    ).toBe('Booking overlaps with an existing active booking');
+    ).toBe('This booking overlaps an existing active booking');
 
     expect(
       getBookingConflictMessage({
@@ -99,7 +99,7 @@ describe('time helpers', () => {
         endMinutes: 705,
         userId: 'user-2',
       }),
-    ).toBe('User already has an active booking in this time range');
+    ).toBe('You already have an active booking during this time');
   });
 
   it('groups only active current-user bookings for the sidebar timeline', () => {
