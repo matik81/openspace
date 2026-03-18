@@ -9,6 +9,7 @@ Relevant files include:
 - `docs/ARCHITECTURE.md`
 - `docs/PROJECT_BRIEF.md`
 - `docs/TESTING_STRATEGY.md`
+- `docs/CODEX_AGENTS.md`
 
 ## 0. Private Folder Boundary
 
@@ -177,3 +178,63 @@ Before pushing to `main`, the coding agent must always ask for explicit confirma
 
 - do not push to `main` without a direct user confirmation in the current conversation
 - this confirmation requirement applies even if the requested changes are already committed and ready
+
+## 8. Main Agent Orchestration Policy
+
+The main agent is responsible for orchestrating work across the repository.
+
+Default operating model:
+
+- the user proposes a feature, fix, refactor, or investigation
+- the main agent maps the impacted area
+- the main agent delegates relevant subtasks to the most appropriate custom agents
+- the main agent integrates outcomes into a coherent final result
+- the main agent closes the task only after considering code, tests, documentation, and review needs
+
+The main agent must not spawn every custom agent by default.
+
+Instead:
+
+- delegate only the agents that are materially relevant to the request
+- prefer narrow, role-specific delegation over broad fan-out
+- keep a single implementation owner for each code area being changed
+- use read-only agents for mapping, documentation research, and review
+
+Expected orchestration sequence:
+
+1. map the request before editing, using the most appropriate mapper when the impacted code path is not already obvious
+2. consult the framework documentation researcher when version-sensitive framework or platform behavior could affect correctness
+3. assign implementation to the narrowest suitable specialist
+4. extend or update the nearest relevant automated tests when behavior changes
+5. update technical documentation when implemented behavior, architecture notes, or testing guidance changed
+6. run review-oriented agents for risky or business-critical changes
+7. run relevant validation commands before considering the task complete
+
+Delegation guidance:
+
+- use `web_mapper` for frontend code-path discovery
+- use `api_mapper` for backend code-path discovery
+- use exactly one primary implementation agent per touched area
+- involve `docs_sync_guard` when a completed change affects documented behavior
+- involve `framework_docs_researcher` when official docs are needed to avoid guessing
+- involve review agents when a task affects auth, authorization, booking rules, timezone handling, schema safety, or other high-risk behavior
+
+Code ownership guidance:
+
+- `ui_builder` owns general frontend UI implementation
+- `proxy_session_guard` owns frontend auth proxy, cookie, and session behavior
+- `booking_timekeeper` owns frontend booking and timezone-sensitive interaction logic
+- `nest_service_builder` owns general backend NestJS implementation
+- `auth_policy_guard` owns backend auth and account lifecycle logic
+- `workspace_rules_guard` owns workspace visibility, invitations, memberships, rooms, and role rules
+- `booking_policy_guard` owns backend booking validation and scheduling logic
+- `prisma_schema_guard` owns Prisma schema, migration, and database-constraint changes
+
+Completion standard:
+
+- do not stop after code changes if tests, docs, or review are still clearly needed
+- do not treat documentation as optional when behavior or architecture notes changed
+- do not leave business-critical changes without checking the nearest relevant automated coverage
+- keep the final result behaviorally consistent across frontend, backend, persistence, and documentation layers when the task spans more than one area
+
+See `docs/CODEX_AGENTS.md` for the current custom agent catalog and usage patterns.
