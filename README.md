@@ -198,4 +198,4 @@ CI workflow:
 
 - `quality` job installs dependencies, runs lint, Prisma generate, typecheck, Prisma migrate deploy, test, and build
 - `e2e-mock` runs Playwright mock-browser tests after the quality job
-- `e2e-fullstack` starts Docker Compose, migrates an E2E schema, and runs Playwright full-stack tests after the quality job
+- `e2e-fullstack` starts Docker Compose, resets and migrates an E2E schema, and runs Playwright full-stack tests after the quality job

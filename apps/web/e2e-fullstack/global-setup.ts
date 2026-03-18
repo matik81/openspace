@@ -12,10 +12,10 @@ function resolveCommand(base: string) {
 
 const repoRoot = path.resolve(__dirname, '../../../');
 
-function runPnpm(args: string[], env: NodeJS.ProcessEnv) {
+function runPnpm(args: string[], env: NodeJS.ProcessEnv, cwd = repoRoot) {
   if (process.platform === 'win32') {
     execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `pnpm ${args.join(' ')}`], {
-      cwd: repoRoot,
+      cwd,
       stdio: 'inherit',
       env,
     });
@@ -23,7 +23,7 @@ function runPnpm(args: string[], env: NodeJS.ProcessEnv) {
   }
 
   execFileSync('pnpm', args, {
-    cwd: repoRoot,
+    cwd,
     stdio: 'inherit',
     env,
   });
@@ -69,8 +69,12 @@ export default async function globalSetup() {
 
   await waitForPort(resolveDatabasePort(), 60_000);
 
-  runPnpm(['--filter', '@openspace/api', 'prisma:migrate:deploy'], {
-    ...process.env,
-    DATABASE_URL: FULLSTACK_DATABASE_URL,
-  });
+  runPnpm(
+    ['prisma', 'migrate', 'reset', '--force'],
+    {
+      ...process.env,
+      DATABASE_URL: FULLSTACK_DATABASE_URL,
+    },
+    path.resolve(repoRoot, 'apps/api'),
+  );
 }

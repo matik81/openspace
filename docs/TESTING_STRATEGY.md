@@ -87,7 +87,7 @@ Current GitHub Actions workflow runs three jobs:
 
 - `quality`: dependency installation, lint, Prisma generate, typecheck, Prisma migrate deploy, test, and build
 - `e2e-mock`: Playwright mock E2E after `quality`
-- `e2e-fullstack`: Docker Compose startup, E2E schema migration, and Playwright full-stack E2E after `quality`
+- `e2e-fullstack`: Docker Compose startup, E2E schema reset plus migration, and Playwright full-stack E2E after `quality`
 
 The CI workflow provisions PostgreSQL for API integration coverage and for the full-stack Playwright environment.
 
