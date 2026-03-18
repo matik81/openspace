@@ -73,3 +73,45 @@ test('completes the register to verify-email smoke flow', async ({ page }) => {
   await expect(page).toHaveURL(/auth=login/);
   await expect(page.getByText('Email verified. You can now log in.')).toBeVisible();
 });
+
+test('completes invitation registration from a deep link', async ({ page }) => {
+  await page.route('**/api/auth/register-invitation?token=invite-token', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'invitee@example.com',
+        workspaceName: 'Engineering',
+        inviterName: 'Ada Lovelace',
+        expiresAt: '2026-03-25T10:00:00.000Z',
+      }),
+    });
+  });
+
+  await page.route('**/api/auth/register', async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+
+  await page.goto('/register?token=invite-token');
+
+  await expect(page).toHaveURL(/auth=register-invitation/);
+  await expect(page.getByText(/Ada Lovelace/)).toBeVisible();
+  await expect(page.getByLabel('Email')).toHaveValue('invitee@example.com');
+
+  await page.getByLabel('First name').fill('Grace');
+  await page.getByLabel('Last name').fill('Hopper');
+  await page.getByLabel(/^Password$/).fill('password123');
+  await page.getByLabel('Confirm password').fill('password123');
+  await page
+    .locator('form')
+    .filter({ has: page.getByLabel('Confirm password') })
+    .getByRole('button', { name: 'Create invited account' })
+    .click();
+
+  await expect(page).toHaveURL(/auth=login/);
+  await expect(page.getByText(/Account created and email verified/i)).toBeVisible();
+});

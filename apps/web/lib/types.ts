@@ -3,6 +3,13 @@ export type ErrorPayload = {
   message: string;
 };
 
+export type InvitationRegistrationDetails = {
+  email: string;
+  workspaceName: string;
+  inviterName: string;
+  expiresAt: string;
+};
+
 export type WorkspaceRole = 'ADMIN' | 'MEMBER';
 
 export type MembershipStatus = 'ACTIVE' | 'INACTIVE';

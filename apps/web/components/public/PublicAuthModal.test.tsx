@@ -167,4 +167,85 @@ describe('PublicAuthModal', () => {
       verified: null,
     });
   });
+
+  it('loads invitation details and submits invitation registration without verify-email step', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: 'invitee@example.com',
+            workspaceName: 'Engineering',
+            inviterName: 'Ada Lovelace',
+            expiresAt: '2026-03-25T10:00:00.000Z',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 201,
+          headers: {
+            'content-type': 'application/json',
+          },
+        }),
+      );
+    const onSwitchMode = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <PublicAuthModal
+        mode="register-invitation"
+        searchParams={createSearchParams({ invitationToken: 'invite-token' })}
+        onClose={vi.fn()}
+        onSwitchMode={onSwitchMode}
+      />,
+    );
+
+    expect(await screen.findByText(/Ada Lovelace/)).toBeVisible();
+    expect(screen.getByLabelText('Email')).toHaveValue('invitee@example.com');
+
+    const user = userEvent.setup();
+    const form = screen.getByLabelText('Confirm password').closest('form');
+
+    expect(form).not.toBeNull();
+    await user.type(screen.getByLabelText('First name'), 'Grace');
+    await user.type(screen.getByLabelText('Last name'), 'Hopper');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.type(screen.getByLabelText('Confirm password'), 'password123');
+    await user.click(
+      within(form as HTMLFormElement).getByRole('button', { name: 'Create invited account' }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const [url, requestInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('/api/auth/register');
+    expect(JSON.parse(String(requestInit.body))).toEqual({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'invitee@example.com',
+      password: 'password123',
+      invitationToken: 'invite-token',
+    });
+
+    expect(onSwitchMode).toHaveBeenCalledWith('login', {
+      email: 'invitee@example.com',
+      invitationRegistered: '1',
+      inviterName: 'Ada Lovelace',
+      workspaceName: 'Engineering',
+      invitationToken: null,
+      reason: null,
+      token: null,
+      registered: null,
+      verified: null,
+    });
+  });
 });

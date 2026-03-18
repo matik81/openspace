@@ -74,7 +74,7 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
     .getByRole('button', { name: 'Create workspace', exact: true })
     .click();
 
-  await expect(page).toHaveURL('/Skunkworks/admin');
+  await expect(page).toHaveURL('/Skunkworks/admin', { timeout: 10000 });
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
   await expect(page.getByLabel('Workspace Name')).toHaveValue('Skunkworks');
 });

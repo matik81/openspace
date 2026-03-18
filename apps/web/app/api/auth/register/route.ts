@@ -17,10 +17,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const lastName = getTrimmedString(body, 'lastName');
     const email = getTrimmedString(body, 'email');
     const password = getTrimmedString(body, 'password');
+    const invitationToken = getTrimmedString(body, 'invitationToken');
 
-    if (!firstName || !lastName || !email || !password) {
+    if (!firstName || !lastName || !password || (!email && !invitationToken)) {
       return NextResponse.json<ErrorPayload>(
-        { code: 'BAD_REQUEST', message: 'firstName, lastName, email and password are required' },
+        {
+          code: 'BAD_REQUEST',
+          message: 'firstName, lastName, password, and either email or invitationToken are required',
+        },
         { status: 400 },
       );
     }
@@ -33,8 +37,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body: {
         firstName,
         lastName,
-        email,
         password,
+        ...(email ? { email } : {}),
+        ...(invitationToken ? { invitationToken } : {}),
       },
     });
 

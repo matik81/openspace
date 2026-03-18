@@ -4,9 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
 import { getErrorDisplayMessage } from '@/lib/error-display';
-import type { ErrorPayload } from '@/lib/types';
+import type { ErrorPayload, InvitationRegistrationDetails } from '@/lib/types';
 
-export type AuthMode = 'login' | 'register' | 'verify-email' | 'reset-password';
+export type AuthMode =
+  | 'login'
+  | 'register'
+  | 'register-invitation'
+  | 'verify-email'
+  | 'reset-password';
 
 type LoginFormState = {
   email: string;
@@ -68,19 +73,34 @@ export function PublicAuthModal({
     useState<ResetPasswordFormState>(initialResetPasswordForm);
   const [resetPasswordMessage, setResetPasswordMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isInvitationContextLoading, setIsInvitationContextLoading] = useState(false);
+  const [invitationContext, setInvitationContext] = useState<InvitationRegistrationDetails | null>(
+    null,
+  );
   const [error, setError] = useState<ErrorPayload | null>(null);
   const reason = searchParams.get('reason');
   const registered = searchParams.get('registered') === '1';
   const registeredEmail = searchParams.get('email') ?? '';
   const verified = searchParams.get('verified') === '1';
+  const invitationToken = searchParams.get('token') ?? searchParams.get('invitationToken') ?? '';
+  const invitationRegistered = searchParams.get('invitationRegistered') === '1';
+  const invitationWorkspaceName = searchParams.get('workspaceName') ?? '';
+  const invitationInviterName = searchParams.get('inviterName') ?? '';
 
   useEffect(() => {
     if (!mode) {
       setError(null);
       setIsSubmitting(false);
+      setIsInvitationContextLoading(false);
       return;
     }
 
+    if (mode === 'login') {
+      setLoginForm((current) => ({
+        ...current,
+        email: searchParams.get('email') ?? current.email,
+      }));
+    }
     if (mode === 'verify-email') {
       setVerificationToken(searchParams.get('token') ?? '');
     }
@@ -92,6 +112,73 @@ export function PublicAuthModal({
       }));
     }
   }, [mode, searchParams]);
+
+  useEffect(() => {
+    if (mode !== 'register-invitation') {
+      setInvitationContext(null);
+      setIsInvitationContextLoading(false);
+      return;
+    }
+
+    if (!invitationToken) {
+      setInvitationContext(null);
+      setError({ code: 'BAD_REQUEST', message: 'Invitation token is required' });
+      return;
+    }
+
+    let cancelled = false;
+    setInvitationContext(null);
+    setIsInvitationContextLoading(true);
+    setError(null);
+
+    async function loadInvitationContext() {
+      const response = await fetch(
+        `/api/auth/register-invitation?token=${encodeURIComponent(invitationToken)}`,
+        {
+          method: 'GET',
+          cache: 'no-store',
+        },
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!response.ok) {
+        setError(await readErrorPayload(response));
+        setIsInvitationContextLoading(false);
+        return;
+      }
+
+      const payload = (await response.json().catch(() => null)) as InvitationRegistrationDetails | null;
+      if (
+        !payload ||
+        typeof payload.email !== 'string' ||
+        typeof payload.workspaceName !== 'string' ||
+        typeof payload.inviterName !== 'string' ||
+        typeof payload.expiresAt !== 'string'
+      ) {
+        setError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Invitation details are unavailable',
+        });
+        setIsInvitationContextLoading(false);
+        return;
+      }
+
+      setInvitationContext(payload);
+      setRegisterForm((current) => ({
+        ...current,
+        email: payload.email,
+      }));
+      setIsInvitationContextLoading(false);
+    }
+
+    void loadInvitationContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [invitationToken, mode]);
 
   useEffect(() => {
     if (!mode) {
@@ -149,6 +236,14 @@ export function PublicAuthModal({
       return;
     }
 
+    if (mode === 'register-invitation' && !invitationContext) {
+      setError({
+        code: 'INVALID_INVITATION_TOKEN',
+        message: 'Invitation token is invalid',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     const response = await fetch('/api/auth/register', {
@@ -161,6 +256,7 @@ export function PublicAuthModal({
         lastName: registerForm.lastName,
         email: registerForm.email,
         password: registerForm.password,
+        ...(mode === 'register-invitation' ? { invitationToken } : {}),
       }),
     });
 
@@ -171,6 +267,22 @@ export function PublicAuthModal({
     }
 
     setIsSubmitting(false);
+
+    if (mode === 'register-invitation' && invitationContext) {
+      onSwitchMode('login', {
+        email: invitationContext.email,
+        invitationRegistered: '1',
+        workspaceName: invitationContext.workspaceName,
+        inviterName: invitationContext.inviterName,
+        invitationToken: null,
+        reason: null,
+        registered: null,
+        verified: null,
+        token: null,
+      });
+      return;
+    }
+
     onSwitchMode('verify-email', {
       email: registerForm.email.trim(),
       registered: '1',
@@ -230,7 +342,9 @@ export function PublicAuthModal({
       return;
     }
 
-    setResetPasswordMessage('If the account exists and is active, a reset token has been sent by email.');
+    setResetPasswordMessage(
+      'If the account exists and is active, a reset token has been sent by email.',
+    );
     setIsSubmitting(false);
   }
 
@@ -302,6 +416,24 @@ export function PublicAuthModal({
     didPointerDownOnOverlayRef.current = false;
   }
 
+  function switchTab(nextMode: Exclude<AuthMode, 'register-invitation'>) {
+    onSwitchMode(nextMode, {
+      invitationToken: null,
+      inviterName: null,
+      invitationRegistered: null,
+      workspaceName: null,
+      registered: null,
+      verified: null,
+      reset: null,
+      token: null,
+    });
+  }
+
+  const isRegisterMode = mode === 'register' || mode === 'register-invitation';
+  const invitationDescription = invitationContext
+    ? `${invitationContext.inviterName} invited you to join ${invitationContext.workspaceName}.`
+    : null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
@@ -327,9 +459,11 @@ export function PublicAuthModal({
                 ? 'Login'
                 : mode === 'register'
                   ? 'Create your account'
-                  : mode === 'verify-email'
-                    ? 'Verify your email'
-                    : 'Reset password'}
+                  : mode === 'register-invitation'
+                    ? 'Register from invitation'
+                    : mode === 'verify-email'
+                      ? 'Verify your email'
+                      : 'Reset password'}
             </h2>
           </div>
           <button
@@ -346,9 +480,9 @@ export function PublicAuthModal({
             <button
               key={tab}
               type="button"
-              onClick={() => onSwitchMode(tab)}
+              onClick={() => switchTab(tab)}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
-                mode === tab
+                (tab === 'register' ? isRegisterMode : mode === tab)
                   ? 'bg-slate-900 text-white'
                   : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
@@ -384,13 +518,22 @@ export function PublicAuthModal({
 
         {registered && registeredEmail && mode === 'verify-email' ? (
           <p className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-            Registration complete for <strong>{registeredEmail}</strong>. Paste your token here to activate login access.
+            Registration complete for <strong>{registeredEmail}</strong>. Paste your token here to
+            activate login access.
           </p>
         ) : null}
 
         {verified && mode === 'login' ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Email verified. You can now log in.
+          </p>
+        ) : null}
+
+        {invitationRegistered && mode === 'login' ? (
+          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Account created and email verified. Log in to access your invitation
+            {invitationWorkspaceName ? ` to ${invitationWorkspaceName}` : ''}.
+            {invitationInviterName ? ` ${invitationInviterName} sent this invitation.` : ''}
           </p>
         ) : null}
 
@@ -414,7 +557,9 @@ export function PublicAuthModal({
                 required
                 type="email"
                 value={loginForm.email}
-                onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+                onChange={(event) =>
+                  setLoginForm((current) => ({ ...current, email: event.target.value }))
+                }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
               />
             </label>
@@ -425,7 +570,9 @@ export function PublicAuthModal({
                 required
                 type="password"
                 value={loginForm.password}
-                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+                onChange={(event) =>
+                  setLoginForm((current) => ({ ...current, password: event.target.value }))
+                }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
               />
             </label>
@@ -440,15 +587,36 @@ export function PublicAuthModal({
           </form>
         ) : null}
 
-        {mode === 'register' ? (
+        {isRegisterMode ? (
           <form
             className="mt-6 space-y-4"
             autoComplete="off"
             onSubmit={(event) => void handleRegisterSubmit(event)}
           >
+            {mode === 'register-invitation' ? (
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-950">
+                <p className="font-semibold">Invitation registration</p>
+                <p className="mt-1">
+                  {invitationDescription ??
+                    'OpenSpace is a tool for booking meeting rooms and coordinating workspace access.'}
+                </p>
+                {invitationContext ? (
+                  <p className="mt-1">
+                    This flow verifies <strong>{invitationContext.email}</strong> automatically when
+                    you create the account.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="hidden" aria-hidden="true">
               <input type="text" name="username" autoComplete="username" tabIndex={-1} />
-              <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                tabIndex={-1}
+              />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -457,7 +625,9 @@ export function PublicAuthModal({
                 <input
                   required
                   value={registerForm.firstName}
-                  onChange={(event) => setRegisterForm((current) => ({ ...current, firstName: event.target.value }))}
+                  onChange={(event) =>
+                    setRegisterForm((current) => ({ ...current, firstName: event.target.value }))
+                  }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
                 />
               </label>
@@ -467,7 +637,9 @@ export function PublicAuthModal({
                 <input
                   required
                   value={registerForm.lastName}
-                  onChange={(event) => setRegisterForm((current) => ({ ...current, lastName: event.target.value }))}
+                  onChange={(event) =>
+                    setRegisterForm((current) => ({ ...current, lastName: event.target.value }))
+                  }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
                 />
               </label>
@@ -484,9 +656,13 @@ export function PublicAuthModal({
                 spellCheck={false}
                 data-1p-ignore="true"
                 data-lpignore="true"
+                readOnly={mode === 'register-invitation'}
+                disabled={mode === 'register-invitation' && isInvitationContextLoading}
                 value={registerForm.email}
-                onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                onChange={(event) =>
+                  setRegisterForm((current) => ({ ...current, email: event.target.value }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 read-only:bg-slate-50"
               />
             </label>
 
@@ -502,13 +678,17 @@ export function PublicAuthModal({
                   data-1p-ignore="true"
                   data-lpignore="true"
                   value={registerForm.password}
-                  onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
+                  onChange={(event) =>
+                    setRegisterForm((current) => ({ ...current, password: event.target.value }))
+                  }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Confirm password</span>
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Confirm password
+                </span>
                 <input
                   required
                   minLength={8}
@@ -519,7 +699,10 @@ export function PublicAuthModal({
                   data-lpignore="true"
                   value={registerForm.confirmPassword}
                   onChange={(event) =>
-                    setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))
+                    setRegisterForm((current) => ({
+                      ...current,
+                      confirmPassword: event.target.value,
+                    }))
                   }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
                 />
@@ -528,19 +711,31 @@ export function PublicAuthModal({
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting ||
+                (mode === 'register-invitation' &&
+                  (isInvitationContextLoading || invitationContext === null))
+              }
               className="w-full rounded-lg bg-slate-900 px-4 py-2.5 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? 'Creating account...' : 'Register'}
+              {isSubmitting
+                ? 'Creating account...'
+                : mode === 'register-invitation'
+                  ? 'Create invited account'
+                  : 'Register'}
             </button>
           </form>
         ) : null}
 
         {mode === 'verify-email' ? (
           <form className="mt-6 space-y-4" onSubmit={(event) => void handleVerifySubmit(event)}>
-            <p className="text-sm text-slate-600">Enter the verification token sent to your email address.</p>
+            <p className="text-sm text-slate-600">
+              Enter the verification token sent to your email address.
+            </p>
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Verification token</span>
+              <span className="mb-1 block text-sm font-medium text-slate-700">
+                Verification token
+              </span>
               <input
                 required
                 value={verificationToken}
@@ -568,10 +763,11 @@ export function PublicAuthModal({
               </p>
             ) : null}
 
-            <form className="space-y-4" onSubmit={(event) => void handleResetPasswordRequest(event)}>
-              <p className="text-sm text-slate-600">
-                Request a reset token by email.
-              </p>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => void handleResetPasswordRequest(event)}
+            >
+              <p className="text-sm text-slate-600">Request a reset token by email.</p>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Email</span>
                 <input
@@ -600,9 +796,7 @@ export function PublicAuthModal({
               autoComplete="off"
               onSubmit={(event) => void handleResetPasswordConfirm(event)}
             >
-              <p className="text-sm text-slate-600">
-                Paste the token and choose a new password.
-              </p>
+              <p className="text-sm text-slate-600">Paste the token and choose a new password.</p>
               <div className="hidden" aria-hidden="true">
                 <input
                   type="email"

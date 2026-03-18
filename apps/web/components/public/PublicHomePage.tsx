@@ -142,8 +142,17 @@ function PublicHomePageContent() {
       params.delete('registered');
       params.delete('email');
       params.delete('token');
+      params.delete('invitationToken');
       params.delete('verified');
       params.delete('reset');
+      params.delete('invitationRegistered');
+      params.delete('inviterName');
+      params.delete('workspaceName');
+    }
+
+    if (mode !== 'register-invitation') {
+      params.delete('token');
+      params.delete('invitationToken');
     }
 
     if (extraParams) {
@@ -262,6 +271,7 @@ function normalizeAuthMode(value: string | null): AuthMode | null {
   if (
     value === 'login' ||
     value === 'register' ||
+    value === 'register-invitation' ||
     value === 'verify-email' ||
     value === 'reset-password'
   ) {
