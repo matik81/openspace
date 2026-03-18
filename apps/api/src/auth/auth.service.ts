@@ -17,7 +17,7 @@ import {
   UserStatus,
   WorkspaceRole,
   WorkspaceStatus,
-} from '@prisma/client';
+} from '../generated/prisma';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { OperationLimitsService } from '../common/operation-limits.service';
@@ -792,3 +792,4 @@ export class AuthService {
     return new Date(Date.now() + sevenDaysMs);
   }
 }
+

@@ -7,7 +7,7 @@ import {
   UserStatus,
   WorkspaceRole,
   WorkspaceStatus,
-} from '@prisma/client';
+} from '../../src/generated/prisma';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { EMAIL_PROVIDER, EmailProvider } from '../../src/auth/email/email-provider.interface';
@@ -1107,3 +1107,5 @@ describe('Workspace invitation flow integration', () => {
     });
   });
 });
+
+

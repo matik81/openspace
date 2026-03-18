@@ -16,7 +16,7 @@ import {
   UserStatus,
   WorkspaceRole,
   WorkspaceStatus,
-} from '@prisma/client';
+} from '../generated/prisma';
 import { compare } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { BackendPolicyService } from '../common/backend-policy.service';
@@ -1177,3 +1177,4 @@ export class WorkspacesService {
     return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
 }
+

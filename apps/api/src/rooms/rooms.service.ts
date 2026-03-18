@@ -17,7 +17,7 @@ import {
   UserStatus,
   WorkspaceRole,
   WorkspaceStatus,
-} from '@prisma/client';
+} from '../generated/prisma';
 import { compare } from 'bcryptjs';
 import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
@@ -448,3 +448,4 @@ export class RoomsService {
     return toLocalDateKey(cancelledAt, timezone) > selectedDateKey;
   }
 }
+

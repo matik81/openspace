@@ -12,3 +12,4 @@ apps/web/.env.local
 .private
 .chrome-dev-profile
 *.tsbuildinfo
+apps/api/src/generated/

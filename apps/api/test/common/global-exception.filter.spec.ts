@@ -1,5 +1,5 @@
 import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { PrismaClientKnownRequestError } from '@prisma/client-runtime-utils';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 
 function createHostMocks() {
@@ -51,7 +51,7 @@ describe('GlobalExceptionFilter', () => {
     const { host, status, json } = createHostMocks();
     const prismaError = new PrismaClientKnownRequestError('constraint', {
       code: 'P2002',
-      clientVersion: '5.22.0',
+      clientVersion: '7.4.2',
     });
 
     filter.catch(prismaError, host);

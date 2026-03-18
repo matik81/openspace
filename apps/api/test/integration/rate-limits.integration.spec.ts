@@ -4,7 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   RateLimitOperationType,
   RateLimitSubjectType,
-} from '@prisma/client';
+} from '../../src/generated/prisma';
 import { hashSync } from 'bcryptjs';
 import request from 'supertest';
 import {
@@ -34,7 +34,7 @@ describe('Rate limits integration', () => {
     process.env.NODE_ENV = 'test';
     process.env.API_PORT ??= '3001';
     process.env.DATABASE_URL ??=
-      'postgresql://openspace:openspace@localhost:5432/openspace?schema=public';
+      'postgresql://openspace:openspace@localhost:55432/openspace?schema=public';
     process.env.JWT_ACCESS_SECRET ??= '1234567890abcdef';
     process.env.JWT_REFRESH_SECRET ??= 'abcdef1234567890';
     process.env.JWT_ACCESS_TTL ??= '15m';
@@ -359,3 +359,5 @@ describe('Rate limits integration', () => {
     await expectUserSuspension(RateLimitOperationType.CREATE_BOOKING, user.id);
   });
 });
+
+

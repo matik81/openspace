@@ -17,7 +17,7 @@ import {
   RoomStatus,
   UserStatus,
   WorkspaceStatus,
-} from '@prisma/client';
+} from '../generated/prisma';
 import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
 import {
@@ -608,3 +608,4 @@ export class BookingsService {
     return Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
   }
 }
+

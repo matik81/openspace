@@ -1,8 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import bcryptjs from 'bcryptjs';
+import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 
 const { hash } = bcryptjs;
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require('../src/generated/prisma');
 
 const FULLSTACK_E2E = {
   credentials: {
@@ -53,7 +56,14 @@ const FULLSTACK_E2E = {
   timezone: 'Europe/Rome',
 };
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required');
+}
+
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
 function resolveSchemaName() {
   const match = /(?:\?|&)schema=([^&]+)/.exec(process.env.DATABASE_URL ?? '');

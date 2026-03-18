@@ -1,4 +1,4 @@
-import { BookingCriticality } from '@prisma/client';
+import { BookingCriticality } from '../../generated/prisma';
 
 export type CreateBookingDto = {
   roomId: string;
@@ -7,3 +7,5 @@ export type CreateBookingDto = {
   subject: string;
   criticality?: BookingCriticality;
 };
+
+

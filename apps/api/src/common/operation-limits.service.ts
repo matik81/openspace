@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import {
   RateLimitOperationType,
   RateLimitSubjectType,
-} from '@prisma/client';
+} from '../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackendPolicyService } from './backend-policy.service';
 
@@ -218,3 +218,4 @@ export class OperationLimitsService {
     }
   }
 }
+
