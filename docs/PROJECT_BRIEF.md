@@ -12,14 +12,15 @@ Registration fields:
 After registration:
 
 - the system creates or reactivates the user account
-- `emailVerifiedAt` remains `null` until verification
-- a verification token is issued
+- `emailVerifiedAt` remains `null` until verification unless registration is completed with a valid invitation token
+- a verification token is issued unless registration is completed with a valid invitation token
 - login remains blocked until email verification succeeds
 
 Repeated registration rules:
 
 - if the email belongs to an active verified user, registration is rejected
 - if the email belongs to an active unverified user, the same user record is updated and a new verification token is issued
+- if registration is completed with a valid invitation token, the invited email is verified immediately
 - previous unconsumed verification tokens for that user are invalidated when registration restarts
 
 Reactivation rules:
@@ -83,6 +84,15 @@ Rules:
 ## 3. Invitations and Visibility
 
 Admins invite users by email.
+
+Invitation onboarding rules:
+
+- if the invited email does not already belong to an active verified account, OpenSpace sends an invitation-registration email
+- the email explains that the user was invited to a specific workspace by a specific inviter
+- the email briefly describes OpenSpace as a meeting-room booking tool
+- the email carries a direct invitation registration link and token
+- registration with a valid invitation token verifies the invited email immediately
+- the workspace invitation itself remains pending until the authenticated verified user accepts or rejects it
 
 Invitation fields:
 
@@ -186,7 +196,7 @@ Suspension behavior:
 
 Implemented frontend flows:
 
-- public auth pages and modal states for login, registration, email verification, and password reset
+- public auth pages and modal states for login, registration, invitation registration, email verification, and password reset
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
 - workspace shell for booking management, room filtering, and workspace reordering
 - admin pages for workspace settings, invitations, member list, room management, and destructive confirmations

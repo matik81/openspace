@@ -24,6 +24,7 @@ The API integration suite currently covers:
 - email verification flow
 - registration restart for active unverified accounts with verification token rotation
 - cancelled account reactivation on register
+- invitation-based registration with automatic email verification
 - account update flow
 - password reset request flow
 - password reset confirmation flow
@@ -52,6 +53,7 @@ The web test suite currently includes:
 - Vitest with `happy-dom` for component and utility tests
 - Playwright `e2e-mock` suites that run against the Next.js app with mocked backend behavior
 - Playwright `e2e-fullstack` suites that boot the real API and web apps against PostgreSQL
+- public auth coverage includes both standard registration and invitation registration flows
 
 Current note:
 

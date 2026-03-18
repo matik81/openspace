@@ -32,8 +32,11 @@ Main areas:
 Notes:
 
 - Invitation flows are implemented inside the workspace domain rather than as a standalone NestJS module.
+- Inviting an email without a verified active account sends an invitation-to-register email with workspace and inviter context plus a reusable invitation token.
+- Invitation registration context is exposed from the auth domain so public registration can validate invitation deep links.
 - The API bootstrap applies the global `/api` prefix and the shared JSON error filter.
 - Email verification state is embedded in access-token claims and rechecked for workspace access.
+- A valid invitation registration token can auto-verify the invited email during registration without issuing a second verification email.
 - Refresh tokens are hashed and stored on the `User` record.
 - Rate-limit tracking and suspensions are persisted in PostgreSQL.
 - Account deletion is logical and cascades domain-side logical cancellations where required.
@@ -99,6 +102,8 @@ Server-side web proxy routes under `apps/web/app/api` forward browser requests t
 Current auth and session lifecycle:
 
 - login stores access and refresh tokens in HTTP-only cookies
+- invitation registration can deep-link into the public auth modal and pre-validate the invitation token before submit
+- a successful invitation registration verifies the invited email immediately and routes the user back to login instead of the standalone verify-email step
 - authenticated web proxy routes retry once on `401` after calling `/api/auth/refresh`
 - logout calls backend `/api/auth/logout` and then clears cookies locally
 - `OPENSPACE_API_BASE_URL` controls the backend origin and falls back to `http://localhost:3001` in local development
