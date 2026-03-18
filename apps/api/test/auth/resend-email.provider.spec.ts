@@ -56,13 +56,13 @@ describe('ResendEmailProvider', () => {
       }),
     );
     expect(sentEmail.text).toContain(
-      'https://openspaceapp.io/verify-email?token=verification-token&email=User%2Btest%40example.com',
+      'https://openspaceapp.io/verify-email?token=verification-token',
     );
     expect(sentEmail.text).toContain(
       'If needed, copy and paste the following token into the email verification form in OpenSpace:\n\nverification-token',
     );
     expect(sentEmail.html).toContain(
-      'href="https://openspaceapp.io/verify-email?token=verification-token&amp;email=User%2Btest%40example.com"',
+      'href="https://openspaceapp.io/verify-email?token=verification-token"',
     );
     expect(sentEmail.html).toContain(
       'If needed, copy and paste the following token into the email verification form in OpenSpace:',
@@ -115,7 +115,7 @@ describe('ResendEmailProvider', () => {
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining(
-          'https://openspaceapp.io/app/verify-email?token=verification-token&email=user%40example.com',
+          'https://openspaceapp.io/app/verify-email?token=verification-token',
         ),
       }),
     );

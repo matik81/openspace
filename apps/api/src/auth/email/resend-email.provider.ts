@@ -104,7 +104,6 @@ export class ResendEmailProvider implements EmailProvider {
   private buildVerificationUrl(payload: VerificationEmailPayload): string {
     const url = new URL('verify-email', this.webBaseUrl);
     url.searchParams.set('token', payload.token);
-    url.searchParams.set('email', payload.to);
     return url.toString();
   }
 
