@@ -102,6 +102,37 @@ describe('ResendEmailProvider', () => {
     expect(sentEmail.html).toContain('<code>reset-token</code>');
   });
 
+  it('sends a clickable invitation registration link pointing to the register route', async () => {
+    const provider = new ResendEmailProvider(createConfigService());
+
+    await provider.sendWorkspaceInvitationEmail({
+      to: 'invitee@example.com',
+      invitationToken: 'invite-token',
+      workspaceName: 'Engineering',
+      inviterName: 'Ada Lovelace',
+    });
+
+    const sentEmail = mockSend.mock.calls[0]?.[0];
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: 'OpenSpace <noreply@openspaceapp.io>',
+        to: 'invitee@example.com',
+        subject: 'You were invited to Engineering on OpenSpace',
+      }),
+    );
+    expect(sentEmail.text).toContain(
+      'https://openspaceapp.io/register?invitationToken=invite-token',
+    );
+    expect(sentEmail.text).toContain(
+      'Ada Lovelace invited you to join the workspace Engineering on OpenSpace.',
+    );
+    expect(sentEmail.html).toContain(
+      'href="https://openspaceapp.io/register?invitationToken=invite-token"',
+    );
+    expect(sentEmail.html).toContain('<code>invite-token</code>');
+  });
+
   it('preserves a configured path prefix in generated links', async () => {
     const provider = new ResendEmailProvider(
       createConfigService({ WEB_BASE_URL: 'https://openspaceapp.io/app/' }),
@@ -116,6 +147,27 @@ describe('ResendEmailProvider', () => {
       expect.objectContaining({
         text: expect.stringContaining(
           'https://openspaceapp.io/app/verify-email?token=verification-token',
+        ),
+      }),
+    );
+  });
+
+  it('preserves a configured path prefix in invitation registration links', async () => {
+    const provider = new ResendEmailProvider(
+      createConfigService({ WEB_BASE_URL: 'https://openspaceapp.io/app/' }),
+    );
+
+    await provider.sendWorkspaceInvitationEmail({
+      to: 'invitee@example.com',
+      invitationToken: 'invite-token',
+      workspaceName: 'Engineering',
+      inviterName: 'Ada Lovelace',
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          'https://openspaceapp.io/app/register?invitationToken=invite-token',
         ),
       }),
     );

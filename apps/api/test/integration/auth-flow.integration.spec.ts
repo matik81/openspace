@@ -92,6 +92,10 @@ function createPrismaMock(): PrismaService {
         return user;
       }),
     },
+    invitation: {
+      findFirst: jest.fn(async () => null),
+      update: jest.fn(async () => undefined),
+    },
     emailVerificationToken: {
       create: jest.fn(async ({ data }: { data: Partial<MockVerificationToken> }) => {
         const record: MockVerificationToken = {
@@ -258,6 +262,7 @@ describe('Auth flow integration', () => {
     sendPasswordResetEmail: jest.fn(async ({ token }) => {
       sentPasswordResetToken = token;
     }),
+    sendWorkspaceInvitationEmail: jest.fn(async () => undefined),
   };
   const operationLimitsServiceMock: Partial<OperationLimitsService> = {
     assertRegistrationAllowed: jest.fn(async () => undefined),

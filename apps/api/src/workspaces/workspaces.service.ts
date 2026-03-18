@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
 import { isBookingWithinAllowedHours, isSingleLocalDay } from '../common/workspace-time';
 import { PrismaService } from '../prisma/prisma.service';
+import { EMAIL_PROVIDER, EmailProvider } from '../auth/email/email-provider.interface';
 import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
@@ -31,7 +33,7 @@ import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dt
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 type AuthUser = { userId: string };
-type VerifiedUser = { id: string; email: string };
+type VerifiedUser = { id: string; email: string; firstName: string; lastName: string };
 
 @Injectable()
 export class WorkspacesService {
@@ -42,6 +44,7 @@ export class WorkspacesService {
     private readonly prismaService: PrismaService,
     private readonly backendPolicyService: BackendPolicyService,
     private readonly operationLimitsService: OperationLimitsService,
+    @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
   ) {}
 
   async createWorkspace(authUser: AuthUser, dto: CreateWorkspaceDto) {
@@ -452,7 +455,7 @@ export class WorkspacesService {
     const now = new Date();
 
     await this.expirePendingInvitations(now, { workspaceId: normalizedWorkspaceId, email });
-    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+    const workspace = await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
     await this.operationLimitsService.assertUserOperationAllowed(
       user.id,
       RateLimitOperationType.CREATE_INVITATION,
@@ -461,7 +464,7 @@ export class WorkspacesService {
 
     const existingUser = await this.prismaService.user.findUnique({
       where: { email },
-      select: { id: true, status: true },
+      select: { id: true, status: true, emailVerifiedAt: true },
     });
     if (existingUser?.status === UserStatus.CANCELLED) {
       throw new ConflictException({
@@ -502,11 +505,12 @@ export class WorkspacesService {
       });
     }
 
+    const invitationToken = this.generateOpaqueToken();
     const invitation = await this.prismaService.invitation.create({
       data: {
         workspaceId: normalizedWorkspaceId,
         email,
-        tokenHash: this.hashToken(this.generateOpaqueToken()),
+        tokenHash: this.hashToken(invitationToken),
         status: InvitationStatus.PENDING,
         expiresAt: this.buildInvitationExpiration(),
         invitedByUserId: user.id,
@@ -521,6 +525,23 @@ export class WorkspacesService {
         createdAt: true,
       },
     });
+
+    if (!existingUser || !existingUser.emailVerifiedAt) {
+      try {
+        await this.emailProvider.sendWorkspaceInvitationEmail({
+          to: email,
+          invitationToken,
+          workspaceName: workspace.name,
+          inviterName: this.formatDisplayName(user),
+        });
+      } catch (error) {
+        await this.prismaService.invitation.update({
+          where: { id: invitation.id },
+          data: { status: InvitationStatus.REVOKED },
+        });
+        throw error;
+      }
+    }
 
     await this.operationLimitsService.recordUserOperation(
       user.id,
@@ -843,7 +864,14 @@ export class WorkspacesService {
   private async requireVerifiedUser(userId: string): Promise<VerifiedUser> {
     const user = await this.prismaService.user.findUnique({
       where: { id: this.requireUuid(userId, 'userId') },
-      select: { id: true, email: true, status: true, emailVerifiedAt: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        status: true,
+        emailVerifiedAt: true,
+      },
     });
     if (!user) {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Invalid access token' });
@@ -860,7 +888,12 @@ export class WorkspacesService {
         message: 'Email must be verified before accessing workspaces',
       });
     }
-    return { id: user.id, email: this.normalizeEmail(user.email) };
+    return {
+      id: user.id,
+      email: this.normalizeEmail(user.email),
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
   }
 
   private async assertWorkspaceAdmin(workspaceId: string, user: VerifiedUser) {
@@ -1175,6 +1208,11 @@ export class WorkspacesService {
 
   private buildInvitationExpiration(): Date {
     return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  private formatDisplayName(user: Pick<VerifiedUser, 'firstName' | 'lastName' | 'email'>): string {
+    const fullName = `${user.firstName} ${user.lastName}`.trim();
+    return fullName.length > 0 ? fullName : user.email;
   }
 }
 

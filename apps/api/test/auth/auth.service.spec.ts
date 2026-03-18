@@ -45,6 +45,10 @@ function createPrismaService(): PrismaService {
       create: jest.fn(),
       update: jest.fn(),
     },
+    invitation: {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
     emailVerificationToken: {
       create: jest.fn(),
       findFirst: jest.fn(),
@@ -67,13 +71,18 @@ function createPrismaService(): PrismaService {
   } as unknown as PrismaService;
 }
 
+function createEmailProvider(): EmailProvider {
+  return {
+    sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    sendWorkspaceInvitationEmail: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe('AuthService', () => {
   it('registers a new user and sends verification email', async () => {
     const prismaService = createPrismaService();
-    const emailProvider: EmailProvider = {
-      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-    };
+    const emailProvider = createEmailProvider();
 
     (prismaService.user.findUnique as jest.Mock).mockResolvedValue(null);
     (prismaService.user.create as jest.Mock).mockResolvedValue({
@@ -112,6 +121,80 @@ describe('AuthService', () => {
     });
   });
 
+  it('registers with an invitation token and verifies the email immediately', async () => {
+    const prismaService = createPrismaService();
+    const emailProvider = createEmailProvider();
+    const verifiedAt = new Date('2026-03-18T10:00:00.000Z');
+    const transactionDelegates = {
+      user: {
+        update: jest.fn(),
+        create: jest.fn().mockResolvedValue({
+          id: 'invited-user-id',
+          email: 'invitee@example.com',
+        }),
+      },
+      emailVerificationToken: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+
+    (prismaService.invitation.findFirst as jest.Mock).mockResolvedValue({
+      id: 'invitation-id',
+      email: 'invitee@example.com',
+      expiresAt: new Date('2026-03-25T10:00:00.000Z'),
+      workspace: {
+        name: 'Engineering',
+        status: 'ACTIVE',
+      },
+      invitedByUser: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      },
+    });
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue(null);
+    (prismaService.$transaction as jest.Mock).mockImplementation(
+      async (callback: (tx: typeof transactionDelegates) => Promise<unknown>) =>
+        callback(transactionDelegates),
+    );
+
+    jest.useFakeTimers().setSystemTime(verifiedAt);
+
+    const service = new AuthService(
+      prismaService,
+      new JwtService(),
+      createConfigService(),
+      createOperationLimitsService(),
+      emailProvider,
+    );
+
+    const result = await service.register({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'invitee@example.com',
+      password: 'strong-password',
+      invitationToken: 'invitation-token',
+    });
+
+    expect(prismaService.invitation.findFirst).toHaveBeenCalled();
+    expect(transactionDelegates.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: 'invitee@example.com',
+          emailVerifiedAt: verifiedAt,
+        }),
+      }),
+    );
+    expect(transactionDelegates.emailVerificationToken.updateMany).toHaveBeenCalled();
+    expect(emailProvider.sendVerificationEmail).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      id: 'invited-user-id',
+      email: 'invitee@example.com',
+      requiresEmailVerification: false,
+    });
+
+    jest.useRealTimers();
+  });
+
   it('blocks login when email is not verified', async () => {
     const prismaService = createPrismaService();
     (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
@@ -128,10 +211,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(
@@ -155,10 +235,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(service.verifyEmail({ token: 'invalid' })).rejects.toThrow(
@@ -168,10 +245,7 @@ describe('AuthService', () => {
 
   it('reactivates a cancelled user on registration with the same email', async () => {
     const prismaService = createPrismaService();
-    const emailProvider: EmailProvider = {
-      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-    };
+    const emailProvider = createEmailProvider();
     const transactionDelegates = {
       user: {
         update: jest.fn().mockResolvedValue({
@@ -231,10 +305,7 @@ describe('AuthService', () => {
 
   it('restarts registration for an active user whose email is not verified', async () => {
     const prismaService = createPrismaService();
-    const emailProvider: EmailProvider = {
-      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-    };
+    const emailProvider = createEmailProvider();
     const transactionDelegates = {
       user: {
         update: jest.fn().mockResolvedValue({
@@ -308,10 +379,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(
@@ -349,10 +417,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     const result = await service.updateAccount(
@@ -397,10 +462,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(
@@ -435,10 +497,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(
@@ -507,10 +566,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       createOperationLimitsService(),
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     const loginResult = await service.login({
@@ -536,10 +592,7 @@ describe('AuthService', () => {
   it('requests a password reset without failing for an active verified user', async () => {
     const prismaService = createPrismaService();
     const operationLimitsService = createOperationLimitsService();
-    const emailProvider: EmailProvider = {
-      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-    };
+    const emailProvider = createEmailProvider();
     const transactionDelegates = {
       passwordResetToken: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -599,10 +652,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       operationLimitsService,
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(service.requestPasswordReset({ email: 'user@example.com' })).rejects.toBe(
@@ -638,10 +688,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       operationLimitsService,
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     const result = await service.resetPassword({
@@ -678,10 +725,7 @@ describe('AuthService', () => {
       new JwtService(),
       createConfigService(),
       operationLimitsService,
-      {
-        sendVerificationEmail: jest.fn(),
-        sendPasswordResetEmail: jest.fn(),
-      },
+      createEmailProvider(),
     );
 
     await expect(

@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import {
   BookingCancellationReason,
   BookingStatus,
+  InvitationStatus,
   MembershipStatus,
   User,
   UserStatus,
@@ -39,6 +40,11 @@ type AuthTokenPair = {
 };
 
 type JwtBaseSubject = Omit<JwtSubject, 'tokenType'>;
+type RegisterResult = {
+  id: string;
+  email: string;
+  requiresEmailVerification: boolean;
+};
 
 @Injectable()
 export class AuthService {
@@ -50,118 +56,34 @@ export class AuthService {
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{
-    id: string;
-    email: string;
-    requiresEmailVerification: true;
-  }> {
+  async register(dto: RegisterDto): Promise<RegisterResult> {
     return this.registerWithContext(dto, { ipAddress: 'unknown' });
   }
 
-  async registerWithContext(
-    dto: RegisterDto,
-    context: { ipAddress: string },
-  ): Promise<{
-    id: string;
-    email: string;
-    requiresEmailVerification: true;
-  }> {
+  async registerWithContext(dto: RegisterDto, context: { ipAddress: string }): Promise<RegisterResult> {
     await this.operationLimitsService.assertRegistrationAllowed(context.ipAddress);
-    const firstName = this.requireString(dto.firstName, 'firstName');
-    const lastName = this.requireString(dto.lastName, 'lastName');
-    const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const invitationToken = this.optionalString(dto.invitationToken);
 
-    if (password.length < 8) {
-      throw new BadRequestException({
-        code: 'WEAK_PASSWORD',
-        message: 'Password must be at least 8 characters',
-      });
+    if (invitationToken) {
+      return this.registerWithInvitation(dto, invitationToken, context);
     }
 
-    const existingUser = await this.prismaService.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        status: true,
-        emailVerifiedAt: true,
-      },
-    });
+    return this.registerWithEmailVerification(dto, context);
+  }
 
-    if (existingUser?.status === UserStatus.ACTIVE && existingUser.emailVerifiedAt) {
-      throw new ConflictException({
-        code: 'USER_ALREADY_EXISTS',
-        message: 'A user with this email already exists',
-      });
-    }
-
-    const passwordHash = await hash(password, 12);
-    const verificationToken = this.generateOpaqueToken();
-    const verificationTokenCreatedAt = new Date();
-    const user = await this.prismaService.$transaction(async (tx) => {
-      const persistedUser =
-        existingUser
-          ? await tx.user.update({
-              where: { id: existingUser.id },
-              data: {
-                firstName,
-                lastName,
-                passwordHash,
-                status: UserStatus.ACTIVE,
-                cancelledAt: null,
-                emailVerifiedAt: null,
-                refreshTokenHash: null,
-                refreshTokenExpiresAt: null,
-              },
-              select: {
-                id: true,
-                email: true,
-              },
-            })
-          : await tx.user.create({
-              data: {
-                firstName,
-                lastName,
-                email,
-                passwordHash,
-              },
-              select: {
-                id: true,
-                email: true,
-              },
-            });
-
-      await tx.emailVerificationToken.updateMany({
-        where: {
-          userId: persistedUser.id,
-          consumedAt: null,
-        },
-        data: {
-          consumedAt: verificationTokenCreatedAt,
-        },
-      });
-
-      await tx.emailVerificationToken.create({
-        data: {
-          userId: persistedUser.id,
-          tokenHash: this.hashToken(verificationToken),
-          expiresAt: this.buildEmailVerificationExpiration(),
-        },
-      });
-
-      return persistedUser;
-    });
-
-    await this.emailProvider.sendVerificationEmail({
-      to: user.email,
-      token: verificationToken,
-    });
-    await this.operationLimitsService.recordRegistration(context.ipAddress);
+  async getInvitationRegistrationContext(token: string): Promise<{
+    email: string;
+    workspaceName: string;
+    inviterName: string;
+    expiresAt: Date;
+  }> {
+    const invitation = await this.findInvitationRegistrationContext(token);
 
     return {
-      id: user.id,
-      email: user.email,
-      requiresEmailVerification: true,
+      email: invitation.email,
+      workspaceName: invitation.workspaceName,
+      inviterName: invitation.inviterName,
+      expiresAt: invitation.expiresAt,
     };
   }
 
@@ -750,8 +672,283 @@ export class AuthService {
     return value.trim();
   }
 
+  private async registerWithEmailVerification(
+    dto: RegisterDto,
+    context: { ipAddress: string },
+  ): Promise<RegisterResult> {
+    const firstName = this.requireString(dto.firstName, 'firstName');
+    const lastName = this.requireString(dto.lastName, 'lastName');
+    const email = this.normalizeEmail(dto.email);
+    const password = this.requirePassword(dto.password);
+
+    const existingUser = await this.prismaService.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        status: true,
+        emailVerifiedAt: true,
+      },
+    });
+
+    if (existingUser?.status === UserStatus.ACTIVE && existingUser.emailVerifiedAt) {
+      throw new ConflictException({
+        code: 'USER_ALREADY_EXISTS',
+        message: 'A user with this email already exists',
+      });
+    }
+
+    const passwordHash = await hash(password, 12);
+    const verificationToken = this.generateOpaqueToken();
+    const verificationTokenCreatedAt = new Date();
+    const user = await this.prismaService.$transaction(async (tx) => {
+      const persistedUser =
+        existingUser
+          ? await tx.user.update({
+              where: { id: existingUser.id },
+              data: {
+                firstName,
+                lastName,
+                passwordHash,
+                status: UserStatus.ACTIVE,
+                cancelledAt: null,
+                emailVerifiedAt: null,
+                refreshTokenHash: null,
+                refreshTokenExpiresAt: null,
+              },
+              select: {
+                id: true,
+                email: true,
+              },
+            })
+          : await tx.user.create({
+              data: {
+                firstName,
+                lastName,
+                email,
+                passwordHash,
+              },
+              select: {
+                id: true,
+                email: true,
+              },
+            });
+
+      await tx.emailVerificationToken.updateMany({
+        where: {
+          userId: persistedUser.id,
+          consumedAt: null,
+        },
+        data: {
+          consumedAt: verificationTokenCreatedAt,
+        },
+      });
+
+      await tx.emailVerificationToken.create({
+        data: {
+          userId: persistedUser.id,
+          tokenHash: this.hashToken(verificationToken),
+          expiresAt: this.buildEmailVerificationExpiration(),
+        },
+      });
+
+      return persistedUser;
+    });
+
+    await this.emailProvider.sendVerificationEmail({
+      to: user.email,
+      token: verificationToken,
+    });
+    await this.operationLimitsService.recordRegistration(context.ipAddress);
+
+    return {
+      id: user.id,
+      email: user.email,
+      requiresEmailVerification: true,
+    };
+  }
+
+  private async registerWithInvitation(
+    dto: RegisterDto,
+    invitationToken: string,
+    context: { ipAddress: string },
+  ): Promise<RegisterResult> {
+    const invitation = await this.findInvitationRegistrationContext(invitationToken);
+    const firstName = this.requireString(dto.firstName, 'firstName');
+    const lastName = this.requireString(dto.lastName, 'lastName');
+    const password = this.requirePassword(dto.password);
+    const providedEmail = this.optionalEmail(dto.email);
+
+    if (providedEmail && providedEmail !== invitation.email) {
+      throw new BadRequestException({
+        code: 'INVITATION_EMAIL_MISMATCH',
+        message: 'Invitation email must match the invited email address',
+      });
+    }
+
+    const existingUser = await this.prismaService.user.findUnique({
+      where: { email: invitation.email },
+      select: {
+        id: true,
+        status: true,
+        emailVerifiedAt: true,
+      },
+    });
+
+    if (existingUser?.status === UserStatus.ACTIVE && existingUser.emailVerifiedAt) {
+      throw new ConflictException({
+        code: 'USER_ALREADY_EXISTS',
+        message: 'A user with this email already exists',
+      });
+    }
+
+    const passwordHash = await hash(password, 12);
+    const verifiedAt = new Date();
+    const user = await this.prismaService.$transaction(async (tx) => {
+      const persistedUser =
+        existingUser
+          ? await tx.user.update({
+              where: { id: existingUser.id },
+              data: {
+                firstName,
+                lastName,
+                passwordHash,
+                status: UserStatus.ACTIVE,
+                cancelledAt: null,
+                emailVerifiedAt: verifiedAt,
+                refreshTokenHash: null,
+                refreshTokenExpiresAt: null,
+              },
+              select: {
+                id: true,
+                email: true,
+              },
+            })
+          : await tx.user.create({
+              data: {
+                firstName,
+                lastName,
+                email: invitation.email,
+                passwordHash,
+                emailVerifiedAt: verifiedAt,
+              },
+              select: {
+                id: true,
+                email: true,
+              },
+            });
+
+      await tx.emailVerificationToken.updateMany({
+        where: {
+          userId: persistedUser.id,
+          consumedAt: null,
+        },
+        data: {
+          consumedAt: verifiedAt,
+        },
+      });
+
+      return persistedUser;
+    });
+
+    await this.operationLimitsService.recordRegistration(context.ipAddress);
+
+    return {
+      id: user.id,
+      email: user.email,
+      requiresEmailVerification: false,
+    };
+  }
+
+  private async findInvitationRegistrationContext(token: string): Promise<{
+    id: string;
+    email: string;
+    workspaceName: string;
+    inviterName: string;
+    expiresAt: Date;
+  }> {
+    const invitationToken = this.requireString(token, 'token');
+    const now = new Date();
+    const invitation = await this.prismaService.invitation.findFirst({
+      where: {
+        tokenHash: this.hashToken(invitationToken),
+        status: InvitationStatus.PENDING,
+      },
+      select: {
+        id: true,
+        email: true,
+        expiresAt: true,
+        workspace: {
+          select: {
+            name: true,
+            status: true,
+          },
+        },
+        invitedByUser: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    if (!invitation || invitation.workspace.status !== WorkspaceStatus.ACTIVE) {
+      throw new BadRequestException({
+        code: 'INVALID_INVITATION_TOKEN',
+        message: 'Invitation token is invalid',
+      });
+    }
+
+    if (invitation.expiresAt <= now) {
+      await this.prismaService.invitation.update({
+        where: { id: invitation.id },
+        data: { status: InvitationStatus.EXPIRED },
+      });
+      throw new ConflictException({
+        code: 'INVITATION_EXPIRED',
+        message: 'Invitation has expired',
+      });
+    }
+
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      workspaceName: invitation.workspace.name,
+      inviterName: this.formatDisplayName(invitation.invitedByUser),
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
   private normalizeEmail(value: string | undefined | null): string {
     return this.requireString(value, 'email').toLowerCase();
+  }
+
+  private optionalEmail(value: string | undefined | null): string | null {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return null;
+    }
+
+    return this.normalizeEmail(value);
+  }
+
+  private optionalString(value: string | undefined | null): string | null {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return null;
+    }
+
+    return value.trim();
+  }
+
+  private requirePassword(value: string | undefined | null): string {
+    const password = this.requireString(value, 'password');
+    if (password.length < 8) {
+      throw new BadRequestException({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters',
+      });
+    }
+
+    return password;
   }
 
   private requireUuid(value: string | undefined | null, fieldName: string): string {
@@ -790,6 +987,11 @@ export class AuthService {
   private buildRefreshExpirationFallback(): Date {
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     return new Date(Date.now() + sevenDaysMs);
+  }
+
+  private formatDisplayName(user: { firstName: string; lastName: string }): string {
+    const fullName = `${user.firstName} ${user.lastName}`.trim();
+    return fullName.length > 0 ? fullName : 'OpenSpace admin';
   }
 }
 

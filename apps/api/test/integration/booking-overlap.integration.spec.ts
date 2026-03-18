@@ -21,6 +21,7 @@ describe('Booking overlap integration', () => {
       verificationTokensByEmail[to.toLowerCase()] = token;
     }),
     sendPasswordResetEmail: jest.fn(async () => undefined),
+    sendWorkspaceInvitationEmail: jest.fn(async () => undefined),
   };
   const password = 'strong-password';
   const futureDateIso = (daysAhead: number, hour: number, minute = 0) => {

@@ -155,7 +155,7 @@ function createPrismaMock(): PrismaService {
             email: (data.email as string).toLowerCase(),
             passwordHash: data.passwordHash as string,
             status: UserStatus.ACTIVE,
-            emailVerifiedAt: null,
+            emailVerifiedAt: (data.emailVerifiedAt as Date | null | undefined) ?? null,
             refreshTokenHash: null,
             refreshTokenExpiresAt: null,
             createdAt: now,
@@ -490,6 +490,7 @@ function createPrismaMock(): PrismaService {
           where: {
             workspaceId?: string;
             email?: string;
+            tokenHash?: string;
             status?: InvitationStatus;
             expiresAt?: { gt: Date };
           };
@@ -501,6 +502,9 @@ function createPrismaMock(): PrismaService {
                 return false;
               }
               if (where.email && item.email !== where.email) {
+                return false;
+              }
+              if (where.tokenHash && item.tokenHash !== where.tokenHash) {
                 return false;
               }
               if (where.status && item.status !== where.status) {
@@ -516,10 +520,26 @@ function createPrismaMock(): PrismaService {
             return null;
           }
 
-          return selectRecord(
-            invitation as unknown as Record<string, unknown>,
-            select,
-          );
+          const base = selectRecord(invitation as unknown as Record<string, unknown>, select);
+          const workspace = workspaces.find((item) => item.id === invitation.workspaceId) ?? null;
+          const invitedByUser =
+            users.find((item) => item.id === invitation.invitedByUserId) ?? null;
+
+          if (select && 'workspace' in select && workspace) {
+            (base as Record<string, unknown>).workspace = selectRecord(
+              workspace as unknown as Record<string, unknown>,
+              (select.workspace as { select: Record<string, unknown> }).select,
+            );
+          }
+
+          if (select && 'invitedByUser' in select && invitedByUser) {
+            (base as Record<string, unknown>).invitedByUser = selectRecord(
+              invitedByUser as unknown as Record<string, unknown>,
+              (select.invitedByUser as { select: Record<string, unknown> }).select,
+            );
+          }
+
+          return base;
         },
       ),
       findMany: jest.fn(
@@ -815,11 +835,15 @@ describe('Workspace invitation flow integration', () => {
   let appModule: { AppModule: unknown };
   const prismaMock = createPrismaMock();
   const verificationTokensByEmail: Record<string, string> = {};
+  const invitationTokensByEmail: Record<string, string> = {};
   const emailProviderMock: EmailProvider = {
     sendVerificationEmail: jest.fn(async ({ to, token }) => {
       verificationTokensByEmail[to.toLowerCase()] = token;
     }),
     sendPasswordResetEmail: jest.fn(async () => undefined),
+    sendWorkspaceInvitationEmail: jest.fn(async ({ to, invitationToken }) => {
+      invitationTokensByEmail[to.toLowerCase()] = invitationToken;
+    }),
   };
   const operationLimitsServiceMock: Partial<OperationLimitsService> = {
     assertRegistrationAllowed: jest.fn(async () => undefined),
@@ -903,6 +927,81 @@ describe('Workspace invitation flow integration', () => {
     expect(response.status).toBe(201);
     return response.body.accessToken as string;
   }
+
+  it('supports invitation-based registration with automatic email verification', async () => {
+    const adminEmail = 'admin-invite-register@example.com';
+    const inviteeEmail = 'invite-register@example.com';
+
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Invitation Onboarding',
+        timezone: 'Europe/Rome',
+      });
+
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const inviteResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: inviteeEmail,
+      });
+
+    expect(inviteResponse.status).toBe(201);
+    const invitationToken = invitationTokensByEmail[inviteeEmail];
+    expect(invitationToken).toEqual(expect.any(String));
+
+    const invitationContextResponse = await request(app.getHttpServer())
+      .get('/api/auth/register-invitation')
+      .query({ token: invitationToken });
+
+    expect(invitationContextResponse.status).toBe(200);
+    expect(invitationContextResponse.body).toMatchObject({
+      email: inviteeEmail,
+      workspaceName: 'Invitation Onboarding',
+      inviterName: 'User Example',
+    });
+
+    const registerResponse = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        firstName: 'Invited',
+        lastName: 'Member',
+        email: inviteeEmail,
+        password,
+        invitationToken,
+      });
+
+    expect(registerResponse.status).toBe(201);
+    expect(registerResponse.body).toMatchObject({
+      email: inviteeEmail,
+      requiresEmailVerification: false,
+    });
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: inviteeEmail,
+      password,
+    });
+
+    expect(loginResponse.status).toBe(201);
+
+    const visibleWorkspacesResponse = await request(app.getHttpServer())
+      .get('/api/workspaces')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`);
+
+    expect(visibleWorkspacesResponse.status).toBe(200);
+    expect(visibleWorkspacesResponse.body.items).toHaveLength(1);
+    expect(visibleWorkspacesResponse.body.items[0].invitation).toMatchObject({
+      email: inviteeEmail,
+      status: 'PENDING',
+    });
+  });
 
   it('supports create/list/invite/accept and blocks non-visible users', async () => {
     const adminEmail = 'admin-1@example.com';

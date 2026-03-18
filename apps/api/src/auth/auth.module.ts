@@ -37,6 +37,6 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         }),
     },
   ],
-  exports: [AuthService, JwtModule, PassportModule],
+  exports: [AuthService, JwtModule, PassportModule, EMAIL_PROVIDER],
 })
 export class AuthModule {}

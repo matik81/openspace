@@ -10,7 +10,15 @@ export type PasswordResetEmailPayload = {
   token: string;
 };
 
+export type WorkspaceInvitationEmailPayload = {
+  to: string;
+  invitationToken: string;
+  workspaceName: string;
+  inviterName: string;
+};
+
 export interface EmailProvider {
   sendVerificationEmail(payload: VerificationEmailPayload): Promise<void>;
   sendPasswordResetEmail(payload: PasswordResetEmailPayload): Promise<void>;
+  sendWorkspaceInvitationEmail(payload: WorkspaceInvitationEmailPayload): Promise<void>;
 }

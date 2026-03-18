@@ -9,6 +9,7 @@ import {
   EmailProvider,
   PasswordResetEmailPayload,
   VerificationEmailPayload,
+  WorkspaceInvitationEmailPayload,
 } from './email-provider.interface';
 
 @Injectable()
@@ -68,6 +69,31 @@ export class ResendEmailProvider implements EmailProvider {
     });
   }
 
+  async sendWorkspaceInvitationEmail(payload: WorkspaceInvitationEmailPayload): Promise<void> {
+    const invitationRegistrationUrl = this.buildInvitationRegistrationUrl(payload);
+
+    await this.sendEmail({
+      to: payload.to,
+      subject: `You were invited to ${payload.workspaceName} on OpenSpace`,
+      html: [
+        `<p>${this.escapeHtml(payload.inviterName)} invited you to join the workspace <strong>${this.escapeHtml(payload.workspaceName)}</strong> on OpenSpace.</p>`,
+        '<p>OpenSpace is a tool for booking meeting rooms.</p>',
+        '<p>Create your account from this link. The invitation token in the link will confirm your email automatically, so no separate verification email is required.</p>',
+        `<p><a href="${this.escapeHtml(invitationRegistrationUrl)}">${this.escapeHtml(invitationRegistrationUrl)}</a></p>`,
+        '<p>If needed, copy and paste the following invitation token into the invitation registration form in OpenSpace:</p>',
+        `<p><code>${this.escapeHtml(payload.invitationToken)}</code></p>`,
+      ].join(''),
+      text: [
+        `${payload.inviterName} invited you to join the workspace ${payload.workspaceName} on OpenSpace.`,
+        'OpenSpace is a tool for booking meeting rooms.',
+        'Open this link to create your account. The invitation token in the link will confirm your email automatically, so no separate verification email is required.',
+        invitationRegistrationUrl,
+        'If needed, copy and paste the following invitation token into the invitation registration form in OpenSpace:',
+        payload.invitationToken,
+      ].join('\n\n'),
+    });
+  }
+
   private async sendEmail(payload: {
     to: string;
     subject: string;
@@ -112,6 +138,12 @@ export class ResendEmailProvider implements EmailProvider {
     url.searchParams.set('auth', 'reset-password');
     url.searchParams.set('token', payload.token);
     url.searchParams.set('email', payload.to);
+    return url.toString();
+  }
+
+  private buildInvitationRegistrationUrl(payload: WorkspaceInvitationEmailPayload): string {
+    const url = new URL('register', this.webBaseUrl);
+    url.searchParams.set('token', payload.invitationToken);
     return url.toString();
   }
 

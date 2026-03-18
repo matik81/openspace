@@ -1,4 +1,14 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isIP } from 'net';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -38,6 +48,11 @@ export class AuthController {
     return this.authService.getRegistrationStatus({
       ipAddress: this.extractIpAddress(request),
     });
+  }
+
+  @Get('register-invitation')
+  async getInvitationRegistrationContext(@Query('token') token: string) {
+    return this.authService.getInvitationRegistrationContext(token);
   }
 
   @Post('verify-email')
