@@ -168,8 +168,8 @@ Cancellation:
 
 Configured limits:
 
-- maximum 10 registrations per hour per IP
-- maximum 5 workspace creations per hour per user
+- maximum 50 registrations per hour per IP
+- maximum 50 workspace creations per hour per user
 - maximum 50 room creations per hour per user
 - maximum 50 invitation creations per hour per user
 - maximum 50 booking creations per hour per user

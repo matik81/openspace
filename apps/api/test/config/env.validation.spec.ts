@@ -16,6 +16,8 @@ describe('validateEnv', () => {
     expect(result.JWT_ACCESS_TTL).toBe('15m');
     expect(result.JWT_REFRESH_TTL).toBe('7d');
     expect(result.RESEND_FROM_NAME).toBe('OpenSpace');
+    expect(result.MAX_REGISTRATIONS_PER_HOUR_PER_IP).toBe(50);
+    expect(result.MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER).toBe(50);
   });
 
   it('parses TRUSTED_PROXY_IPS when provided', () => {
