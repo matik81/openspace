@@ -127,12 +127,17 @@ Minimum expectations:
 - integration tests for auth flows
 - integration tests for booking overlap and scheduling rules
 - integration tests for invitation and visibility rules
+- web automated coverage for user-critical UI and session flows
 
 Use a test database for integration coverage.
 
-Current gap:
+Current repository status:
 
-- frontend and shared-package automated tests are still missing
+- `apps/api` has Jest unit and integration coverage
+- `apps/web` has Vitest component and utility coverage plus Playwright E2E suites
+- `packages/shared` automated tests are still missing
+
+When changing shared contracts or business-critical UI flows, extend the relevant existing tests instead of documenting the gap away.
 
 ## 5. Error Format
 

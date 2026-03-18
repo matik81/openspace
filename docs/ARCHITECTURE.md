@@ -21,19 +21,21 @@ The backend is a NestJS application with Prisma as the data layer.
 Main areas:
 
 - auth
-- workspaces
-- rooms
 - bookings
-- health
-- config
-- prisma
 - common
+- config
+- health
+- prisma
+- rooms
+- workspaces
 
 Notes:
 
 - Invitation flows are implemented inside the workspace domain rather than as a standalone NestJS module.
-- Rate-limit tracking and suspensions are persisted in PostgreSQL.
+- The API bootstrap applies the global `/api` prefix and the shared JSON error filter.
+- Email verification state is embedded in access-token claims and rechecked for workspace access.
 - Refresh tokens are hashed and stored on the `User` record.
+- Rate-limit tracking and suspensions are persisted in PostgreSQL.
 - Account deletion is logical and cascades domain-side logical cancellations where required.
 
 ## Database
@@ -45,10 +47,12 @@ Key design decisions:
 - Multi-workspace data isolation through explicit `workspaceId` relations
 - UUID primary keys
 - Booking timestamps stored as `timestamptz`
+- Database-generated booking `tstzrange` column
 - Database-level active-only overlap protection using PostgreSQL exclusion constraints
 - Partial unique indexes for workspace names and room names among active entities only
 - Logical cancellation through status fields and cancellation timestamps
 - Persisted workspace schedule history through `WorkspaceScheduleVersion`
+- Persisted per-user visible workspace ordering through `UserWorkspacePreference`
 - Persisted email verification tokens and password reset tokens
 - Persisted rate-limit operation logs and suspensions
 
@@ -57,6 +61,7 @@ Current status model:
 - users: `ACTIVE | CANCELLED`
 - workspaces: `ACTIVE | CANCELLED`
 - rooms: `ACTIVE | CANCELLED`
+- memberships: `ACTIVE | INACTIVE`
 - bookings: `ACTIVE | CANCELLED`
 
 ## Booking Validation Model
@@ -69,8 +74,9 @@ Booking validation is applied in this order:
 4. booking date must not exceed the future booking horizon
 5. booking must stay within workspace schedule hours
 6. booking must align to 15-minute increments
-7. booking must not overlap with another active booking for the same room
-8. booking must not overlap with another active booking by the same user in the same workspace
+7. booking must not exceed per-user future booking limits in the workspace
+8. booking must not overlap with another active booking for the same room
+9. booking must not overlap with another active booking by the same user in the same workspace
 
 ## Frontend
 
@@ -83,16 +89,29 @@ Primary routes:
 - `/register`
 - `/verify-email`
 - `/dashboard`
+- `/workspaces/[workspaceId]`
+- `/workspaces/[workspaceId]/admin`
 - `/[workspaceName]`
 - `/[workspaceName]/admin`
 
 Server-side web proxy routes under `apps/web/app/api` forward browser requests to the backend API. They also manage auth cookies and refresh flow.
 
-Current auth/session lifecycle:
+Current auth and session lifecycle:
 
 - login stores access and refresh tokens in HTTP-only cookies
 - authenticated web proxy routes retry once on `401` after calling `/api/auth/refresh`
 - logout calls backend `/api/auth/logout` and then clears cookies locally
+- `OPENSPACE_API_BASE_URL` controls the backend origin and falls back to `http://localhost:3001` in local development
+
+## Testing Topology
+
+The repository currently uses three automated layers:
+
+- API Jest unit and integration tests
+- web Vitest component and utility tests with `happy-dom`
+- web Playwright end-to-end suites in `e2e-mock` and `e2e-fullstack`
+
+`packages/shared` currently has no automated tests.
 
 ## Infrastructure
 
@@ -104,7 +123,9 @@ Provided services:
 
 Current usage:
 
-- PostgreSQL is required and used by the application
+- PostgreSQL is required by the application
+- PostgreSQL is required by API integration tests
+- Docker-backed PostgreSQL is reused by full-stack Playwright E2E
 
 ## API Surface and Documentation
 
@@ -112,7 +133,7 @@ The API is consumed by the web app and is suitable for other clients.
 
 Current note:
 
-- Swagger/OpenAPI is not enabled in the NestJS bootstrap and no generated API spec is currently exposed.
+- Swagger or OpenAPI is not enabled in the NestJS bootstrap and no generated API spec is currently exposed.
 - Any future external-client documentation should be generated from the implemented controllers rather than described aspirationally.
 
 ## Internationalization

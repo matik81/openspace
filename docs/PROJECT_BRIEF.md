@@ -44,11 +44,12 @@ Session rules:
 - refresh tokens are persisted server-side
 - logout revokes the stored refresh token
 - the web frontend refreshes expired access tokens through its proxy routes
+- unverified users are blocked from workspace access even if a token is forged without `emailVerifiedAt`
 
 Current implementation note:
 
-- email delivery is implemented through a console provider that logs tokens locally
-- a production email provider is still pending
+- email delivery uses the `console` provider by default in development and test
+- the repository also includes a `resend` provider path for production-oriented deployments
 
 ## 2. Workspaces
 
@@ -71,10 +72,11 @@ Workspace attributes:
 Rules:
 
 - workspace names must be unique only among active workspaces
-- a user can own at most 10 active workspaces
-- a workspace can contain at most 100 active rooms
-- a workspace can contain at most 1000 active members
-- a workspace can contain at most 1000 pending invitations
+- a user can own or participate in at most 10 active workspaces by default
+- workspace order in the visible workspace list can be customized per user
+- a workspace can contain at most 100 active rooms by default
+- a workspace can contain at most 1000 active members by default
+- a workspace can contain at most 1000 pending invitations by default
 - workspace cancellation is logical and sets `status=CANCELLED`
 - workspace schedule changes create a new effective schedule version
 
@@ -108,6 +110,7 @@ UI expectations:
 
 - pending invitations are visually distinct
 - the user can accept or reject them directly
+- admin views expose summary data, members, and pending invitations separately
 
 ## 4. Rooms
 
@@ -150,8 +153,8 @@ Rules:
 - bookings must start and end on the same local workspace date
 - bookings must respect the workspace schedule window
 - bookings must align to 15-minute increments
-- a user can have at most 1000 active future bookings per workspace
-- bookings cannot be created more than 365 days in advance
+- a user can have at most 1000 active future bookings per workspace by default
+- bookings cannot be created more than 365 days in advance by default
 - bookings before the current workspace-local day cannot be changed
 
 Cancellation:
@@ -166,7 +169,7 @@ Cancellation:
 
 ## 6. Operational Limits
 
-Configured limits:
+Configured default limits:
 
 - maximum 50 registrations per hour per IP
 - maximum 50 workspace creations per hour per user
@@ -183,10 +186,10 @@ Suspension behavior:
 
 Implemented frontend flows:
 
-- public auth modal for login, registration, email verification, and password reset
-- dashboard for workspace visibility and invitation actions
-- workspace page for booking management
-- admin page for workspace settings, invitations, member list, and room management
+- public auth pages and modal states for login, registration, email verification, and password reset
+- dashboard for workspace visibility, invitation actions, and pending invitation surfacing
+- workspace shell for booking management, room filtering, and workspace reordering
+- admin pages for workspace settings, invitations, member list, room management, and destructive confirmations
 - account settings modal for profile update, password change, and account deletion
 
 ## 8. Future Extensions
@@ -194,6 +197,6 @@ Implemented frontend flows:
 - promote other admins
 - configure room-level availability schedules
 - configure per-user usage limits
-- add real email delivery provider selection by environment
-- add automated tests for `apps/web` and `packages/shared`
+- expand route-handler and contract-level frontend coverage
+- add automated tests for `packages/shared`
 - add explicit i18n framework and translations

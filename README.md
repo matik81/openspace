@@ -20,11 +20,14 @@ docs/
 
 - Backend: NestJS, Prisma, PostgreSQL
 - Frontend: Next.js App Router, React 18, Tailwind CSS
-- Tooling: pnpm, Turborepo, TypeScript, ESLint, Jest
+- Shared package: TypeScript contracts and enums consumed by API and web
+- Tooling: pnpm, Turborepo, TypeScript, ESLint, Prettier
+- Testing: Jest, Vitest, Playwright
 - Local infra: Docker Compose for PostgreSQL
 
 Current note:
-- PostgreSQL is required by the application and by API integration tests.
+
+- PostgreSQL is required by the application, API integration tests, and full-stack Playwright E2E.
 
 ## Quick Start
 
@@ -40,6 +43,7 @@ Current note:
    - `pnpm dev`
 
 Default local URLs:
+
 - web: `http://localhost:3000`
 - api: `http://localhost:3001`
 
@@ -48,6 +52,9 @@ Default local URLs:
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test`
+- `pnpm test:web`
+- `pnpm test:web:e2e:mock`
+- `pnpm test:web:e2e:fullstack`
 - `pnpm build`
 - `pnpm format`
 - `pnpm db:up`
@@ -72,14 +79,18 @@ API endpoints under `/api/auth`:
 Implemented behavior:
 
 - Email verification is mandatory before login.
+- Unverified users are blocked from authenticated workspace flows even if a token is forged.
 - Cancelled accounts are reactivated on re-registration with the same email and must verify email again.
+- Registration restart for active unverified accounts rotates verification tokens and invalidates previous unconsumed ones.
 - Password reset is token-based.
 - Password changes require the current password.
 - Refresh tokens are persisted server-side and revoked on logout.
-- The web app uses proxy routes for login, refresh, logout, account update, password reset, and account deletion.
+- The web app uses proxy routes for registration, verification, login, refresh, logout, account update, password reset, and account deletion.
 
-Current limitation:
-- Email delivery uses `ConsoleEmailProvider`, which logs verification and reset tokens locally. A real provider is not wired yet.
+Current email delivery behavior:
+
+- `console` is the default provider in development and test environments.
+- `resend` is the production-oriented provider and is selected by environment validation when configured for production use.
 
 ## Core Domain Rules
 
@@ -87,10 +98,11 @@ Current limitation:
 - Workspaces, rooms, bookings, and users use logical cancellation rather than permanent deletion.
 - Workspace names are unique only among active workspaces.
 - Room names are unique only among active rooms within the same workspace.
+- Visible workspace ordering is persisted per user.
 - Bookings are stored in UTC and evaluated in the workspace timezone.
 - Bookings must start and end on the same local workspace date.
 - Bookings must stay within the workspace daily schedule window.
-- Booking times must align to 15-minute increments.
+- Bookings must align to 15-minute increments.
 - Active booking overlap is blocked at the database level for:
   - same room
   - same user inside the same workspace
@@ -111,6 +123,7 @@ Workspace endpoints:
 - `POST /api/workspaces/:workspaceId/cancel`
 - `POST /api/workspaces/:workspaceId/leave`
 - `POST /api/workspaces/:workspaceId/invitations`
+- `GET /api/workspaces/:workspaceId/admin-summary`
 - `GET /api/workspaces/:workspaceId/members`
 - `GET /api/workspaces/:workspaceId/invitations`
 - `POST /api/workspaces/invitations/:invitationId/accept`
@@ -138,6 +151,8 @@ Supported booking listing filters:
 - `mine` default `true`
 - `includePast` default `false`
 - `includeCancelled` default `false`
+- `fromDate`
+- `toDate`
 
 ## Web Frontend
 
@@ -148,15 +163,17 @@ User-facing pages:
 - `/register`
 - `/verify-email`
 - `/dashboard`
+- `/workspaces/[workspaceId]`
+- `/workspaces/[workspaceId]/admin`
 - `/[workspaceName]`
 - `/[workspaceName]/admin`
 
 Implemented web behavior:
 
-- Public auth modal supports login, registration, email verification, and password reset.
+- Public auth UI supports login, registration, email verification, and password reset.
 - Dashboard shows visible workspaces and pending invitations.
-- Workspace page supports room browsing, booking creation, booking update, booking cancellation, and invitation accept/reject for pending invitees.
-- Admin page supports workspace settings, room CRUD, invitation creation, active member listing, and pending invitation listing.
+- Workspace shell supports workspace reordering, room browsing, booking creation, booking update, booking cancellation, and invitation accept or reject actions.
+- Admin pages support workspace settings, room CRUD, invitation creation, active member listing, pending invitation listing, and admin summary loading.
 - Account management is available from the authenticated shell.
 - Logout goes through the backend and revokes the refresh token.
 - Expired access tokens are refreshed transparently through the web proxy before failing requests back to the UI.
@@ -172,18 +189,13 @@ Current repository quality gates:
 
 Current automated test coverage:
 
-- API unit and integration tests exist and run in CI.
-- `apps/web` test script is currently a placeholder.
-- `packages/shared` test script is currently a placeholder.
+- API unit and integration tests run with Jest.
+- Web unit and component tests run with Vitest and `happy-dom`.
+- Web end-to-end suites run with Playwright in both mock and full-stack modes.
+- `packages/shared` still has no automated tests.
 
 CI workflow:
 
-- installs dependencies
-- runs lint
-- runs Prisma generate
-- runs typecheck
-- runs Prisma migrations
-- runs tests
-- runs build
-
-CI currently provisions PostgreSQL for the API integration suites and full-stack E2E environment.
+- `quality` job installs dependencies, runs lint, Prisma generate, typecheck, Prisma migrate deploy, test, and build
+- `e2e-mock` runs Playwright mock-browser tests after the quality job
+- `e2e-fullstack` starts Docker Compose, migrates an E2E schema, and runs Playwright full-stack tests after the quality job
