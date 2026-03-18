@@ -78,6 +78,7 @@ Infrastructure requirements:
 
 Current note:
 
+- the local Docker setup exposes PostgreSQL on `localhost:5432` by default via `infra/docker/.env`
 - `packages/shared` test script still prints `No tests yet for shared`
 
 ## CI

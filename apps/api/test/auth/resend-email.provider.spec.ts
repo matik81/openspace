@@ -122,13 +122,13 @@ describe('ResendEmailProvider', () => {
       }),
     );
     expect(sentEmail.text).toContain(
-      'https://openspaceapp.io/register?invitationToken=invite-token',
+      'https://openspaceapp.io/register?token=invite-token',
     );
     expect(sentEmail.text).toContain(
       'Ada Lovelace invited you to join the workspace Engineering on OpenSpace.',
     );
     expect(sentEmail.html).toContain(
-      'href="https://openspaceapp.io/register?invitationToken=invite-token"',
+      'href="https://openspaceapp.io/register?token=invite-token"',
     );
     expect(sentEmail.html).toContain('<code>invite-token</code>');
   });
@@ -167,7 +167,7 @@ describe('ResendEmailProvider', () => {
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining(
-          'https://openspaceapp.io/app/register?invitationToken=invite-token',
+          'https://openspaceapp.io/app/register?token=invite-token',
         ),
       }),
     );
