@@ -69,6 +69,8 @@ test('cancels the workspace and redirects back to the dashboard', async ({ page 
     has: page.getByRole('heading', { name: 'Cancel Workspace' }),
   });
 
+  expect(await dialog.evaluate((node) => node.parentElement?.tagName)).toBe('BODY');
+
   await dialog.getByLabel('Workspace Name Confirmation').fill(MOCK_NAMES.adminWorkspace);
   await dialog.getByLabel('Email').click();
   await dialog.getByLabel('Email').fill('ada@example.com');

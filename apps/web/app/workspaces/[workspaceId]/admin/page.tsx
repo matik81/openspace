@@ -1,7 +1,8 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
@@ -69,6 +70,48 @@ type AdminRightSidebarState = {
 };
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
+
+function AdminViewportDialog({
+  open,
+  labelledBy,
+  dismissLabel,
+  onDismiss,
+  children,
+}: {
+  open: boolean;
+  labelledBy: string;
+  dismissLabel: string;
+  onDismiss: () => void;
+  children: ReactNode;
+}) {
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
+
+  if (!open || !portalTarget) {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelledBy}
+    >
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute inset-0"
+        aria-label={dismissLabel}
+      />
+      {children}
+    </div>,
+    portalTarget,
+  );
+}
 
 function buildWorkspaceSettingsState({
   name,
@@ -1018,13 +1061,16 @@ function WorkspaceAdminContent({
         </div>
 
         {isCancelWorkspaceFormVisible ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cancel-workspace-dialog-title"
+          <AdminViewportDialog
+            open={isCancelWorkspaceFormVisible}
+            labelledBy="cancel-workspace-dialog-title"
+            dismissLabel="Close workspace cancellation dialog"
+            onDismiss={() => {
+              setIsCancelWorkspaceFormVisible(false);
+              setIsCancelWorkspaceCredentialsUnlocked(false);
+            }}
           >
-            <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
+            <div className="relative w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3
@@ -1161,17 +1207,20 @@ function WorkspaceAdminContent({
                 </div>
               </form>
             </div>
-          </div>
+          </AdminViewportDialog>
         ) : null}
 
         {deleteRoomConfirmation ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-room-dialog-title"
+          <AdminViewportDialog
+            open={Boolean(deleteRoomConfirmation)}
+            labelledBy="delete-room-dialog-title"
+            dismissLabel="Close room cancellation dialog"
+            onDismiss={() => {
+              setDeleteRoomConfirmation(null);
+              setIsDeleteRoomCredentialsUnlocked(false);
+            }}
           >
-            <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
+            <div className="relative w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 id="delete-room-dialog-title" className="text-lg font-semibold text-rose-900">
@@ -1319,7 +1368,7 @@ function WorkspaceAdminContent({
                 </div>
               </form>
             </div>
-          </div>
+          </AdminViewportDialog>
         ) : null}
       </div>
     ),
