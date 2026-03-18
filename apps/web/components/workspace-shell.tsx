@@ -24,6 +24,11 @@ import { safeReadJson } from '@/lib/client-http';
 import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
+import {
+  buildWorkspaceAdminPathFromName,
+  buildWorkspacePathFromName,
+  resolveWorkspaceByRouteName,
+} from '@/lib/workspace-routing';
 import { isWorkspaceListPayload } from '@/lib/workspace-payloads';
 
 type InvitationAction = 'accept' | 'reject';
@@ -58,6 +63,7 @@ type WorkspaceShellPageLayout = {
 
 type WorkspaceShellProps = {
   selectedWorkspaceId?: string;
+  selectedWorkspaceName?: string;
   pageTitle: string;
   pageDescription: string;
   pageBackHref?: string;
@@ -100,6 +106,7 @@ function isAuthUserSummary(value: unknown): value is AuthUserSummary {
 
 export function WorkspaceShell({
   selectedWorkspaceId,
+  selectedWorkspaceName,
   pageTitle,
   pageDescription,
   pageBackHref,
@@ -142,8 +149,13 @@ export function WorkspaceShell({
   const [isSubmittingCriticalAction, setIsSubmittingCriticalAction] = useState(false);
 
   const selectedWorkspace = useMemo(
-    () => items.find((item) => item.id === selectedWorkspaceId) ?? null,
-    [items, selectedWorkspaceId],
+    () =>
+      selectedWorkspaceId
+        ? (items.find((item) => item.id === selectedWorkspaceId) ?? null)
+        : selectedWorkspaceName
+          ? resolveWorkspaceByRouteName(items, selectedWorkspaceName)
+          : null,
+    [items, selectedWorkspaceId, selectedWorkspaceName],
   );
   const loadWorkspaces = useCallback(async () => {
     setIsLoading((current) => current || workspaceItemsCache === null);
@@ -236,7 +248,7 @@ export function WorkspaceShell({
   useEffect(() => {
     setIsLeftSidebarOpenMobile(false);
     setIsRightSidebarOpenMobile(false);
-  }, [selectedWorkspaceId]);
+  }, [selectedWorkspaceId, selectedWorkspaceName]);
 
   useEffect(() => {
     if (!selectedWorkspaceId || isLoading || error) {
@@ -337,12 +349,21 @@ export function WorkspaceShell({
 
         const createdWorkspaceId =
           isRecord(payload) && typeof payload.id === 'string' ? payload.id : null;
+        const createdWorkspaceName = createWorkspaceForm.name.trim();
 
         setBanner('Workspace created.');
         closeCreateWorkspaceModal();
         await loadWorkspaces();
+        if (createdWorkspaceName) {
+          router.push(buildWorkspaceAdminPathFromName(createdWorkspaceName));
+          return;
+        }
         if (createdWorkspaceId) {
-          router.push(`/workspaces/${createdWorkspaceId}/admin`);
+          const createdWorkspace =
+            workspaceItemsCache?.find((item) => item.id === createdWorkspaceId) ?? null;
+          if (createdWorkspace) {
+            router.push(buildWorkspaceAdminPathFromName(createdWorkspace.name));
+          }
           return;
         }
       } catch {
@@ -793,8 +814,8 @@ export function WorkspaceShell({
           isOpenOnMobile={isLeftSidebarOpenMobile}
           onCloseMobile={() => setIsLeftSidebarOpenMobile(false)}
           workspaces={items}
-          selectedWorkspaceId={selectedWorkspaceId}
-          onSelectWorkspace={(workspaceId) => router.push(`/workspaces/${workspaceId}`)}
+          selectedWorkspaceId={selectedWorkspace?.id ?? selectedWorkspaceId}
+          onSelectWorkspace={(workspace) => router.push(buildWorkspacePathFromName(workspace.name))}
           onReorderWorkspaces={(workspaceIds) => void handleReorderWorkspaces(workspaceIds)}
           isSavingWorkspaceOrder={isSavingWorkspaceOrder}
           actions={leftSidebarActions}

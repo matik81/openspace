@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import {
   installMockWorkspaceApp,
-  MOCK_IDS,
   MOCK_NAMES,
+  workspaceAdminPathByName,
 } from './support/mock-workspace-app';
 
 test.beforeEach(async ({ page }) => {
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('updates workspace settings and manages rooms and invitations', async ({ page }) => {
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}/admin`);
+  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
 
   const roomsSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Meeting Rooms' }),
@@ -23,6 +23,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 
   await page.getByLabel('Workspace Name').fill('Atlas North');
   await page.getByRole('button', { name: 'Save Settings' }).click();
+  await expect(page).toHaveURL(workspaceAdminPathByName('Atlas North'));
   await expect(page.getByLabel('Workspace Name')).toHaveValue('Atlas North');
 
   await roomsSection.getByPlaceholder('Room name').fill('War Room');
@@ -60,7 +61,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 });
 
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}/admin`);
+  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
 
   await page.getByRole('button', { name: 'Cancel Workspace' }).click();
 

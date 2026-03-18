@@ -26,11 +26,16 @@ import type {
   WorkspaceInvitationSummary,
   WorkspaceMemberListItem,
 } from '@/lib/types';
+import {
+  buildWorkspaceAdminPathFromName,
+  buildWorkspacePathFromName,
+} from '@/lib/workspace-routing';
 import { isBookingListPayload, isWorkspaceAdminSummaryPayload } from '@/lib/workspace-payloads';
 import { formatUtcInTimezone } from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
-  workspaceId: string;
+  workspaceId?: string;
+  workspaceName?: string;
 };
 
 type RoomEditState = {
@@ -91,27 +96,32 @@ const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) =>
 export default function WorkspaceAdminPage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params?.workspaceId ?? '';
+  const workspaceName = params?.workspaceName ?? '';
+  const pageBackHref = workspaceName
+    ? buildWorkspacePathFromName(workspaceName)
+    : workspaceId
+      ? `/workspaces/${workspaceId}`
+      : '/dashboard';
 
   return (
     <WorkspaceShell
       selectedWorkspaceId={workspaceId || undefined}
+      selectedWorkspaceName={workspaceName || undefined}
       pageTitle="Workspace Admin"
       pageDescription="Manage meeting rooms, members, and invitations."
-      pageBackHref={`/workspaces/${workspaceId}`}
+      pageBackHref={pageBackHref}
       pageBackLabel="Close"
       pageBackAriaLabel="Close admin panel"
     >
-      {(context) => WorkspaceAdminContent({ context, workspaceId })}
+      {(context) => WorkspaceAdminContent({ context })}
     </WorkspaceShell>
   );
 }
 
 function WorkspaceAdminContent({
   context,
-  workspaceId,
 }: {
   context: WorkspaceShellRenderContext;
-  workspaceId: string;
 }) {
   const router = useRouter();
   const { selectedWorkspace, currentUser, isLoading, loadWorkspaces } = context;
@@ -181,8 +191,7 @@ function WorkspaceAdminContent({
   const selectedWorkspaceTimezone = selectedWorkspace?.timezone ?? null;
   const selectedWorkspaceScheduleStartHour = selectedWorkspace?.scheduleStartHour ?? null;
   const selectedWorkspaceScheduleEndHour = selectedWorkspace?.scheduleEndHour ?? null;
-  const isResolvingSelectedWorkspace =
-    isLoading && (!selectedWorkspace || selectedWorkspace.id !== workspaceId);
+  const isResolvingSelectedWorkspace = isLoading && !selectedWorkspace;
   const currentUserId = currentUser?.id ?? '';
   const rightSidebarTimezone = selectedWorkspace?.timezone ?? 'UTC';
   const bookingLoadDateRange = useMemo(
@@ -383,9 +392,14 @@ function WorkspaceAdminContent({
       }
 
       await loadWorkspaces();
+      const nextWorkspaceName = workspaceSettingsForm.name.trim();
+      if (nextWorkspaceName) {
+        router.replace(buildWorkspaceAdminPathFromName(nextWorkspaceName));
+      }
       setIsSubmittingWorkspaceSettings(false);
     },
     [
+      router,
       selectedWorkspace,
       isAdmin,
       isSubmittingWorkspaceSettings,
@@ -633,7 +647,7 @@ function WorkspaceAdminContent({
     return <p className="text-slate-600">Loading workspace...</p>;
   }
 
-  if (!selectedWorkspace || selectedWorkspace.id !== workspaceId) {
+  if (!selectedWorkspace) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
         Workspace not visible.
@@ -659,7 +673,7 @@ function WorkspaceAdminContent({
       miniCalendarCells={miniCalendarCells}
       bookingGroups={myBookingGroups}
       onOpenBooking={(booking) =>
-        router.push(`/workspaces/${selectedWorkspace.id}?bookingId=${booking.id}`)
+        router.push(`${buildWorkspacePathFromName(selectedWorkspace.name)}?bookingId=${booking.id}`)
       }
     />
   );

@@ -212,4 +212,72 @@ describe('WorkspaceShell', () => {
     expect(await screen.findByRole('heading', { name: 'Leave Workspace' })).toBeVisible();
     expect(screen.getByLabelText('Email')).toHaveValue('');
   });
+
+  it('resolves selected workspace from the name-based route parameter', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/workspaces') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'workspace-1',
+                name: 'Focus Lab',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'MEMBER',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      if (url === '/api/auth/me') {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'ada@example.com',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <WorkspaceShell selectedWorkspaceName="Focus%20Lab" pageTitle="" pageDescription="">
+        {() => <p>Workspace content</p>}
+      </WorkspaceShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Workspace content')).toBeVisible();
+    });
+
+    expect(replaceMock).not.toHaveBeenCalledWith('/dashboard');
+  });
 });

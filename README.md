@@ -148,8 +148,8 @@ User-facing pages:
 - `/register`
 - `/verify-email`
 - `/dashboard`
-- `/workspaces/[workspaceId]`
-- `/workspaces/[workspaceId]/admin`
+- `/[workspaceName]`
+- `/[workspaceName]/admin`
 
 Implemented web behavior:
 

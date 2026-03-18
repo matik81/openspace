@@ -1,12 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { installMockWorkspaceApp, MOCK_IDS } from './support/mock-workspace-app';
+import {
+  installMockWorkspaceApp,
+  MOCK_NAMES,
+  workspacePathByName,
+} from './support/mock-workspace-app';
 
 test.beforeEach(async ({ page }) => {
   await installMockWorkspaceApp(page);
 });
 
 test('creates, edits, and cancels a booking from the workspace page', async ({ page }) => {
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await page.goto(workspacePathByName(MOCK_NAMES.adminWorkspace));
   await page.getByRole('button', { name: 'Today' }).first().click();
 
   const createBookingTrigger = page.getByRole('button', { name: 'Create booking in Focus Room' });
@@ -54,7 +58,9 @@ test('creates, edits, and cancels a booking from the workspace page', async ({ p
 test('opens an existing booking from the URL and shows non-owner details as read-only', async ({
   page,
 }) => {
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}?bookingId=booking-admin-other`);
+  await page.goto(
+    `${workspacePathByName(MOCK_NAMES.adminWorkspace)}?bookingId=booking-admin-other`,
+  );
 
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Booking Details' }),

@@ -114,6 +114,14 @@ export const MOCK_NAMES = {
   pendingWorkspace: 'Invite Only Lab',
 };
 
+export function workspacePathByName(workspaceName: string): string {
+  return `/${encodeURIComponent(workspaceName)}`;
+}
+
+export function workspaceAdminPathByName(workspaceName: string): string {
+  return `${workspacePathByName(workspaceName)}/admin`;
+}
+
 type MockWorkspaceAppState = {
   user: AuthUserSummary;
   workspaces: WorkspaceItem[];

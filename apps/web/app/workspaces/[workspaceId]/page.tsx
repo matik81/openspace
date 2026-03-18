@@ -36,11 +36,13 @@ import {
   workspaceTodayDateKey,
 } from '@/lib/time';
 import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
+import { buildWorkspacePathFromName } from '@/lib/workspace-routing';
 import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
 import { dateAndTimeToUtcIso, formatUtcInTimezone } from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
-  workspaceId: string;
+  workspaceId?: string;
+  workspaceName?: string;
 };
 
 type BookingDialogState =
@@ -75,20 +77,24 @@ const MAX_BOOKING_DAYS_AHEAD = 365;
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
   const workspaceId = params?.workspaceId ?? '';
+  const workspaceName = params?.workspaceName ?? '';
 
   return (
-    <WorkspaceShell selectedWorkspaceId={workspaceId || undefined} pageTitle="" pageDescription="">
-      {(context) => WorkspacePageContent({ context, workspaceId })}
+    <WorkspaceShell
+      selectedWorkspaceId={workspaceId || undefined}
+      selectedWorkspaceName={workspaceName || undefined}
+      pageTitle=""
+      pageDescription=""
+    >
+      {(context) => WorkspacePageContent({ context })}
     </WorkspaceShell>
   );
 }
 
 function WorkspacePageContent({
   context,
-  workspaceId,
 }: {
   context: WorkspaceShellRenderContext;
-  workspaceId: string;
 }) {
   const {
     selectedWorkspace,
@@ -97,19 +103,17 @@ function WorkspacePageContent({
     runInvitationAction,
     pendingInvitationAction,
   } = context;
-  const resolvedWorkspace =
-    selectedWorkspace && selectedWorkspace.id === workspaceId ? selectedWorkspace : null;
   const bookingDashboardLayout = WorkspaceBookingDashboard({
-    workspace: resolvedWorkspace,
+    workspace: selectedWorkspace,
     currentUser,
-    enabled: Boolean(resolvedWorkspace?.membership?.status === 'ACTIVE'),
+    enabled: Boolean(selectedWorkspace?.membership?.status === 'ACTIVE'),
   });
 
   if (isLoading && !selectedWorkspace) {
     return <p className="text-sm text-slate-600">Loading workspace...</p>;
   }
 
-  if (!selectedWorkspace || selectedWorkspace.id !== workspaceId) {
+  if (!selectedWorkspace) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
         Workspace not visible.
@@ -625,7 +629,7 @@ function WorkspaceBookingDashboard({
     }
 
     openEditDialog(requestedBooking);
-    router.replace(`/workspaces/${workspace.id}`, { scroll: false });
+    router.replace(buildWorkspacePathFromName(workspace.name), { scroll: false });
   }, [
     requestedBookingId,
     hasCurrentBookings,

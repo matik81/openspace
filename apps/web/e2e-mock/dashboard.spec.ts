@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { DateTime } from 'luxon';
-import { installMockWorkspaceApp, MOCK_IDS, MOCK_NAMES } from './support/mock-workspace-app';
+import {
+  installMockWorkspaceApp,
+  MOCK_NAMES,
+  workspaceAdminPathByName,
+  workspacePathByName,
+} from './support/mock-workspace-app';
 
 async function openUserMenu(page: Page) {
   await page.locator('button[aria-haspopup="menu"]:not([data-nextjs-dev-tools-button])').click();
@@ -26,8 +31,8 @@ test('keeps dashboard sidebar content visible while bookings refresh in the back
   await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible();
   await expect(todayMarker).toHaveCount(1);
 
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
-  await expect(page).toHaveURL(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await page.goto(workspacePathByName(MOCK_NAMES.adminWorkspace));
+  await expect(page).toHaveURL(workspacePathByName(MOCK_NAMES.adminWorkspace));
 
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
@@ -69,7 +74,7 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
     .getByRole('button', { name: 'Create workspace', exact: true })
     .click();
 
-  await expect(page).toHaveURL(/\/workspaces\/workspace-created-\d+\/admin$/);
+  await expect(page).toHaveURL('/Skunkworks/admin');
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
   await expect(page.getByLabel('Workspace Name')).toHaveValue('Skunkworks');
 });
@@ -98,7 +103,7 @@ test('updates account settings and logs out to the public login modal', async ({
 });
 
 test('allows a member to leave a workspace from the shell', async ({ page }) => {
-  await page.goto(`/workspaces/${MOCK_IDS.memberWorkspace}`);
+  await page.goto(workspacePathByName(MOCK_NAMES.memberWorkspace));
 
   await openUserMenu(page);
   await page.getByRole('menuitem', { name: 'Leave workspace' }).click();
@@ -128,13 +133,13 @@ test('persists the selected mini-calendar date across dashboard, workspaces, and
   await selectedDateButton().click();
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}`);
+  await page.goto(workspacePathByName(MOCK_NAMES.adminWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(`/workspaces/${MOCK_IDS.memberWorkspace}`);
+  await page.goto(workspacePathByName(MOCK_NAMES.memberWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(`/workspaces/${MOCK_IDS.adminWorkspace}/admin`);
+  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
   await page.goto('/dashboard');
