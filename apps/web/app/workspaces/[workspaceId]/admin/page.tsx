@@ -1,6 +1,7 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
@@ -51,6 +52,13 @@ type WorkspaceSettingsState = {
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
+};
+
+type AdminSubpanelId = 'settings' | 'resources' | 'members';
+
+type AdminSubpanelDefinition = {
+  id: AdminSubpanelId;
+  label: string;
 };
 
 type CancelWorkspaceState = {
@@ -140,6 +148,44 @@ function buildWorkspaceSettingsState({
 const adminRightSidebarStateCache = new Map<string, AdminRightSidebarState>();
 const adminWorkspaceDataCache = new Map<string, AdminWorkspaceDataState>();
 const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) => index);
+const ADMIN_SUBPANEL_QUERY_KEY = 'panel';
+const ADMIN_SUBPANELS: AdminSubpanelDefinition[] = [
+  {
+    id: 'settings',
+    label: 'Settings',
+  },
+  {
+    id: 'resources',
+    label: 'Resources',
+  },
+  {
+    id: 'members',
+    label: 'Members',
+  },
+];
+
+function resolveAdminSubpanel(value: string | null | undefined): AdminSubpanelId {
+  if (value === 'resources' || value === 'members') {
+    return value;
+  }
+
+  if (value === 'people') {
+    return 'members';
+  }
+
+  return 'settings';
+}
+
+function buildAdminSubpanelHref(
+  pathname: string,
+  subpanel: AdminSubpanelId,
+  currentQuery?: string,
+): string {
+  const nextSearchParams = new URLSearchParams(currentQuery);
+  nextSearchParams.set(ADMIN_SUBPANEL_QUERY_KEY, subpanel);
+  const query = nextSearchParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
 
 export default function WorkspaceAdminPage() {
   const params = useParams<WorkspacePageParams>();
@@ -156,7 +202,7 @@ export default function WorkspaceAdminPage() {
       selectedWorkspaceId={workspaceId || undefined}
       selectedWorkspaceName={workspaceName || undefined}
       pageTitle="Workspace Admin"
-      pageDescription="Manage meeting rooms, members, and invitations."
+      pageDescription="Manage workspace settings, meeting rooms, members, and invitations."
       pageBackHref={pageBackHref}
       pageBackLabel="Close"
       pageBackAriaLabel="Close admin panel"
@@ -166,13 +212,13 @@ export default function WorkspaceAdminPage() {
   );
 }
 
-function WorkspaceAdminContent({
-  context,
-}: {
-  context: WorkspaceShellRenderContext;
-}) {
+function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderContext }) {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { selectedWorkspace, currentUser, isLoading, loadWorkspaces } = context;
+  const activeSubpanel = resolveAdminSubpanel(searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY));
+  const currentAdminQuery = searchParams?.toString();
   const cachedRightSidebarState = selectedWorkspace
     ? adminRightSidebarStateCache.get(selectedWorkspace.id)
     : null;
@@ -453,7 +499,13 @@ function WorkspaceAdminContent({
       await loadWorkspaces();
       const nextWorkspaceSlug = normalizeWorkspaceSlugCandidate(workspaceSettingsForm.slug);
       if (nextWorkspaceSlug) {
-        router.replace(buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug));
+        router.replace(
+          buildAdminSubpanelHref(
+            buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug),
+            activeSubpanel,
+            currentAdminQuery,
+          ),
+        );
       }
       setIsSubmittingWorkspaceSettings(false);
     },
@@ -464,6 +516,8 @@ function WorkspaceAdminContent({
       isSubmittingWorkspaceSettings,
       workspaceSettingsForm,
       loadWorkspaces,
+      activeSubpanel,
+      currentAdminQuery,
     ],
   );
 
@@ -737,15 +791,26 @@ function WorkspaceAdminContent({
     />
   );
 
-  return {
-    rightSidebar,
-    main: (
+  const activeSubpanelContent =
+    activeSubpanel === 'settings' ? (
       <div className="space-y-6">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Update the workspace identity, timezone, and daily booking schedule.
+              </p>
+            </div>
+            {isLoadingData ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                Refreshing admin data...
+              </span>
+            ) : null}
+          </div>
 
           <form
-            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_240px_160px_160px_auto_auto] xl:items-end"
+            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_240px_160px_160px_auto]"
             onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
           >
             <label className="block">
@@ -865,7 +930,7 @@ function WorkspaceAdminContent({
               </select>
             </label>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 xl:col-span-2 xl:flex-nowrap">
+            <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 xl:col-span-1 xl:justify-start">
               <button
                 type="submit"
                 disabled={isSubmittingWorkspaceSettings}
@@ -873,235 +938,311 @@ function WorkspaceAdminContent({
               >
                 Save Settings
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCancelWorkspaceFormVisible(true);
-                  setIsCancelWorkspaceCredentialsUnlocked(false);
-                  setCancelWorkspaceForm((previous) => ({
-                    ...previous,
-                    workspaceName: '',
-                    email: '',
-                    password: '',
-                  }));
-                }}
-                className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-              >
-                Cancel Workspace
-              </button>
             </div>
           </form>
         </section>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2 xl:gap-y-0">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-lg font-semibold text-slate-900">Meeting Rooms</h3>
-            <form
-              className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]"
-              onSubmit={(event) => void handleCreateRoom(event)}
-            >
-              <input
-                required
-                placeholder="Room name"
-                value={newRoomName}
-                onChange={(event) => setNewRoomName(event.target.value)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <input
-                placeholder="Description (optional)"
-                value={newRoomDescription}
-                onChange={(event) => setNewRoomDescription(event.target.value)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <button
-                type="submit"
-                disabled={isSubmittingRoom}
-                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Create Room
-              </button>
-            </form>
-            {hasLoadedAdminData && rooms.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
-            ) : null}
-
-            {rooms.length > 0 ? (
-              <ul className="mt-3 space-y-2">
-                {rooms.map((room) => {
-                  const isEditing = editingRoomId === room.id;
-
-                  return (
-                    <li
-                      key={room.id}
-                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
-                      {!isEditing ? (
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{room.name}</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              {room.description ?? 'No description'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingRoomId(room.id);
-                                setRoomEditForm({
-                                  name: room.name,
-                                  description: room.description ?? '',
-                                });
-                              }}
-                              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDeleteRoomConfirmation(room.id)}
-                              disabled={deletingRoomId === room.id}
-                              className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {deletingRoomId === room.id ? 'Cancelling...' : 'Cancel'}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                              Room Name
-                            </span>
-                            <p className="mb-2 text-xs text-slate-500">
-                              Unique among active rooms in this workspace. Used in reservation lists
-                              and filters.
-                            </p>
-                            <input
-                              value={roomEditForm.name}
-                              onChange={(event) =>
-                                setRoomEditForm((previous) => ({
-                                  ...previous,
-                                  name: event.target.value,
-                                }))
-                              }
-                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                              Description
-                            </span>
-                            <p className="mb-2 text-xs text-slate-500">
-                              Optional notes such as capacity, equipment, or room usage.
-                            </p>
-                            <input
-                              value={roomEditForm.description}
-                              onChange={(event) =>
-                                setRoomEditForm((previous) => ({
-                                  ...previous,
-                                  description: event.target.value,
-                                }))
-                              }
-                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                            />
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveRoom(room.id)}
-                              disabled={isSubmittingRoom}
-                              className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingRoomId(null)}
-                              disabled={isSubmittingRoom}
-                              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </section>
-
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-lg font-semibold text-slate-900">People</h3>
-
-            <form
-              className="mt-3 flex flex-wrap items-center gap-3"
-              onSubmit={(event) => void handleInvite(event)}
-            >
-              <input
-                required
-                type="email"
-                placeholder="Invite by email"
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                className="min-w-[240px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <button
-                type="submit"
-                disabled={isSubmittingInvite}
-                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Invite
-              </button>
-            </form>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <h4 className="text-sm font-semibold text-slate-900">Active Members</h4>
-                {hasLoadedAdminData && members.length === 0 ? (
-                  <p className="mt-2 text-xs text-slate-600">No active members.</p>
-                ) : members.length > 0 ? (
-                  <ul className="mt-2 space-y-2">
-                    {members.map((member) => (
-                      <li
-                        key={member.userId}
-                        className="rounded-md border border-slate-200 bg-white p-2"
-                      >
-                        <p className="text-sm font-medium text-slate-900">
-                          {member.firstName} {member.lastName}
-                        </p>
-                        <p className="text-xs text-slate-600">{member.email}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <h4 className="text-sm font-semibold text-slate-900">Pending Invitations</h4>
-                {hasLoadedAdminData && pendingInvitations.length === 0 ? (
-                  <p className="mt-2 text-xs text-slate-600">No pending invitations.</p>
-                ) : pendingInvitations.length > 0 ? (
-                  <ul className="mt-2 space-y-2">
-                    {pendingInvitations.map((invitation) => (
-                      <li
-                        key={invitation.id}
-                        className="rounded-md border border-slate-200 bg-white p-2"
-                      >
-                        <p className="text-sm font-medium text-slate-900">{invitation.email}</p>
-                        <p className="text-xs text-slate-600">
-                          Expires{' '}
-                          {formatUtcInTimezone(invitation.expiresAt, selectedWorkspace.timezone)}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+        <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-rose-900">Danger Zone</h3>
+              <p className="mt-1 text-sm text-rose-800">
+                Canceling the workspace preserves history and deactivates rooms, reservations,
+                memberships, and invitations.
+              </p>
             </div>
-          </section>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCancelWorkspaceFormVisible(true);
+                setIsCancelWorkspaceCredentialsUnlocked(false);
+                setCancelWorkspaceForm((previous) => ({
+                  ...previous,
+                  workspaceName: '',
+                  email: '',
+                  password: '',
+                }));
+              }}
+              className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            >
+              Cancel Workspace
+            </button>
+          </div>
+        </section>
+      </div>
+    ) : activeSubpanel === 'resources' ? (
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">Meeting Rooms</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Create, rename, and retire rooms available to workspace members.
+            </p>
+          </div>
+          {isLoadingData ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              Refreshing admin data...
+            </span>
+          ) : null}
+        </div>
+
+        <form
+          className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+          onSubmit={(event) => void handleCreateRoom(event)}
+        >
+          <input
+            required
+            placeholder="Room name"
+            value={newRoomName}
+            onChange={(event) => setNewRoomName(event.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <input
+            placeholder="Description (optional)"
+            value={newRoomDescription}
+            onChange={(event) => setNewRoomDescription(event.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <button
+            type="submit"
+            disabled={isSubmittingRoom}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Create Room
+          </button>
+        </form>
+        {hasLoadedAdminData && rooms.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
+        ) : null}
+
+        {rooms.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {rooms.map((room) => {
+              const isEditing = editingRoomId === room.id;
+
+              return (
+                <li key={room.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  {!isEditing ? (
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{room.name}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {room.description ?? 'No description'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingRoomId(room.id);
+                            setRoomEditForm({
+                              name: room.name,
+                              description: room.description ?? '',
+                            });
+                          }}
+                          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDeleteRoomConfirmation(room.id)}
+                          disabled={deletingRoomId === room.id}
+                          className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingRoomId === room.id ? 'Cancelling...' : 'Cancel'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Room Name
+                        </span>
+                        <p className="mb-2 text-xs text-slate-500">
+                          Unique among active rooms in this workspace. Used in reservation lists and
+                          filters.
+                        </p>
+                        <input
+                          value={roomEditForm.name}
+                          onChange={(event) =>
+                            setRoomEditForm((previous) => ({
+                              ...previous,
+                              name: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Description
+                        </span>
+                        <p className="mb-2 text-xs text-slate-500">
+                          Optional notes such as capacity, equipment, or room usage.
+                        </p>
+                        <input
+                          value={roomEditForm.description}
+                          onChange={(event) =>
+                            setRoomEditForm((previous) => ({
+                              ...previous,
+                              description: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveRoom(room.id)}
+                          disabled={isSubmittingRoom}
+                          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRoomId(null)}
+                          disabled={isSubmittingRoom}
+                          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </section>
+    ) : (
+      <div className="space-y-4">
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Members</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Invite teammates without mixing invitation management with the active roster.
+              </p>
+            </div>
+            {isLoadingData ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                Refreshing admin data...
+              </span>
+            ) : null}
+          </div>
+
+          <form
+            className="mt-4 flex flex-wrap items-center gap-3"
+            onSubmit={(event) => void handleInvite(event)}
+          >
+            <input
+              required
+              type="email"
+              placeholder="Invite by email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              className="min-w-[240px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            <button
+              type="submit"
+              disabled={isSubmittingInvite}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Invite
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Active Members
+          </h4>
+          {hasLoadedAdminData && members.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No active members.</p>
+          ) : members.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {members.map((member) => (
+                <li
+                  key={member.userId}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
+                  <p className="text-sm font-medium text-slate-900">
+                    {member.firstName} {member.lastName}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">{member.email}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Pending Invitations
+          </h4>
+          {hasLoadedAdminData && pendingInvitations.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No pending invitations.</p>
+          ) : pendingInvitations.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {pendingInvitations.map((invitation) => (
+                <li
+                  key={invitation.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
+                  <p className="text-sm font-medium text-slate-900">{invitation.email}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Expires {formatUtcInTimezone(invitation.expiresAt, selectedWorkspace.timezone)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
+    );
+
+  return {
+    rightSidebar,
+    main: (
+      <div className="space-y-4">
+        <div className="grid items-start gap-3 xl:grid-cols-[max-content_minmax(0,1fr)]">
+          <aside className="xl:sticky xl:top-6">
+            <nav className="flex flex-col gap-1" aria-label="Admin subpanels">
+              {ADMIN_SUBPANELS.map((subpanel) => {
+                const isActive = subpanel.id === activeSubpanel;
+
+                return (
+                  <Link
+                    key={subpanel.id}
+                    href={buildAdminSubpanelHref(pathname, subpanel.id, currentAdminQuery)}
+                    aria-label={subpanel.label}
+                    aria-current={isActive ? 'page' : undefined}
+                    scroll={false}
+                    className={`relative rounded-md px-2 py-1 text-sm transition ${
+                      isActive
+                        ? 'font-semibold text-slate-950'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span
+                      className={`absolute inset-y-1 left-0 w-0.5 rounded-r-full ${
+                        isActive ? 'bg-brand' : 'bg-transparent'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className="block pl-2">{subpanel.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+
+          <div>{activeSubpanelContent}</div>
         </div>
 
         {isCancelWorkspaceFormVisible ? (

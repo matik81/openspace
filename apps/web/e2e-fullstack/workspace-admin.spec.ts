@@ -9,11 +9,9 @@ test('creates a room and invitation against the real API from the admin page', a
   await loginAsSeededAdmin(page);
   await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
 
+  await page.getByRole('link', { name: 'Resources' }).click();
   const roomsSection = page
     .getByRole('heading', { name: 'Meeting Rooms' })
-    .locator('xpath=ancestor::section[1]');
-  const peopleSection = page
-    .getByRole('heading', { name: 'People' })
     .locator('xpath=ancestor::section[1]');
 
   await roomsSection.getByPlaceholder('Room name').fill('Full-stack Room');
@@ -23,8 +21,13 @@ test('creates a room and invitation against the real API from the admin page', a
   await expect(roomsSection).toContainText('Full-stack Room');
   await expect(roomsSection).toContainText('Created via API');
 
-  await peopleSection.getByPlaceholder('Invite by email').fill('real.e2e.member@example.com');
-  await peopleSection.getByRole('button', { name: 'Invite' }).click();
+  await page.getByRole('link', { name: 'Members' }).click();
+  const membersSection = page
+    .getByRole('heading', { name: 'Members' })
+    .locator('xpath=ancestor::section[1]');
+  await membersSection.getByPlaceholder('Invite by email').fill('real.e2e.member@example.com');
+  await membersSection.getByRole('button', { name: 'Invite' }).click();
 
-  await expect(peopleSection).toContainText('real.e2e.member@example.com');
+  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toBeVisible();
+  await expect(page.getByText('real.e2e.member@example.com')).toBeVisible();
 });

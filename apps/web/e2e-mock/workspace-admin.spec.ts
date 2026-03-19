@@ -13,22 +13,19 @@ test.beforeEach(async ({ page }) => {
 test('updates workspace settings and manages rooms and invitations', async ({ page }) => {
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
-  const roomsSection = page.locator('section').filter({
-    has: page.getByRole('heading', { name: 'Meeting Rooms' }),
-  });
-  const peopleSection = page.locator('section').filter({
-    has: page.getByRole('heading', { name: 'People' }),
-  });
-
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
 
   await page.getByLabel('Display Name').fill('Atlas North');
   await page.getByLabel('Web Address').fill('atlas.north');
   await page.getByRole('button', { name: 'Save Settings' }).click();
-  await expect(page).toHaveURL(workspaceAdminPathBySlug('atlas.north'));
+  await expect(page).toHaveURL(`${workspaceAdminPathBySlug('atlas.north')}?panel=settings`);
   await expect(page.getByLabel('Display Name')).toHaveValue('Atlas North');
   await expect(page.getByLabel('Web Address')).toHaveValue('atlas.north');
 
+  await page.getByRole('link', { name: 'Resources' }).click();
+  const roomsSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Meeting Rooms' }),
+  });
   await roomsSection.getByPlaceholder('Room name').fill('War Room');
   await roomsSection.getByPlaceholder('Description (optional)').fill('Escalation room');
   await roomsSection.getByPlaceholder('Description (optional)').press('Enter');
@@ -40,10 +37,16 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   await focusRoomItem.getByRole('button', { name: 'Save' }).click();
   await expect(roomsSection.getByText('Quiet room updated')).toBeVisible();
 
-  await peopleSection.getByPlaceholder('Invite by email').fill('teammate@example.com');
-  await peopleSection.getByRole('button', { name: 'Invite' }).click();
-  await expect(peopleSection.getByText('teammate@example.com')).toBeVisible();
+  await page.getByRole('link', { name: 'Members' }).click();
+  const membersSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Members' }),
+  });
+  await membersSection.getByPlaceholder('Invite by email').fill('teammate@example.com');
+  await membersSection.getByRole('button', { name: 'Invite' }).click();
+  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toBeVisible();
+  await expect(page.getByText('teammate@example.com')).toBeVisible();
 
+  await page.getByRole('link', { name: 'Resources' }).click();
   const warRoomItem = roomsSection.locator('li').filter({
     has: page.getByText('War Room'),
   });
@@ -84,4 +87,18 @@ test('cancels the workspace and redirects back to the dashboard', async ({ page 
   await expect(page).toHaveURL('/dashboard');
   await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
   await expect(page.getByText(MOCK_NAMES.adminWorkspace)).not.toBeVisible();
+});
+
+test('supports direct admin subpanel links and falls back to settings for invalid values', async ({
+  page,
+}) => {
+  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=resources`);
+
+  await expect(page.getByRole('heading', { name: 'Meeting Rooms' })).toBeVisible();
+  await expect(page.getByLabel('Display Name')).not.toBeVisible();
+
+  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=unknown`);
+
+  await expect(page.getByLabel('Display Name')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Meeting Rooms' })).not.toBeVisible();
 });

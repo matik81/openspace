@@ -54,6 +54,7 @@ The web test suite currently includes:
 - Playwright `e2e-mock` suites that run against the Next.js app with mocked backend behavior
 - Playwright `e2e-fullstack` suites that boot the real API and web apps against PostgreSQL
 - public auth coverage includes both standard registration and invitation registration flows
+- workspace admin coverage exercises the sidebar subpanel navigation for settings, resources, and members
 
 Current note:
 

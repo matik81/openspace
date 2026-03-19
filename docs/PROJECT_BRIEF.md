@@ -200,7 +200,7 @@ Implemented frontend flows:
 - public auth pages and modal states for login, registration, invitation registration, email verification, and password reset
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
 - workspace shell for booking management, room filtering, and top-bar workspace switching
-- admin pages for workspace settings, invitations, member list, room management, and destructive confirmations
+- workspace admin panel with sidebar subpanels for settings, resources, members, and destructive confirmations
 - account settings modal for profile update, password change, and account deletion
 
 ## 8. Future Extensions
