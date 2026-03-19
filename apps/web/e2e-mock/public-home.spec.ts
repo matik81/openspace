@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { installMockWorkspaceApp } from './support/mock-workspace-app';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/register-status', async (route) => {
@@ -26,6 +27,27 @@ test('opens and closes the login modal from the public home page', async ({ page
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page).not.toHaveURL(/auth=login/);
   await expect(page.getByRole('heading', { name: 'Login' })).toBeHidden();
+});
+
+test('redirects authenticated visitors from the public home page to the dashboard', async ({
+  page,
+  context,
+}) => {
+  await installMockWorkspaceApp(page);
+  await context.addCookies([
+    {
+      name: 'openspace_access_token',
+      value: 'active-access-token',
+      url: 'http://localhost:3000',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  await page.goto('/');
+
+  await expect(page).toHaveURL('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
 });
 
 test('completes the register to verify-email smoke flow', async ({ page }) => {

@@ -102,6 +102,7 @@ Server-side web proxy routes under `apps/web/app/api` forward browser requests t
 Current auth and session lifecycle:
 
 - login stores access and refresh tokens in HTTP-only cookies
+- the `/` route redirects to `/dashboard` when auth cookies indicate an existing web session candidate
 - invitation registration can deep-link into the public auth modal and pre-validate the invitation token before submit
 - a successful invitation registration verifies the invited email immediately and routes the user back to login instead of the standalone verify-email step
 - authenticated web proxy routes retry once on `401` after calling `/api/auth/refresh`
