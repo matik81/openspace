@@ -16,6 +16,12 @@ export const FULLSTACK_E2E = {
       lastName: 'Hopper',
       email: 'playwright.inviter@example.com',
     },
+    formerMember: {
+      id: '88888888-8888-4888-8888-888888888888',
+      firstName: 'Katherine',
+      lastName: 'Johnson',
+      email: 'playwright.former@example.com',
+    },
   },
   workspaces: {
     admin: {

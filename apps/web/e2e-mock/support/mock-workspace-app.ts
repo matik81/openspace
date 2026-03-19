@@ -391,6 +391,15 @@ function createDefaultState(): MockWorkspaceAppState {
         status: 'ACTIVE',
         joinedAt: createdAt,
       },
+      {
+        userId: 'user-katherine',
+        firstName: 'Katherine',
+        lastName: 'Johnson',
+        email: 'katherine@example.com',
+        role: 'MEMBER',
+        status: 'INACTIVE',
+        joinedAt: createdAt,
+      },
     ],
     [MOCK_IDS.memberWorkspace]: [
       {
@@ -759,7 +768,11 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
     if (membersMatch && method === 'GET') {
       const workspaceId = membersMatch[1];
       return responseJson(route, 200, {
-        items: cloneJson(state.membersByWorkspaceId[workspaceId] ?? []),
+        items: cloneJson(
+          (state.membersByWorkspaceId[workspaceId] ?? []).filter(
+            (member) => member.status === 'ACTIVE',
+          ),
+        ),
       });
     }
 

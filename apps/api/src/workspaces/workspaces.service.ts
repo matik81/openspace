@@ -589,7 +589,6 @@ export class WorkspacesService {
       this.prismaService.workspaceMember.findMany({
         where: {
           workspaceId: normalizedWorkspaceId,
-          status: MembershipStatus.ACTIVE,
           workspace: { status: WorkspaceStatus.ACTIVE },
         },
         select: {
@@ -1140,8 +1139,7 @@ export class WorkspacesService {
     if (!WorkspacesService.WORKSPACE_SLUG_PATTERN.test(slug)) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
-        message:
-          'slug must contain only lowercase letters, numbers, dots, and hyphens',
+        message: 'slug must contain only lowercase letters, numbers, dots, and hyphens',
       });
     }
 
@@ -1253,4 +1251,3 @@ export class WorkspacesService {
     return fullName.length > 0 ? fullName : user.email;
   }
 }
-

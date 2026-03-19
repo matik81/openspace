@@ -12,10 +12,7 @@ import {
 } from '../../src/generated/prisma';
 import { hashSync } from 'bcryptjs';
 import request from 'supertest';
-import {
-  EMAIL_PROVIDER,
-  EmailProvider,
-} from '../../src/auth/email/email-provider.interface';
+import { EMAIL_PROVIDER, EmailProvider } from '../../src/auth/email/email-provider.interface';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -123,14 +120,12 @@ describe('Domain rules integration', () => {
   }
 
   async function registerAndVerify(email: string) {
-    const registerResponse = await request(app.getHttpServer())
-      .post('/api/auth/register')
-      .send({
-        firstName: 'Flow',
-        lastName: 'User',
-        email,
-        password,
-      });
+    const registerResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Flow',
+      lastName: 'User',
+      email,
+      password,
+    });
     expect(registerResponse.status).toBe(201);
 
     const verificationToken = verificationTokensByEmail[email.toLowerCase()];
@@ -392,7 +387,11 @@ describe('Domain rules integration', () => {
     const memberTwoToken = await accessTokenFor(memberTwo.id, memberTwo.email);
     const workspaceId = await createWorkspace(adminToken, 'User Capacity Workspace');
 
-    const memberOneInvitation = await inviteMember(adminToken, workspaceId, 'member-one@example.com');
+    const memberOneInvitation = await inviteMember(
+      adminToken,
+      workspaceId,
+      'member-one@example.com',
+    );
     await acceptInvitation(memberOneToken, memberOneInvitation);
 
     const secondMemberInvitation = await request(app.getHttpServer())
@@ -551,11 +550,44 @@ describe('Domain rules integration', () => {
       cancelledAt: null,
     });
 
+    const [activeMembersResponse, adminSummaryResponse] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`/api/workspaces/${workspaceId}/members`)
+        .set('Authorization', `Bearer ${adminToken}`),
+      request(app.getHttpServer())
+        .get(`/api/workspaces/${workspaceId}/admin-summary`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    ]);
+
+    expect(activeMembersResponse.status).toBe(200);
+    expect(activeMembersResponse.body.items).toEqual([
+      expect.objectContaining({
+        email: 'leave-admin@example.com',
+        status: MembershipStatus.ACTIVE,
+      }),
+    ]);
+
+    expect(adminSummaryResponse.status).toBe(200);
+    expect(adminSummaryResponse.body.members.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          email: 'leave-admin@example.com',
+          status: MembershipStatus.ACTIVE,
+        }),
+        expect.objectContaining({
+          email: 'leave-member@example.com',
+          status: MembershipStatus.INACTIVE,
+        }),
+      ]),
+    );
+
     const reinvitation = await inviteMember(adminToken, workspaceId, 'leave-member@example.com');
     await acceptInvitation(memberToken, reinvitation);
 
     const listResponse = await request(app.getHttpServer())
-      .get(`/api/workspaces/${workspaceId}/bookings?mine=true&includePast=true&includeCancelled=true`)
+      .get(
+        `/api/workspaces/${workspaceId}/bookings?mine=true&includePast=true&includeCancelled=true`,
+      )
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(listResponse.status).toBe(200);
@@ -586,7 +618,11 @@ describe('Domain rules integration', () => {
 
     const memberWorkspaceId = await createWorkspace(adminToken, 'Participant Workspace');
     const memberRoomId = await createRoom(adminToken, memberWorkspaceId, 'Participant Room');
-    const memberInvitation = await inviteMember(adminToken, memberWorkspaceId, 'delete-owner@example.com');
+    const memberInvitation = await inviteMember(
+      adminToken,
+      memberWorkspaceId,
+      'delete-owner@example.com',
+    );
     await acceptInvitation(ownerToken, memberInvitation);
 
     const memberBookingResponse = await request(app.getHttpServer())
@@ -674,14 +710,12 @@ describe('Domain rules integration', () => {
       status: UserStatus.CANCELLED,
     });
 
-    const reRegisterResponse = await request(app.getHttpServer())
-      .post('/api/auth/register')
-      .send({
-        firstName: 'Reactivated',
-        lastName: 'User',
-        email: 'reactivation-domain@example.com',
-        password: 're-strong-password',
-      });
+    const reRegisterResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'Reactivated',
+      lastName: 'User',
+      email: 'reactivation-domain@example.com',
+      password: 're-strong-password',
+    });
     expect(reRegisterResponse.status).toBe(201);
 
     const reactivatedUser = await prismaService.user.findUnique({
@@ -886,5 +920,3 @@ describe('Domain rules integration', () => {
     });
   });
 });
-
-

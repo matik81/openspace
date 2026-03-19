@@ -25,9 +25,20 @@ test('creates a room and invitation against the real API from the admin page', a
   const membersSection = page
     .getByRole('heading', { name: 'Members' })
     .locator('xpath=ancestor::section[1]');
+  const directorySection = page
+    .getByRole('heading', { name: 'Directory' })
+    .locator('xpath=ancestor::section[1]');
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' })).toContainText(
+    'ADMIN',
+  );
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toContainText('LEFT');
   await membersSection.getByPlaceholder('Invite by email').fill('real.e2e.member@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toBeVisible();
-  await expect(page.getByText('real.e2e.member@example.com')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toHaveCount(0);
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
+  ).toContainText('INVITED');
 });

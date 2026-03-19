@@ -1,5 +1,6 @@
 'use client';
 
+import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -36,7 +37,6 @@ import {
   normalizeWorkspaceSlugCandidate,
 } from '@/lib/workspace-routing';
 import { isBookingListPayload, isWorkspaceAdminSummaryPayload } from '@/lib/workspace-payloads';
-import { formatUtcInTimezone } from '@/lib/workspace-time';
 
 type WorkspacePageParams = {
   workspaceId?: string;
@@ -207,6 +207,86 @@ type AdminRightSidebarState = {
 };
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
+
+type MemberDirectoryStatus = 'ADMIN' | 'ACTIVE' | 'INVITED' | 'LEFT';
+
+type MemberDirectoryItem = {
+  id: string;
+  displayName: string | null;
+  email: string;
+  status: MemberDirectoryStatus;
+  detail: string;
+};
+
+function formatMemberDirectoryDate(value: string, timezone: string): string {
+  const parsed = DateTime.fromISO(value, { zone: 'utc' });
+  if (!parsed.isValid) {
+    return value;
+  }
+
+  const zoned = parsed.setZone(timezone);
+  if (!zoned.isValid) {
+    return parsed.toUTC().toISODate() ?? value;
+  }
+
+  return zoned.toLocaleString(DateTime.DATE_MED);
+}
+
+function getMemberDirectoryBadgeClassName(status: MemberDirectoryStatus): string {
+  if (status === 'ADMIN') {
+    return 'inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800';
+  }
+
+  if (status === 'ACTIVE') {
+    return 'inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-emerald-800';
+  }
+
+  if (status === 'INVITED') {
+    return 'inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-amber-800';
+  }
+
+  return 'inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-slate-700';
+}
+
+function buildMemberDirectoryItems({
+  members,
+  invitations,
+  timezone,
+}: {
+  members: WorkspaceMemberListItem[];
+  invitations: WorkspaceInvitationSummary[];
+  timezone: string;
+}): MemberDirectoryItem[] {
+  const activeMembers = members
+    .filter((member) => member.status === 'ACTIVE')
+    .map((member) => ({
+      id: `member:${member.userId}`,
+      displayName: `${member.firstName} ${member.lastName}`.trim(),
+      email: member.email,
+      status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
+      detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+    }));
+
+  const invitedPeople = invitations.map((invitation) => ({
+    id: `invitation:${invitation.id}`,
+    displayName: null,
+    email: invitation.email,
+    status: 'INVITED' as const,
+    detail: `Invited ${formatMemberDirectoryDate(invitation.createdAt, timezone)}`,
+  }));
+
+  const leftMembers = members
+    .filter((member) => member.status !== 'ACTIVE')
+    .map((member) => ({
+      id: `member:${member.userId}`,
+      displayName: `${member.firstName} ${member.lastName}`.trim(),
+      email: member.email,
+      status: 'LEFT' as const,
+      detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+    }));
+
+  return [...activeMembers, ...invitedPeople, ...leftMembers];
+}
 
 function AdminViewportDialog({
   open,
@@ -430,6 +510,15 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const isResolvingSelectedWorkspace = isLoading && !selectedWorkspace;
   const currentUserId = currentUser?.id ?? '';
   const rightSidebarTimezone = selectedWorkspace?.timezone ?? 'UTC';
+  const memberDirectoryItems = useMemo(
+    () =>
+      buildMemberDirectoryItems({
+        members,
+        invitations: pendingInvitations,
+        timezone: selectedWorkspace?.timezone ?? 'UTC',
+      }),
+    [members, pendingInvitations, selectedWorkspace?.timezone],
+  );
   const bookingLoadDateRange = useMemo(
     () => resolveBookingLoadDateRange({ timezone: rightSidebarTimezone, monthKey }),
     [monthKey, rightSidebarTimezone],
@@ -1012,7 +1101,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             ) : null}
           </div>
 
-          <form className="mt-4 space-y-4" onSubmit={(event) => void handleSaveWorkspaceSettings(event)}>
+          <form
+            className="mt-4 space-y-4"
+            onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
+          >
             {settingsBanner || isSettingsSavedNoticeVisible || settingsError ? (
               <div className="space-y-2">
                 {settingsBanner || isSettingsSavedNoticeVisible ? (
@@ -1045,7 +1137,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
 
                 <div className="space-y-4">
                   <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-slate-700">Display Name</span>
+                    <span className="mb-1 block text-sm font-medium text-slate-700">
+                      Display Name
+                    </span>
                     <input
                       required
                       value={workspaceSettingsForm.name}
@@ -1071,7 +1165,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                   </label>
 
                   <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
+                    <span className="mb-1 block text-sm font-medium text-slate-700">
+                      Web Address
+                    </span>
                     <input
                       required
                       value={workspaceSettingsForm.slug}
@@ -1150,11 +1246,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                         }}
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                       >
-                        {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map((hour) => (
-                          <option key={`start-${hour}`} value={hour}>
-                            {hour.toString().padStart(2, '0')}:00
-                          </option>
-                        ))}
+                        {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map(
+                          (hour) => (
+                            <option key={`start-${hour}`} value={hour}>
+                              {hour.toString().padStart(2, '0')}:00
+                            </option>
+                          ),
+                        )}
                       </select>
                     </label>
 
@@ -1356,7 +1454,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Members</h3>
               <p className="mt-1 text-sm text-slate-600">
-                Invite teammates without mixing invitation management with the active roster.
+                Invite teammates and review active, former, and pending people in one place.
               </p>
             </div>
             {isLoadingData ? (
@@ -1389,48 +1487,55 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Active Members
-          </h4>
-          {hasLoadedAdminData && members.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No active members.</p>
-          ) : members.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {members.map((member) => (
-                <li
-                  key={member.userId}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                >
-                  <p className="text-sm font-medium text-slate-900">
-                    {member.firstName} {member.lastName}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">{member.email}</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Pending Invitations
-          </h4>
-          {hasLoadedAdminData && pendingInvitations.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No pending invitations.</p>
-          ) : pendingInvitations.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {pendingInvitations.map((invitation) => (
-                <li
-                  key={invitation.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                >
-                  <p className="text-sm font-medium text-slate-900">{invitation.email}</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Expires {formatUtcInTimezone(invitation.expiresAt, selectedWorkspace.timezone)}
-                  </p>
-                </li>
-              ))}
-            </ul>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Directory
+              </h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Keep active members, former members, and invited people in one list.
+              </p>
+            </div>
+          </div>
+          {hasLoadedAdminData && memberDirectoryItems.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No members or invitations yet.</p>
+          ) : memberDirectoryItems.length > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-[720px] w-full table-fixed border-separate border-spacing-0">
+                <thead>
+                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <th className="w-[24%] border-b border-slate-200 px-3 py-3">Name</th>
+                    <th className="w-[30%] border-b border-slate-200 px-3 py-3">Email</th>
+                    <th className="w-[28%] border-b border-slate-200 px-3 py-3">Timeline</th>
+                    <th className="w-[18%] border-b border-slate-200 px-3 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberDirectoryItems.map((person) => (
+                    <tr key={person.id} className="align-top">
+                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
+                        {person.displayName ? (
+                          <span className="font-medium text-slate-900">{person.displayName}</span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                        <span className="break-all">{person.email}</span>
+                      </td>
+                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                        {person.detail}
+                      </td>
+                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                        <span className={getMemberDirectoryBadgeClassName(person.status)}>
+                          {person.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : null}
         </section>
       </div>
@@ -1455,7 +1560,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
               <ul className="mt-3 space-y-2 text-sm text-rose-900">
                 <li>Active rooms are marked as cancelled and stop accepting new reservations.</li>
                 <li>Future reservations are cancelled while historical records stay preserved.</li>
-                <li>Memberships and invitations are deactivated as part of the workspace shutdown.</li>
+                <li>
+                  Memberships and invitations are deactivated as part of the workspace shutdown.
+                </li>
               </ul>
             </div>
 

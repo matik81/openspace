@@ -121,7 +121,7 @@ UI expectations:
 
 - pending invitations are visually distinct
 - the user can accept or reject them directly
-- admin views expose summary data, members, and pending invitations separately
+- admin views expose summary data plus a unified members directory that distinguishes active, left, and invited people
 
 ## 4. Rooms
 

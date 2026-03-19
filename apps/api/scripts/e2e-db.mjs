@@ -25,6 +25,12 @@ const FULLSTACK_E2E = {
       lastName: 'Hopper',
       email: 'playwright.inviter@example.com',
     },
+    formerMember: {
+      id: '88888888-8888-4888-8888-888888888888',
+      firstName: 'Katherine',
+      lastName: 'Johnson',
+      email: 'playwright.former@example.com',
+    },
   },
   workspaces: {
     admin: {
@@ -124,6 +130,14 @@ export async function seedFullStackScenario() {
         passwordHash: inviterPasswordHash,
         emailVerifiedAt: now,
       },
+      {
+        id: FULLSTACK_E2E.users.formerMember.id,
+        firstName: FULLSTACK_E2E.users.formerMember.firstName,
+        lastName: FULLSTACK_E2E.users.formerMember.lastName,
+        email: FULLSTACK_E2E.users.formerMember.email,
+        passwordHash: inviterPasswordHash,
+        emailVerifiedAt: now,
+      },
     ],
   });
 
@@ -163,6 +177,12 @@ export async function seedFullStackScenario() {
         userId: FULLSTACK_E2E.users.inviter.id,
         role: 'ADMIN',
         status: 'ACTIVE',
+      },
+      {
+        workspaceId: FULLSTACK_E2E.workspaces.admin.id,
+        userId: FULLSTACK_E2E.users.formerMember.id,
+        role: 'MEMBER',
+        status: 'INACTIVE',
       },
     ],
   });

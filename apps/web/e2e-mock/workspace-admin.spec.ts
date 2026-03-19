@@ -42,10 +42,24 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   const membersSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Members' }),
   });
+  const directorySection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Directory' }),
+  });
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toContainText(
+    'ADMIN',
+  );
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' })).toContainText(
+    'ACTIVE',
+  );
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toContainText('LEFT');
   await membersSection.getByPlaceholder('Invite by email').fill('teammate@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();
-  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toBeVisible();
-  await expect(page.getByText('teammate@example.com')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toHaveCount(0);
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
+  ).toContainText('INVITED');
 
   await page.getByRole('link', { name: 'Resources' }).click();
   const warRoomItem = roomsSection.locator('li').filter({
