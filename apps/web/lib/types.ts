@@ -44,6 +44,7 @@ export type WorkspaceScheduleVersion = {
 export type WorkspaceItem = {
   id: string;
   name: string;
+  slug: string;
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;

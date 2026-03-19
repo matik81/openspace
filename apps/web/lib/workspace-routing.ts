@@ -8,19 +8,29 @@ function decodeWorkspacePathSegment(value: string): string {
   }
 }
 
-export function buildWorkspacePathFromName(workspaceName: string): string {
-  return `/${encodeURIComponent(workspaceName)}`;
+export function normalizeWorkspaceSlugCandidate(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/[.-]{2,}/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '');
 }
 
-export function buildWorkspaceAdminPathFromName(workspaceName: string): string {
-  return `${buildWorkspacePathFromName(workspaceName)}/admin`;
+export function buildWorkspacePathFromSlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}`;
 }
 
-export function resolveWorkspaceByRouteName(
+export function buildWorkspaceAdminPathFromSlug(workspaceSlug: string): string {
+  return `${buildWorkspacePathFromSlug(workspaceSlug)}/admin`;
+}
+
+export function resolveWorkspaceByRouteSlug(
   items: WorkspaceItem[],
-  routeWorkspaceName: string,
+  routeWorkspaceSlug: string,
 ): WorkspaceItem | null {
-  const decodedWorkspaceName = decodeWorkspacePathSegment(routeWorkspaceName);
-  return items.find((item) => item.name === decodedWorkspaceName) ?? null;
+  const decodedWorkspaceSlug = decodeWorkspacePathSegment(routeWorkspaceSlug).toLowerCase();
+  return items.find((item) => item.slug === decodedWorkspaceSlug) ?? null;
 }
-

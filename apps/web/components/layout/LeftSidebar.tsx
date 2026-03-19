@@ -23,7 +23,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import type { WorkspaceItem } from '@/lib/types';
-import { buildWorkspaceAdminPathFromName } from '@/lib/workspace-routing';
+import { buildWorkspaceAdminPathFromSlug } from '@/lib/workspace-routing';
 
 type SidebarAction =
   | {
@@ -115,7 +115,7 @@ function SortableWorkspaceRow({
         <div className="flex shrink-0 items-center gap-1">
           {canOpenAdminPanel ? (
             <Link
-              href={buildWorkspaceAdminPathFromName(item.name)}
+              href={buildWorkspaceAdminPathFromSlug(item.slug)}
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Admin

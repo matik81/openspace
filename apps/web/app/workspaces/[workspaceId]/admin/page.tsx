@@ -28,8 +28,9 @@ import type {
   WorkspaceMemberListItem,
 } from '@/lib/types';
 import {
-  buildWorkspaceAdminPathFromName,
-  buildWorkspacePathFromName,
+  buildWorkspaceAdminPathFromSlug,
+  buildWorkspacePathFromSlug,
+  normalizeWorkspaceSlugCandidate,
 } from '@/lib/workspace-routing';
 import { isBookingListPayload, isWorkspaceAdminSummaryPayload } from '@/lib/workspace-payloads';
 import { formatUtcInTimezone } from '@/lib/workspace-time';
@@ -46,6 +47,7 @@ type RoomEditState = {
 
 type WorkspaceSettingsState = {
   name: string;
+  slug: string;
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
@@ -115,17 +117,20 @@ function AdminViewportDialog({
 
 function buildWorkspaceSettingsState({
   name,
+  slug,
   timezone,
   scheduleStartHour,
   scheduleEndHour,
 }: {
   name?: string | null;
+  slug?: string | null;
   timezone?: string | null;
   scheduleStartHour?: number | null;
   scheduleEndHour?: number | null;
 }): WorkspaceSettingsState {
   return {
     name: name ?? '',
+    slug: slug ?? '',
     timezone: timezone ?? 'UTC',
     scheduleStartHour: scheduleStartHour ?? 8,
     scheduleEndHour: scheduleEndHour ?? 18,
@@ -141,7 +146,7 @@ export default function WorkspaceAdminPage() {
   const workspaceId = params?.workspaceId ?? '';
   const workspaceName = params?.workspaceName ?? '';
   const pageBackHref = workspaceName
-    ? buildWorkspacePathFromName(workspaceName)
+    ? buildWorkspacePathFromSlug(workspaceName)
     : workspaceId
       ? `/workspaces/${workspaceId}`
       : '/dashboard';
@@ -206,6 +211,7 @@ function WorkspaceAdminContent({
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>(() =>
     buildWorkspaceSettingsState({
       name: selectedWorkspace?.name,
+      slug: selectedWorkspace?.slug,
       timezone: selectedWorkspace?.timezone,
       scheduleStartHour: selectedWorkspace?.scheduleStartHour,
       scheduleEndHour: selectedWorkspace?.scheduleEndHour,
@@ -231,6 +237,7 @@ function WorkspaceAdminContent({
     selectedWorkspace?.membership?.role === 'ADMIN';
   const selectedWorkspaceId = selectedWorkspace?.id ?? null;
   const selectedWorkspaceName = selectedWorkspace?.name ?? null;
+  const selectedWorkspaceSlug = selectedWorkspace?.slug ?? null;
   const selectedWorkspaceTimezone = selectedWorkspace?.timezone ?? null;
   const selectedWorkspaceScheduleStartHour = selectedWorkspace?.scheduleStartHour ?? null;
   const selectedWorkspaceScheduleEndHour = selectedWorkspace?.scheduleEndHour ?? null;
@@ -340,7 +347,12 @@ function WorkspaceAdminContent({
   }, [isResolvingSelectedWorkspace, loadMyBookings]);
 
   useEffect(() => {
-    if (!selectedWorkspaceId || !selectedWorkspaceName || !selectedWorkspaceTimezone) {
+    if (
+      !selectedWorkspaceId ||
+      !selectedWorkspaceName ||
+      !selectedWorkspaceSlug ||
+      !selectedWorkspaceTimezone
+    ) {
       lastSelectedWorkspaceIdRef.current = null;
       return;
     }
@@ -349,6 +361,7 @@ function WorkspaceAdminContent({
 
     const nextWorkspaceSettingsForm = buildWorkspaceSettingsState({
       name: selectedWorkspaceName,
+      slug: selectedWorkspaceSlug,
       timezone: selectedWorkspaceTimezone,
       scheduleStartHour: selectedWorkspaceScheduleStartHour,
       scheduleEndHour: selectedWorkspaceScheduleEndHour,
@@ -356,6 +369,7 @@ function WorkspaceAdminContent({
 
     setWorkspaceSettingsForm((previous) =>
       previous.name === nextWorkspaceSettingsForm.name &&
+      previous.slug === nextWorkspaceSettingsForm.slug &&
       previous.timezone === nextWorkspaceSettingsForm.timezone &&
       previous.scheduleStartHour === nextWorkspaceSettingsForm.scheduleStartHour &&
       previous.scheduleEndHour === nextWorkspaceSettingsForm.scheduleEndHour
@@ -378,6 +392,7 @@ function WorkspaceAdminContent({
   }, [
     selectedWorkspaceId,
     selectedWorkspaceName,
+    selectedWorkspaceSlug,
     selectedWorkspaceTimezone,
     selectedWorkspaceScheduleStartHour,
     selectedWorkspaceScheduleEndHour,
@@ -422,6 +437,7 @@ function WorkspaceAdminContent({
         },
         body: JSON.stringify({
           name: workspaceSettingsForm.name,
+          slug: workspaceSettingsForm.slug,
           timezone: workspaceSettingsForm.timezone,
           scheduleStartHour: workspaceSettingsForm.scheduleStartHour,
           scheduleEndHour: workspaceSettingsForm.scheduleEndHour,
@@ -435,9 +451,9 @@ function WorkspaceAdminContent({
       }
 
       await loadWorkspaces();
-      const nextWorkspaceName = workspaceSettingsForm.name.trim();
-      if (nextWorkspaceName) {
-        router.replace(buildWorkspaceAdminPathFromName(nextWorkspaceName));
+      const nextWorkspaceSlug = normalizeWorkspaceSlugCandidate(workspaceSettingsForm.slug);
+      if (nextWorkspaceSlug) {
+        router.replace(buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug));
       }
       setIsSubmittingWorkspaceSettings(false);
     },
@@ -716,7 +732,7 @@ function WorkspaceAdminContent({
       miniCalendarCells={miniCalendarCells}
       bookingGroups={myBookingGroups}
       onOpenBooking={(booking) =>
-        router.push(`${buildWorkspacePathFromName(selectedWorkspace.name)}?bookingId=${booking.id}`)
+        router.push(`${buildWorkspacePathFromSlug(selectedWorkspace.slug)}?bookingId=${booking.id}`)
       }
     />
   );
@@ -729,22 +745,50 @@ function WorkspaceAdminContent({
           <h3 className="text-lg font-semibold text-slate-900">Workspace Settings</h3>
 
           <form
-            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_240px_160px_160px_auto_auto] xl:items-end"
+            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_240px_160px_160px_auto_auto] xl:items-end"
             onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
           >
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Workspace Name</span>
+              <span className="mb-1 block text-sm font-medium text-slate-700">Display Name</span>
               <input
                 required
                 value={workspaceSettingsForm.name}
                 onChange={(event) =>
+                  setWorkspaceSettingsForm((previous) => {
+                    const nextName = event.target.value;
+                    const generatedSlug = normalizeWorkspaceSlugCandidate(previous.name);
+                    const nextGeneratedSlug = normalizeWorkspaceSlugCandidate(nextName);
+
+                    return {
+                      ...previous,
+                      name: nextName,
+                      slug:
+                        !previous.slug || previous.slug === generatedSlug
+                          ? nextGeneratedSlug
+                          : previous.slug,
+                    };
+                  })
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
+              <input
+                required
+                value={workspaceSettingsForm.slug}
+                onChange={(event) =>
                   setWorkspaceSettingsForm((previous) => ({
                     ...previous,
-                    name: event.target.value,
+                    slug: normalizeWorkspaceSlugCandidate(event.target.value),
                   }))
                 }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Use lowercase letters, numbers, dots, and hyphens only.
+              </p>
             </label>
 
             <label className="block">

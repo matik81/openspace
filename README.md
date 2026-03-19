@@ -96,7 +96,8 @@ Current email delivery behavior:
 
 - Workspace visibility is limited to active members or pending invitees whose email matches the authenticated user.
 - Workspaces, rooms, bookings, and users use logical cancellation rather than permanent deletion.
-- Workspace names are unique only among active workspaces.
+- Workspace display names can repeat.
+- Workspace web-address slugs are unique only among active workspaces.
 - Room names are unique only among active rooms within the same workspace.
 - Visible workspace ordering is persisted per user.
 - Bookings are stored in UTC and evaluated in the workspace timezone.
@@ -165,8 +166,8 @@ User-facing pages:
 - `/dashboard`
 - `/workspaces/[workspaceId]`
 - `/workspaces/[workspaceId]/admin`
-- `/[workspaceName]`
-- `/[workspaceName]/admin`
+- `/[workspaceSlug]`
+- `/[workspaceSlug]/admin`
 
 Implemented web behavior:
 

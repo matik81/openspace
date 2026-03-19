@@ -39,6 +39,7 @@ type VerifiedUser = { id: string; email: string; firstName: string; lastName: st
 export class WorkspacesService {
   private static readonly DEFAULT_SCHEDULE_START_HOUR = 8;
   private static readonly DEFAULT_SCHEDULE_END_HOUR = 18;
+  private static readonly WORKSPACE_SLUG_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -56,16 +57,21 @@ export class WorkspacesService {
     await this.assertUserWorkspaceCapacity(user.id);
 
     const name = this.requireString(dto.name, 'name');
+    const slug =
+      dto.slug === undefined
+        ? this.buildWorkspaceSlugCandidate(name)
+        : this.requireWorkspaceSlug(dto.slug);
     const timezone = dto.timezone === undefined ? 'UTC' : this.requireTimezone(dto.timezone);
     const { scheduleStartHour, scheduleEndHour } = this.resolveScheduleHours(dto);
     const now = new Date();
-    await this.assertWorkspaceNameAvailable(name);
+    await this.assertWorkspaceSlugAvailable(slug);
 
     try {
       const workspace = await this.prismaService.$transaction(async (tx) => {
         const created = await tx.workspace.create({
           data: {
             name,
+            slug,
             timezone,
             scheduleStartHour,
             scheduleEndHour,
@@ -107,10 +113,10 @@ export class WorkspacesService {
         membership: { role: WorkspaceRole.ADMIN, status: MembershipStatus.ACTIVE },
       };
     } catch (error) {
-      if (this.isWorkspaceNameConflict(error)) {
+      if (this.isWorkspaceSlugConflict(error)) {
         throw new ConflictException({
-          code: 'WORKSPACE_NAME_ALREADY_EXISTS',
-          message: 'A workspace with this name already exists',
+          code: 'WORKSPACE_SLUG_ALREADY_EXISTS',
+          message: 'A workspace with this web address already exists',
         });
       }
       throw error;
@@ -319,6 +325,7 @@ export class WorkspacesService {
     const current = await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
 
     const name = dto.name !== undefined ? this.requireString(dto.name, 'name') : undefined;
+    const slug = dto.slug !== undefined ? this.requireWorkspaceSlug(dto.slug) : undefined;
     const timezone =
       dto.timezone !== undefined ? this.requireTimezone(dto.timezone) : current.timezone;
     const schedule = this.resolveScheduleHours({
@@ -332,6 +339,7 @@ export class WorkspacesService {
 
     if (
       name === undefined &&
+      slug === undefined &&
       dto.timezone === undefined &&
       dto.scheduleStartHour === undefined &&
       dto.scheduleEndHour === undefined
@@ -341,8 +349,8 @@ export class WorkspacesService {
         message: 'At least one field must be provided to update workspace',
       });
     }
-    if (name !== undefined && name !== current.name) {
-      await this.assertWorkspaceNameAvailable(name, normalizedWorkspaceId);
+    if (slug !== undefined && slug !== current.slug) {
+      await this.assertWorkspaceSlugAvailable(slug, normalizedWorkspaceId);
     }
 
     const now = new Date();
@@ -352,6 +360,7 @@ export class WorkspacesService {
           where: { id: normalizedWorkspaceId },
           data: {
             ...(name !== undefined ? { name } : {}),
+            ...(slug !== undefined ? { slug } : {}),
             ...(dto.timezone !== undefined ? { timezone } : {}),
             ...(dto.scheduleStartHour !== undefined || dto.scheduleEndHour !== undefined
               ? schedule
@@ -408,10 +417,10 @@ export class WorkspacesService {
         return updated;
       });
     } catch (error) {
-      if (this.isWorkspaceNameConflict(error)) {
+      if (this.isWorkspaceSlugConflict(error)) {
         throw new ConflictException({
-          code: 'WORKSPACE_NAME_ALREADY_EXISTS',
-          message: 'A workspace with this name already exists',
+          code: 'WORKSPACE_SLUG_ALREADY_EXISTS',
+          message: 'A workspace with this web address already exists',
         });
       }
       throw error;
@@ -1005,10 +1014,10 @@ export class WorkspacesService {
     }
   }
 
-  private async assertWorkspaceNameAvailable(name: string, excludeWorkspaceId?: string) {
+  private async assertWorkspaceSlugAvailable(slug: string, excludeWorkspaceId?: string) {
     const existing = await this.prismaService.workspace.findFirst({
       where: {
-        name,
+        slug,
         status: WorkspaceStatus.ACTIVE,
         ...(excludeWorkspaceId ? { id: { not: excludeWorkspaceId } } : {}),
       },
@@ -1016,8 +1025,8 @@ export class WorkspacesService {
     });
     if (existing) {
       throw new ConflictException({
-        code: 'WORKSPACE_NAME_ALREADY_EXISTS',
-        message: 'A workspace with this name already exists',
+        code: 'WORKSPACE_SLUG_ALREADY_EXISTS',
+        message: 'A workspace with this web address already exists',
       });
     }
   }
@@ -1026,6 +1035,7 @@ export class WorkspacesService {
     workspace: {
       id: string;
       name: string;
+      slug: string;
       timezone: string;
       scheduleStartHour: number;
       scheduleEndHour: number;
@@ -1055,6 +1065,7 @@ export class WorkspacesService {
     return {
       id: true,
       name: true,
+      slug: true,
       timezone: true,
       scheduleStartHour: true,
       scheduleEndHour: true,
@@ -1068,6 +1079,7 @@ export class WorkspacesService {
     return {
       id: true,
       name: true,
+      slug: true,
       timezone: true,
       scheduleStartHour: true,
       scheduleEndHour: true,
@@ -1092,20 +1104,20 @@ export class WorkspacesService {
     };
   }
 
-  private isWorkspaceNameConflict(error: unknown): boolean {
+  private isWorkspaceSlugConflict(error: unknown): boolean {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
       return false;
     }
     const meta = error.meta as { target?: string | string[] } | undefined;
     if (Array.isArray(meta?.target)) {
-      return meta.target.includes('name');
+      return meta.target.includes('slug');
     }
     if (typeof meta?.target === 'string') {
-      return meta.target.includes('name');
+      return meta.target.includes('slug');
     }
     return (
-      error.message.includes('Workspace_name_key') ||
-      error.message.includes('Workspace_active_name_key')
+      error.message.includes('Workspace_slug_key') ||
+      error.message.includes('Workspace_active_slug_key')
     );
   }
 
@@ -1121,6 +1133,32 @@ export class WorkspacesService {
       throw new BadRequestException({ code: 'BAD_REQUEST', message: `${fieldName} is required` });
     }
     return value.trim();
+  }
+
+  private requireWorkspaceSlug(value: string | undefined | null): string {
+    const slug = this.requireString(value, 'slug').toLowerCase();
+    if (!WorkspacesService.WORKSPACE_SLUG_PATTERN.test(slug)) {
+      throw new BadRequestException({
+        code: 'BAD_REQUEST',
+        message:
+          'slug must contain only lowercase letters, numbers, dots, and hyphens',
+      });
+    }
+
+    return slug;
+  }
+
+  private buildWorkspaceSlugCandidate(value: string): string {
+    const slug = value
+      .trim()
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9.-]+/g, '-')
+      .replace(/[.-]{2,}/g, '-')
+      .replace(/^[.-]+|[.-]+$/g, '');
+
+    return this.requireWorkspaceSlug(slug || 'workspace');
   }
 
   private normalizeEmail(value: string | undefined | null): string {

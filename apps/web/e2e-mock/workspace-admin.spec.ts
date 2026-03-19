@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import {
   installMockWorkspaceApp,
   MOCK_NAMES,
-  workspaceAdminPathByName,
+  MOCK_SLUGS,
+  workspaceAdminPathBySlug,
 } from './support/mock-workspace-app';
 
 test.beforeEach(async ({ page }) => {
@@ -10,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('updates workspace settings and manages rooms and invitations', async ({ page }) => {
-  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   const roomsSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Meeting Rooms' }),
@@ -21,10 +22,12 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
 
-  await page.getByLabel('Workspace Name').fill('Atlas North');
+  await page.getByLabel('Display Name').fill('Atlas North');
+  await page.getByLabel('Web Address').fill('atlas.north');
   await page.getByRole('button', { name: 'Save Settings' }).click();
-  await expect(page).toHaveURL(workspaceAdminPathByName('Atlas North'));
-  await expect(page.getByLabel('Workspace Name')).toHaveValue('Atlas North');
+  await expect(page).toHaveURL(workspaceAdminPathBySlug('atlas.north'));
+  await expect(page.getByLabel('Display Name')).toHaveValue('Atlas North');
+  await expect(page.getByLabel('Web Address')).toHaveValue('atlas.north');
 
   await roomsSection.getByPlaceholder('Room name').fill('War Room');
   await roomsSection.getByPlaceholder('Description (optional)').fill('Escalation room');
@@ -61,7 +64,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 });
 
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
-  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('button', { name: 'Cancel Workspace' }).click();
 

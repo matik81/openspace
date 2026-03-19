@@ -3,8 +3,9 @@ import { DateTime } from 'luxon';
 import {
   installMockWorkspaceApp,
   MOCK_NAMES,
-  workspaceAdminPathByName,
-  workspacePathByName,
+  MOCK_SLUGS,
+  workspaceAdminPathBySlug,
+  workspacePathBySlug,
 } from './support/mock-workspace-app';
 
 async function openUserMenu(page: Page) {
@@ -31,8 +32,8 @@ test('keeps dashboard sidebar content visible while bookings refresh in the back
   await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible();
   await expect(todayMarker).toHaveCount(1);
 
-  await page.goto(workspacePathByName(MOCK_NAMES.adminWorkspace));
-  await expect(page).toHaveURL(workspacePathByName(MOCK_NAMES.adminWorkspace));
+  await page.goto(workspacePathBySlug(MOCK_SLUGS.adminWorkspace));
+  await expect(page).toHaveURL(workspacePathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
@@ -68,15 +69,16 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
     has: page.getByRole('heading', { name: 'Create Workspace' }),
   });
 
-  await dialog.getByRole('textbox', { name: 'Name' }).fill('Skunkworks');
+  await dialog.getByRole('textbox', { name: 'Display Name' }).fill('Skunkworks');
   await dialog
     .locator('form')
     .getByRole('button', { name: 'Create workspace', exact: true })
     .click();
 
-  await expect(page).toHaveURL('/Skunkworks/admin', { timeout: 10000 });
+  await expect(page).toHaveURL('/skunkworks/admin', { timeout: 10000 });
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
-  await expect(page.getByLabel('Workspace Name')).toHaveValue('Skunkworks');
+  await expect(page.getByLabel('Display Name')).toHaveValue('Skunkworks');
+  await expect(page.getByLabel('Web Address')).toHaveValue('skunkworks');
 });
 
 test('updates account settings and logs out to the public login modal', async ({ page }) => {
@@ -103,7 +105,7 @@ test('updates account settings and logs out to the public login modal', async ({
 });
 
 test('allows a member to leave a workspace from the shell', async ({ page }) => {
-  await page.goto(workspacePathByName(MOCK_NAMES.memberWorkspace));
+  await page.goto(workspacePathBySlug(MOCK_SLUGS.memberWorkspace));
 
   await openUserMenu(page);
   await page.getByRole('menuitem', { name: 'Leave workspace' }).click();
@@ -133,13 +135,13 @@ test('persists the selected mini-calendar date across dashboard, workspaces, and
   await selectedDateButton().click();
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(workspacePathByName(MOCK_NAMES.adminWorkspace));
+  await page.goto(workspacePathBySlug(MOCK_SLUGS.adminWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(workspacePathByName(MOCK_NAMES.memberWorkspace));
+  await page.goto(workspacePathBySlug(MOCK_SLUGS.memberWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(workspaceAdminPathByName(MOCK_NAMES.adminWorkspace));
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
   await page.goto('/dashboard');

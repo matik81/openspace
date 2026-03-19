@@ -25,9 +25,10 @@ import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
 import {
-  buildWorkspaceAdminPathFromName,
-  buildWorkspacePathFromName,
-  resolveWorkspaceByRouteName,
+  buildWorkspaceAdminPathFromSlug,
+  buildWorkspacePathFromSlug,
+  normalizeWorkspaceSlugCandidate,
+  resolveWorkspaceByRouteSlug,
 } from '@/lib/workspace-routing';
 import { isWorkspaceListPayload } from '@/lib/workspace-payloads';
 
@@ -74,6 +75,7 @@ type WorkspaceShellProps = {
 
 const createWorkspaceInitialState: CreateWorkspaceFormState = {
   name: '',
+  slug: '',
   timezone: 'UTC',
   scheduleStartHour: 8,
   scheduleEndHour: 18,
@@ -153,7 +155,7 @@ export function WorkspaceShell({
       selectedWorkspaceId
         ? (items.find((item) => item.id === selectedWorkspaceId) ?? null)
         : selectedWorkspaceName
-          ? resolveWorkspaceByRouteName(items, selectedWorkspaceName)
+          ? resolveWorkspaceByRouteSlug(items, selectedWorkspaceName)
           : null,
     [items, selectedWorkspaceId, selectedWorkspaceName],
   );
@@ -262,6 +264,7 @@ export function WorkspaceShell({
   const resetCreateWorkspaceForm = useCallback(() => {
     setCreateWorkspaceForm({
       name: '',
+      slug: '',
       timezone: resolveDefaultTimezone(),
       scheduleStartHour: 8,
       scheduleEndHour: 18,
@@ -324,6 +327,7 @@ export function WorkspaceShell({
           },
           body: JSON.stringify({
             name: createWorkspaceForm.name,
+            slug: createWorkspaceForm.slug,
             timezone: createWorkspaceForm.timezone,
             scheduleStartHour: createWorkspaceForm.scheduleStartHour,
             scheduleEndHour: createWorkspaceForm.scheduleEndHour,
@@ -349,20 +353,20 @@ export function WorkspaceShell({
 
         const createdWorkspaceId =
           isRecord(payload) && typeof payload.id === 'string' ? payload.id : null;
-        const createdWorkspaceName = createWorkspaceForm.name.trim();
+        const createdWorkspaceSlug = normalizeWorkspaceSlugCandidate(createWorkspaceForm.slug);
 
         setBanner('Workspace created.');
         closeCreateWorkspaceModal();
         await loadWorkspaces();
-        if (createdWorkspaceName) {
-          router.push(buildWorkspaceAdminPathFromName(createdWorkspaceName));
+        if (createdWorkspaceSlug) {
+          router.push(buildWorkspaceAdminPathFromSlug(createdWorkspaceSlug));
           return;
         }
         if (createdWorkspaceId) {
           const createdWorkspace =
             workspaceItemsCache?.find((item) => item.id === createdWorkspaceId) ?? null;
           if (createdWorkspace) {
-            router.push(buildWorkspaceAdminPathFromName(createdWorkspace.name));
+            router.push(buildWorkspaceAdminPathFromSlug(createdWorkspace.slug));
           }
           return;
         }
@@ -815,7 +819,7 @@ export function WorkspaceShell({
           onCloseMobile={() => setIsLeftSidebarOpenMobile(false)}
           workspaces={items}
           selectedWorkspaceId={selectedWorkspace?.id ?? selectedWorkspaceId}
-          onSelectWorkspace={(workspace) => router.push(buildWorkspacePathFromName(workspace.name))}
+          onSelectWorkspace={(workspace) => router.push(buildWorkspacePathFromSlug(workspace.slug))}
           onReorderWorkspaces={(workspaceIds) => void handleReorderWorkspaces(workspaceIds)}
           isSavingWorkspaceOrder={isSavingWorkspaceOrder}
           actions={leftSidebarActions}

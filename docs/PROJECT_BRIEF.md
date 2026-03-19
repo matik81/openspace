@@ -72,7 +72,8 @@ Workspace attributes:
 
 Rules:
 
-- workspace names must be unique only among active workspaces
+- workspace display names can be non-unique
+- workspace web-address slugs must be unique only among active workspaces
 - a user can own or participate in at most 10 active workspaces by default
 - workspace order in the visible workspace list can be customized per user
 - a workspace can contain at most 100 active rooms by default

@@ -43,6 +43,7 @@ type WorkspaceScheduleVersion = {
 type WorkspaceItem = {
   id: string;
   name: string;
+  slug: string;
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
@@ -114,12 +115,18 @@ export const MOCK_NAMES = {
   pendingWorkspace: 'Invite Only Lab',
 };
 
-export function workspacePathByName(workspaceName: string): string {
-  return `/${encodeURIComponent(workspaceName)}`;
+export const MOCK_SLUGS = {
+  adminWorkspace: 'atlas.hq',
+  memberWorkspace: 'focus-hub',
+  pendingWorkspace: 'invite.only.lab',
+};
+
+export function workspacePathBySlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}`;
 }
 
-export function workspaceAdminPathByName(workspaceName: string): string {
-  return `${workspacePathByName(workspaceName)}/admin`;
+export function workspaceAdminPathBySlug(workspaceSlug: string): string {
+  return `${workspacePathBySlug(workspaceSlug)}/admin`;
 }
 
 type MockWorkspaceAppState = {
@@ -207,6 +214,7 @@ function createDefaultState(): MockWorkspaceAppState {
   const adminWorkspace: WorkspaceItem = {
     id: MOCK_IDS.adminWorkspace,
     name: MOCK_NAMES.adminWorkspace,
+    slug: MOCK_SLUGS.adminWorkspace,
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
@@ -223,6 +231,7 @@ function createDefaultState(): MockWorkspaceAppState {
   const memberWorkspace: WorkspaceItem = {
     id: MOCK_IDS.memberWorkspace,
     name: MOCK_NAMES.memberWorkspace,
+    slug: MOCK_SLUGS.memberWorkspace,
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
@@ -248,6 +257,7 @@ function createDefaultState(): MockWorkspaceAppState {
   const pendingWorkspace: WorkspaceItem = {
     id: MOCK_IDS.pendingWorkspace,
     name: MOCK_NAMES.pendingWorkspace,
+    slug: MOCK_SLUGS.pendingWorkspace,
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
@@ -530,6 +540,7 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
       const workspace: WorkspaceItem = {
         id: workspaceId,
         name: String(body?.name ?? 'New Workspace'),
+        slug: String(body?.slug ?? `workspace-${state.counters.workspace}`),
         timezone: String(body?.timezone ?? DEFAULT_TIMEZONE),
         scheduleStartHour: Number(body?.scheduleStartHour ?? 8),
         scheduleEndHour: Number(body?.scheduleEndHour ?? 18),
@@ -651,6 +662,7 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
       }
 
       workspace.name = String(body?.name ?? workspace.name);
+      workspace.slug = String(body?.slug ?? workspace.slug);
       workspace.timezone = String(body?.timezone ?? workspace.timezone);
       workspace.scheduleStartHour = Number(body?.scheduleStartHour ?? workspace.scheduleStartHour);
       workspace.scheduleEndHour = Number(body?.scheduleEndHour ?? workspace.scheduleEndHour);

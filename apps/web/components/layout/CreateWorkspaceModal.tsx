@@ -4,11 +4,13 @@ import { FormEvent } from 'react';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
 import type { ErrorPayload } from '@/lib/types';
+import { normalizeWorkspaceSlugCandidate } from '@/lib/workspace-routing';
 
 const WORKSPACE_SCHEDULE_HOUR_OPTIONS = Array.from({ length: 25 }, (_, index) => index);
 
 export type CreateWorkspaceFormState = {
   name: string;
+  slug: string;
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
@@ -35,6 +37,8 @@ export function CreateWorkspaceModal({
     return null;
   }
 
+  const generatedSlug = normalizeWorkspaceSlugCandidate(form.name);
+
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 p-4"
@@ -56,7 +60,8 @@ export function CreateWorkspaceModal({
               Create Workspace
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Set a name and timezone. You will land in the admin area after creation.
+              Set a display name, a web address, and a timezone. You will land in the admin area
+              after creation.
             </p>
           </div>
           <button
@@ -77,14 +82,42 @@ export function CreateWorkspaceModal({
           ) : null}
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Name</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">Display Name</span>
             <input
               required
               autoFocus
               value={form.name}
-              onChange={(event) => onChange({ ...form, name: event.target.value })}
+              onChange={(event) => {
+                const nextName = event.target.value;
+                const nextGeneratedSlug = normalizeWorkspaceSlugCandidate(nextName);
+
+                onChange({
+                  ...form,
+                  name: nextName,
+                  slug:
+                    !form.slug || form.slug === generatedSlug ? nextGeneratedSlug : form.slug,
+                });
+              }}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
+            <input
+              required
+              value={form.slug}
+              onChange={(event) =>
+                onChange({
+                  ...form,
+                  slug: normalizeWorkspaceSlugCandidate(event.target.value),
+                })
+              }
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Use lowercase letters, numbers, dots, and hyphens only.
+            </p>
           </label>
 
           <label className="block">

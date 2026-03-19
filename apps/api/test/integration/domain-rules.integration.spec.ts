@@ -249,23 +249,30 @@ describe('Domain rules integration', () => {
     });
   });
 
-  it('enforces unique workspace names only across active workspaces', async () => {
+  it('allows duplicate workspace names but enforces unique active workspace slugs', async () => {
     const admin = await createVerifiedUser('workspace-name-admin@example.com');
     const secondAdmin = await createVerifiedUser('workspace-name-admin-2@example.com');
     const adminToken = await accessTokenFor(admin.id, admin.email);
     const secondAdminToken = await accessTokenFor(secondAdmin.id, secondAdmin.email);
 
     const workspaceId = await createWorkspace(adminToken, 'Unique Workspace');
+    const duplicateNameResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${secondAdminToken}`)
+      .send({ name: 'Unique Workspace', slug: 'unique.workspace.alt', timezone: 'UTC' });
+
+    expect(duplicateNameResponse.status).toBe(201);
+    expect(duplicateNameResponse.body.name).toBe('Unique Workspace');
 
     const duplicateResponse = await request(app.getHttpServer())
       .post('/api/workspaces')
       .set('Authorization', `Bearer ${secondAdminToken}`)
-      .send({ name: 'Unique Workspace', timezone: 'UTC' });
+      .send({ name: 'Another Workspace', slug: 'unique-workspace', timezone: 'UTC' });
 
     expect(duplicateResponse.status).toBe(409);
     expect(duplicateResponse.body).toEqual({
-      code: 'WORKSPACE_NAME_ALREADY_EXISTS',
-      message: 'A workspace with this name already exists',
+      code: 'WORKSPACE_SLUG_ALREADY_EXISTS',
+      message: 'A workspace with this web address already exists',
     });
 
     const cancelResponse = await request(app.getHttpServer())

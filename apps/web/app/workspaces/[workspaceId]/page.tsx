@@ -36,7 +36,7 @@ import {
   workspaceTodayDateKey,
 } from '@/lib/time';
 import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
-import { buildWorkspacePathFromName } from '@/lib/workspace-routing';
+import { buildWorkspacePathFromSlug } from '@/lib/workspace-routing';
 import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
 import { dateAndTimeToUtcIso, formatUtcInTimezone } from '@/lib/workspace-time';
 
@@ -629,7 +629,7 @@ function WorkspaceBookingDashboard({
     }
 
     openEditDialog(requestedBooking);
-    router.replace(buildWorkspacePathFromName(workspace.name), { scroll: false });
+    router.replace(buildWorkspacePathFromSlug(workspace.slug), { scroll: false });
   }, [
     requestedBookingId,
     hasCurrentBookings,

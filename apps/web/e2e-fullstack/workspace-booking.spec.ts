@@ -1,13 +1,13 @@
 import { loginAsSeededAdmin } from './support/auth';
 import { expect, FULLSTACK_E2E, test } from './support/scenario';
 
-function workspacePathByName(workspaceName: string): string {
-  return `/${encodeURIComponent(workspaceName)}`;
+function workspacePathBySlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}`;
 }
 
 test('creates and cancels a booking against the real API', async ({ page }) => {
   await loginAsSeededAdmin(page);
-  await page.goto(workspacePathByName(FULLSTACK_E2E.workspaces.admin.name));
+  await page.goto(workspacePathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
   await page.getByRole('button', { name: 'Today' }).first().click();
 
   const createBookingTrigger = page.getByRole('button', {

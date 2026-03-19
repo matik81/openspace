@@ -52,7 +52,7 @@ Key design decisions:
 - Booking timestamps stored as `timestamptz`
 - Database-generated booking `tstzrange` column
 - Database-level active-only overlap protection using PostgreSQL exclusion constraints
-- Partial unique indexes for workspace names and room names among active entities only
+- Partial unique indexes for workspace slugs and room names among active entities only
 - Logical cancellation through status fields and cancellation timestamps
 - Persisted workspace schedule history through `WorkspaceScheduleVersion`
 - Persisted per-user visible workspace ordering through `UserWorkspacePreference`
@@ -94,8 +94,8 @@ Primary routes:
 - `/dashboard`
 - `/workspaces/[workspaceId]`
 - `/workspaces/[workspaceId]/admin`
-- `/[workspaceName]`
-- `/[workspaceName]/admin`
+- `/[workspaceSlug]`
+- `/[workspaceSlug]/admin`
 
 Server-side web proxy routes under `apps/web/app/api` forward browser requests to the backend API. They also manage auth cookies and refresh flow.
 

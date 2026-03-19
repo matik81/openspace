@@ -43,10 +43,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
-
     let timezone: string | undefined;
     let scheduleStartHour: number | undefined;
     let scheduleEndHour: number | undefined;
+    let slug: string | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, 'slug')) {
+      const candidate = getTrimmedString(body, 'slug');
+      if (!candidate) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'slug must be a non-empty string when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      slug = candidate;
+    }
     if (Object.prototype.hasOwnProperty.call(body, 'timezone')) {
       const candidate = getTrimmedString(body, 'timezone');
       if (!candidate) {
@@ -95,10 +109,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const requestBody: {
       name: string;
+      slug?: string;
       timezone?: string;
       scheduleStartHour?: number;
       scheduleEndHour?: number;
     } = { name };
+    if (slug) {
+      requestBody.slug = slug;
+    }
     if (timezone) {
       requestBody.timezone = timezone;
     }

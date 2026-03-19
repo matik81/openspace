@@ -30,10 +30,12 @@ const FULLSTACK_E2E = {
     admin: {
       id: '33333333-3333-4333-8333-333333333333',
       name: 'Playwright HQ',
+      slug: 'playwright.hq',
     },
     pending: {
       id: '44444444-4444-4444-8444-444444444444',
       name: 'Playwright Invite',
+      slug: 'playwright-invite',
     },
   },
   rooms: {
@@ -130,6 +132,7 @@ export async function seedFullStackScenario() {
       {
         id: FULLSTACK_E2E.workspaces.admin.id,
         name: FULLSTACK_E2E.workspaces.admin.name,
+        slug: FULLSTACK_E2E.workspaces.admin.slug,
         timezone: FULLSTACK_E2E.timezone,
         scheduleStartHour: 8,
         scheduleEndHour: 18,
@@ -138,6 +141,7 @@ export async function seedFullStackScenario() {
       {
         id: FULLSTACK_E2E.workspaces.pending.id,
         name: FULLSTACK_E2E.workspaces.pending.name,
+        slug: FULLSTACK_E2E.workspaces.pending.slug,
         timezone: FULLSTACK_E2E.timezone,
         scheduleStartHour: 8,
         scheduleEndHour: 18,

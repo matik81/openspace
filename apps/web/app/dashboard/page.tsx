@@ -18,7 +18,7 @@ import {
   resolveBookingLoadDateRange,
 } from '@/lib/time';
 import type { BookingListItem, WorkspaceItem } from '@/lib/types';
-import { buildWorkspacePathFromName } from '@/lib/workspace-routing';
+import { buildWorkspacePathFromSlug } from '@/lib/workspace-routing';
 import { isBookingListPayload } from '@/lib/workspace-payloads';
 import { formatUtcInTimezone } from '@/lib/workspace-time';
 
@@ -90,7 +90,7 @@ function DashboardContent({
                             : 'Reject'}
                         </button>
                         <Link
-                          href={buildWorkspacePathFromName(item.name)}
+                          href={buildWorkspacePathFromSlug(item.slug)}
                           className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                         >
                           Open
@@ -126,7 +126,7 @@ function DashboardContent({
                       </p>
                     </div>
                     <Link
-                      href={buildWorkspacePathFromName(item.name)}
+                      href={buildWorkspacePathFromSlug(item.slug)}
                       className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       Open
@@ -273,7 +273,7 @@ function DashboardRightSidebar({
       new Map(
         visibleMemberWorkspaces.map((workspace) => [
           workspace.id,
-          buildWorkspacePathFromName(workspace.name),
+          buildWorkspacePathFromSlug(workspace.slug),
         ]),
       ),
     [visibleMemberWorkspaces],

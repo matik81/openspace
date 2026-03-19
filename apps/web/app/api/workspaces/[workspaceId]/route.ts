@@ -71,6 +71,7 @@ export async function PATCH(
 
     const updatePayload: {
       name?: string;
+      slug?: string;
       timezone?: string;
       scheduleStartHour?: number;
       scheduleEndHour?: number;
@@ -89,6 +90,21 @@ export async function PATCH(
       }
 
       updatePayload.name = name;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'slug')) {
+      const slug = getTrimmedString(body, 'slug');
+      if (!slug) {
+        return NextResponse.json<ErrorPayload>(
+          {
+            code: 'BAD_REQUEST',
+            message: 'slug must be a non-empty string when provided',
+          },
+          { status: 400 },
+        );
+      }
+
+      updatePayload.slug = slug;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'timezone')) {

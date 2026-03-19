@@ -146,6 +146,7 @@ describe('WorkspaceShell', () => {
               {
                 id: 'workspace-1',
                 name: 'Focus Lab',
+                slug: 'focus-lab',
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
@@ -213,7 +214,7 @@ describe('WorkspaceShell', () => {
     expect(screen.getByLabelText('Email')).toHaveValue('');
   });
 
-  it('resolves selected workspace from the name-based route parameter', async () => {
+  it('resolves selected workspace from the slug-based route parameter', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
@@ -224,6 +225,7 @@ describe('WorkspaceShell', () => {
               {
                 id: 'workspace-1',
                 name: 'Focus Lab',
+                slug: 'focus-lab',
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
@@ -269,7 +271,7 @@ describe('WorkspaceShell', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <WorkspaceShell selectedWorkspaceName="Focus%20Lab" pageTitle="" pageDescription="">
+      <WorkspaceShell selectedWorkspaceName="focus-lab" pageTitle="" pageDescription="">
         {() => <p>Workspace content</p>}
       </WorkspaceShell>,
     );

@@ -1,13 +1,13 @@
 import { loginAsSeededAdmin } from './support/auth';
 import { expect, FULLSTACK_E2E, test } from './support/scenario';
 
-function workspaceAdminPathByName(workspaceName: string): string {
-  return `/${encodeURIComponent(workspaceName)}/admin`;
+function workspaceAdminPathBySlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}/admin`;
 }
 
 test('creates a room and invitation against the real API from the admin page', async ({ page }) => {
   await loginAsSeededAdmin(page);
-  await page.goto(workspaceAdminPathByName(FULLSTACK_E2E.workspaces.admin.name));
+  await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
 
   const roomsSection = page
     .getByRole('heading', { name: 'Meeting Rooms' })

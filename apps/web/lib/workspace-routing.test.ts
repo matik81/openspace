@@ -1,22 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildWorkspaceAdminPathFromName,
-  buildWorkspacePathFromName,
-  resolveWorkspaceByRouteName,
+  buildWorkspaceAdminPathFromSlug,
+  buildWorkspacePathFromSlug,
+  normalizeWorkspaceSlugCandidate,
+  resolveWorkspaceByRouteSlug,
 } from '@/lib/workspace-routing';
 
 describe('workspace-routing', () => {
-  it('builds workspace and admin paths from workspace names', () => {
-    expect(buildWorkspacePathFromName('Atlas HQ')).toBe('/Atlas%20HQ');
-    expect(buildWorkspaceAdminPathFromName('Atlas HQ')).toBe('/Atlas%20HQ/admin');
+  it('normalizes user-facing values into workspace slug candidates', () => {
+    expect(normalizeWorkspaceSlugCandidate('Nome Azienda Srl')).toBe('nome-azienda-srl');
+    expect(normalizeWorkspaceSlugCandidate('nome.azienda')).toBe('nome.azienda');
   });
 
-  it('resolves workspace by encoded route name', () => {
-    const workspace = resolveWorkspaceByRouteName(
+  it('builds workspace and admin paths from workspace slugs', () => {
+    expect(buildWorkspacePathFromSlug('nome.azienda')).toBe('/nome.azienda');
+    expect(buildWorkspaceAdminPathFromSlug('nome.azienda')).toBe('/nome.azienda/admin');
+  });
+
+  it('resolves workspace by encoded route slug', () => {
+    const workspace = resolveWorkspaceByRouteSlug(
       [
         {
           id: 'workspace-1',
           name: 'Atlas HQ',
+          slug: 'atlas.hq',
           timezone: 'UTC',
           scheduleStartHour: 8,
           scheduleEndHour: 18,
@@ -29,10 +36,9 @@ describe('workspace-routing', () => {
           invitation: null,
         },
       ],
-      'Atlas%20HQ',
+      'ATLAS.hq',
     );
 
     expect(workspace?.id).toBe('workspace-1');
   });
 });
-
