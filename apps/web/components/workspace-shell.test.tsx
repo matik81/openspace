@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceShell } from '@/components/workspace-shell';
@@ -372,7 +372,13 @@ describe('WorkspaceShell', () => {
     });
 
     await user.click(screen.getByRole('button', { name: /Focus Lab/i }));
-    await user.click(screen.getByRole('menuitemradio', { name: /Blue Room/i }));
+    const focusLabItem = screen.getByRole('menuitemradio', { name: /Focus Lab/i });
+    const blueRoomItem = screen.getByRole('menuitemradio', { name: /Blue Room/i });
+
+    expect(within(focusLabItem).getByText('ADMIN')).toBeVisible();
+    expect(within(blueRoomItem).queryByText('ADMIN')).not.toBeInTheDocument();
+
+    await user.click(blueRoomItem);
 
     expect(pushMock).toHaveBeenCalledWith('/blue-room');
   });

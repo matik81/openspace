@@ -5,7 +5,7 @@ import type { WorkspaceItem } from '@/lib/types';
 
 function getWorkspaceMetaLabel(workspace: WorkspaceItem): string {
   if (workspace.membership?.status === 'ACTIVE') {
-    return workspace.membership.role === 'MEMBER' ? 'Member access' : '';
+    return '';
   }
 
   if (workspace.invitation?.status === 'PENDING') {
@@ -103,6 +103,10 @@ export function WorkspaceSwitcher({
               {orderedWorkspaces.map((workspace) => {
                 const isSelected = workspace.id === selectedWorkspace?.id;
                 const hasPendingInvitation = workspace.invitation?.status === 'PENDING';
+                const isAdminWorkspace =
+                  workspace.membership?.status === 'ACTIVE' &&
+                  workspace.membership.role === 'ADMIN';
+                const metaLabel = getWorkspaceMetaLabel(workspace);
 
                 return (
                   <button
@@ -141,16 +145,23 @@ export function WorkspaceSwitcher({
                       </svg>
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-slate-900">
-                        {workspace.name}
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+                          {workspace.name}
+                        </span>
+                        {isAdminWorkspace ? (
+                          <span className="inline-flex shrink-0 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800">
+                            ADMIN
+                          </span>
+                        ) : null}
                       </span>
-                      {getWorkspaceMetaLabel(workspace) ? (
+                      {metaLabel ? (
                         <span
                           className={`block truncate text-xs ${
                             hasPendingInvitation ? 'text-amber-700' : 'text-slate-500'
                           }`}
                         >
-                          {getWorkspaceMetaLabel(workspace)}
+                          {metaLabel}
                         </span>
                       ) : null}
                     </span>
