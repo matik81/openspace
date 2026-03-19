@@ -9,6 +9,7 @@ import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/worksp
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
+import { getErrorDisplayMessage } from '@/lib/error-display';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@/lib/time';
 import type {
   BookingListItem,
+  ErrorPayload,
   RoomItem,
   WorkspaceAdminSummaryPayload,
   WorkspaceInvitationSummary,
@@ -54,12 +56,137 @@ type WorkspaceSettingsState = {
   scheduleEndHour: number;
 };
 
-type AdminSubpanelId = 'settings' | 'resources' | 'members';
+type AdminSubpanelId = 'settings' | 'resources' | 'members' | 'cancellation';
 
 type AdminSubpanelDefinition = {
   id: AdminSubpanelId;
   label: string;
 };
+
+const adminSettingsBannerCache = new Map<string, string>();
+const ADMIN_SETTINGS_BANNER_STORAGE_PREFIX = 'openspace:admin-settings-banner:';
+const ADMIN_SUCCESS_QUERY_KEY = 'notice';
+const ADMIN_SETTINGS_SAVED_NOTICE = 'settings-saved';
+
+function getAdminSettingsBannerStorageKey(workspaceId: string): string {
+  return `${ADMIN_SETTINGS_BANNER_STORAGE_PREFIX}${workspaceId}`;
+}
+
+function readAdminSettingsBanner(workspaceId: string): string | null {
+  const cached = adminSettingsBannerCache.get(workspaceId) ?? null;
+  adminSettingsBannerCache.delete(workspaceId);
+
+  if (typeof window === 'undefined') {
+    return cached;
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(getAdminSettingsBannerStorageKey(workspaceId));
+    if (stored) {
+      window.sessionStorage.removeItem(getAdminSettingsBannerStorageKey(workspaceId));
+      return stored;
+    }
+  } catch {
+    return cached;
+  }
+
+  return cached;
+}
+
+function writeAdminSettingsBanner(workspaceId: string, message: string): void {
+  adminSettingsBannerCache.set(workspaceId, message);
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(getAdminSettingsBannerStorageKey(workspaceId), message);
+  } catch {
+    // Ignore storage errors and rely on the in-memory fallback.
+  }
+}
+
+function AdminSubpanelIcon({ id }: { id: AdminSubpanelId }) {
+  const iconClassName = 'h-4 w-4 shrink-0';
+
+  if (id === 'settings') {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 20 20"
+        className={iconClassName}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 5.5h12" />
+        <path d="M4 10h12" />
+        <path d="M4 14.5h12" />
+        <path d="M7.5 4v3" />
+        <path d="M12 8.5v3" />
+        <path d="M9 13v3" />
+      </svg>
+    );
+  }
+
+  if (id === 'resources') {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 20 20"
+        className={iconClassName}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 6.5a1.5 1.5 0 0 1 1.5-1.5h7A1.5 1.5 0 0 1 15 6.5v7a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 5 13.5z" />
+        <path d="M8 5V3.75A.75.75 0 0 1 8.75 3h6.5a.75.75 0 0 1 .75.75v6.5A.75.75 0 0 1 15.25 11H15" />
+      </svg>
+    );
+  }
+
+  if (id === 'cancellation') {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 20 20"
+        className={iconClassName}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M10 3.75 15.75 7v6L10 16.25 4.25 13V7z" />
+        <path d="m7.75 7.75 4.5 4.5" />
+        <path d="m12.25 7.75-4.5 4.5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className={iconClassName}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="7.25" cy="7.25" r="2.25" />
+      <path d="M3.75 15c.7-1.8 1.95-2.8 3.5-2.8 1.55 0 2.8 1 3.5 2.8" />
+      <path d="M13.75 9.25a1.75 1.75 0 1 0 0-3.5" />
+      <path d="M13.1 12.05c1.35.25 2.42 1.2 3.15 2.95" />
+    </svg>
+  );
+}
 
 type CancelWorkspaceState = {
   workspaceName: string;
@@ -162,15 +289,23 @@ const ADMIN_SUBPANELS: AdminSubpanelDefinition[] = [
     id: 'members',
     label: 'Members',
   },
+  {
+    id: 'cancellation',
+    label: 'Cancellation',
+  },
 ];
 
 function resolveAdminSubpanel(value: string | null | undefined): AdminSubpanelId {
-  if (value === 'resources' || value === 'members') {
+  if (value === 'resources' || value === 'members' || value === 'cancellation') {
     return value;
   }
 
   if (value === 'people') {
     return 'members';
+  }
+
+  if (value === 'danger') {
+    return 'cancellation';
   }
 
   return 'settings';
@@ -202,7 +337,8 @@ export default function WorkspaceAdminPage() {
       selectedWorkspaceId={workspaceId || undefined}
       selectedWorkspaceName={workspaceName || undefined}
       pageTitle="Workspace Admin"
-      pageDescription="Manage workspace settings, meeting rooms, members, and invitations."
+      pageDescription="Manage workspace settings, resources, members, and invitations."
+      pageContentPaddingClassName="px-4 pb-4 pt-0 sm:px-5 sm:pb-5 sm:pt-0"
       pageBackHref={pageBackHref}
       pageBackLabel="Close"
       pageBackAriaLabel="Close admin panel"
@@ -219,6 +355,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const { selectedWorkspace, currentUser, isLoading, loadWorkspaces } = context;
   const activeSubpanel = resolveAdminSubpanel(searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY));
   const currentAdminQuery = searchParams?.toString();
+  const isSettingsSavedNoticeVisible =
+    searchParams?.get(ADMIN_SUCCESS_QUERY_KEY) === ADMIN_SETTINGS_SAVED_NOTICE;
   const cachedRightSidebarState = selectedWorkspace
     ? adminRightSidebarStateCache.get(selectedWorkspace.id)
     : null;
@@ -250,6 +388,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [isSubmittingRoom, setIsSubmittingRoom] = useState(false);
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
+  const [settingsBanner, setSettingsBanner] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<ErrorPayload | null>(null);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
   const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
     useState<DeleteRoomConfirmationState | null>(null);
@@ -443,6 +583,27 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     selectedWorkspaceScheduleStartHour,
     selectedWorkspaceScheduleEndHour,
   ]);
+  useEffect(() => {
+    if (!selectedWorkspaceId) {
+      setSettingsBanner(null);
+      setSettingsError(null);
+      return;
+    }
+
+    setSettingsBanner(readAdminSettingsBanner(selectedWorkspaceId));
+    setSettingsError(null);
+  }, [selectedWorkspaceId]);
+  useEffect(() => {
+    if (!isSettingsSavedNoticeVisible) {
+      return;
+    }
+
+    setSettingsBanner('Settings saved.');
+    const nextSearchParams = new URLSearchParams(currentAdminQuery);
+    nextSearchParams.delete(ADMIN_SUCCESS_QUERY_KEY);
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [currentAdminQuery, isSettingsSavedNoticeVisible, pathname, router]);
 
   useEffect(() => {
     if (!selectedWorkspaceId) {
@@ -475,6 +636,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         return;
       }
 
+      setSettingsBanner(null);
+      setSettingsError(null);
       setIsSubmittingWorkspaceSettings(true);
       const response = await fetch(`/api/workspaces/${selectedWorkspace.id}`, {
         method: 'PATCH',
@@ -489,27 +652,50 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           scheduleEndHour: workspaceSettingsForm.scheduleEndHour,
         }),
       });
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        if (normalized.code === 'UNAUTHORIZED') {
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        if (normalized.code === 'EMAIL_NOT_VERIFIED') {
+          router.replace('/verify-email');
+          return;
+        }
+        setSettingsError(normalized);
         setIsSubmittingWorkspaceSettings(false);
         return;
       }
 
       await loadWorkspaces();
+      const successMessage = 'Settings saved.';
       const nextWorkspaceSlug = normalizeWorkspaceSlugCandidate(workspaceSettingsForm.slug);
-      if (nextWorkspaceSlug) {
-        router.replace(
-          buildAdminSubpanelHref(
-            buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug),
-            activeSubpanel,
-            currentAdminQuery,
-          ),
-        );
+      const nextSearchParams = new URLSearchParams(currentAdminQuery);
+      nextSearchParams.set(ADMIN_SUBPANEL_QUERY_KEY, activeSubpanel);
+      nextSearchParams.set(ADMIN_SUCCESS_QUERY_KEY, ADMIN_SETTINGS_SAVED_NOTICE);
+      const nextHref = nextWorkspaceSlug
+        ? (() => {
+            const nextQuery = nextSearchParams.toString();
+            const nextPath = buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug);
+            return nextQuery ? `${nextPath}?${nextQuery}` : nextPath;
+          })()
+        : null;
+      const currentHref = currentAdminQuery ? `${pathname}?${currentAdminQuery}` : pathname;
+      setSettingsBanner(successMessage);
+      if (nextHref && nextHref !== currentHref) {
+        writeAdminSettingsBanner(selectedWorkspace.id, successMessage);
+        router.replace(nextHref);
       }
       setIsSubmittingWorkspaceSettings(false);
     },
     [
+      pathname,
       router,
       selectedWorkspace,
       isAdmin,
@@ -520,6 +706,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       currentAdminQuery,
     ],
   );
+  const clearSettingsFeedback = useCallback(() => {
+    setSettingsBanner(null);
+    setSettingsError(null);
+  }, []);
 
   const handleCreateRoom = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -733,6 +923,19 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       router,
     ],
   );
+  const openCancelWorkspaceDialog = useCallback(() => {
+    setCancelWorkspaceForm({
+      workspaceName: '',
+      email: '',
+      password: '',
+    });
+    setIsCancelWorkspaceCredentialsUnlocked(false);
+    setIsCancelWorkspaceFormVisible(true);
+  }, []);
+  const closeCancelWorkspaceDialog = useCallback(() => {
+    setIsCancelWorkspaceFormVisible(false);
+    setIsCancelWorkspaceCredentialsUnlocked(false);
+  }, []);
 
   const miniCalendarCells = useMemo(
     () =>
@@ -793,7 +996,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
 
   const activeSubpanelContent =
     activeSubpanel === 'settings' ? (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -809,128 +1012,183 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             ) : null}
           </div>
 
-          <form
-            className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_240px_160px_160px_auto]"
-            onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
-          >
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Display Name</span>
-              <input
-                required
-                value={workspaceSettingsForm.name}
-                onChange={(event) =>
-                  setWorkspaceSettingsForm((previous) => {
-                    const nextName = event.target.value;
-                    const generatedSlug = normalizeWorkspaceSlugCandidate(previous.name);
-                    const nextGeneratedSlug = normalizeWorkspaceSlugCandidate(nextName);
+          <form className="mt-4 space-y-4" onSubmit={(event) => void handleSaveWorkspaceSettings(event)}>
+            {settingsBanner || isSettingsSavedNoticeVisible || settingsError ? (
+              <div className="space-y-2">
+                {settingsBanner || isSettingsSavedNoticeVisible ? (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+                  >
+                    {settingsBanner ?? 'Settings saved.'}
+                  </p>
+                ) : null}
+                {settingsError ? (
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {getErrorDisplayMessage(settingsError)}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
-                    return {
-                      ...previous,
-                      name: nextName,
-                      slug:
-                        !previous.slug || previous.slug === generatedSlug
-                          ? nextGeneratedSlug
-                          : previous.slug,
-                    };
-                  })
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-            </label>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Identity
+                  </h4>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Keep the workspace name and web address aligned with how members find it.
+                  </p>
+                </div>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
-              <input
-                required
-                value={workspaceSettingsForm.slug}
-                onChange={(event) =>
-                  setWorkspaceSettingsForm((previous) => ({
-                    ...previous,
-                    slug: normalizeWorkspaceSlugCandidate(event.target.value),
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Use lowercase letters, numbers, dots, and hyphens only.
-              </p>
-            </label>
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-slate-700">Display Name</span>
+                    <input
+                      required
+                      value={workspaceSettingsForm.name}
+                      onChange={(event) => {
+                        clearSettingsFeedback();
+                        setWorkspaceSettingsForm((previous) => {
+                          const nextName = event.target.value;
+                          const generatedSlug = normalizeWorkspaceSlugCandidate(previous.name);
+                          const nextGeneratedSlug = normalizeWorkspaceSlugCandidate(nextName);
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
-              <select
-                required
-                value={workspaceSettingsForm.timezone}
-                onChange={(event) =>
-                  setWorkspaceSettingsForm((previous) => ({
-                    ...previous,
-                    timezone: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                {IANA_TIMEZONES.map((timezone) => (
-                  <option key={timezone} value={timezone}>
-                    {timezone}
-                  </option>
-                ))}
-              </select>
-            </label>
+                          return {
+                            ...previous,
+                            name: nextName,
+                            slug:
+                              !previous.slug || previous.slug === generatedSlug
+                                ? nextGeneratedSlug
+                                : previous.slug,
+                          };
+                        });
+                      }}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </label>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Schedule Start</span>
-              <select
-                required
-                value={workspaceSettingsForm.scheduleStartHour}
-                onChange={(event) =>
-                  setWorkspaceSettingsForm((previous) => {
-                    const nextStartHour = Number(event.target.value);
-                    const nextEndHour =
-                      previous.scheduleEndHour < nextStartHour
-                        ? nextStartHour
-                        : previous.scheduleEndHour;
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
+                    <input
+                      required
+                      value={workspaceSettingsForm.slug}
+                      onChange={(event) => {
+                        clearSettingsFeedback();
+                        setWorkspaceSettingsForm((previous) => ({
+                          ...previous,
+                          slug: normalizeWorkspaceSlugCandidate(event.target.value),
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Use lowercase letters, numbers, dots, and hyphens only.
+                    </p>
+                  </label>
+                </div>
+              </div>
 
-                    return {
-                      ...previous,
-                      scheduleStartHour: nextStartHour,
-                      scheduleEndHour: nextEndHour,
-                    };
-                  })
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map((hour) => (
-                  <option key={`start-${hour}`} value={hour}>
-                    {hour.toString().padStart(2, '0')}:00
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Schedule
+                  </h4>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Choose the workspace timezone and the daily booking window shown to members.
+                  </p>
+                </div>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Schedule End</span>
-              <select
-                required
-                value={workspaceSettingsForm.scheduleEndHour}
-                onChange={(event) =>
-                  setWorkspaceSettingsForm((previous) => ({
-                    ...previous,
-                    scheduleEndHour: Number(event.target.value),
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
-                  (hour) => hour >= workspaceSettingsForm.scheduleStartHour,
-                ).map((hour) => (
-                  <option key={`end-${hour}`} value={hour}>
-                    {hour.toString().padStart(2, '0')}:00
-                  </option>
-                ))}
-              </select>
-            </label>
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
+                    <select
+                      required
+                      value={workspaceSettingsForm.timezone}
+                      onChange={(event) => {
+                        clearSettingsFeedback();
+                        setWorkspaceSettingsForm((previous) => ({
+                          ...previous,
+                          timezone: event.target.value,
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    >
+                      {IANA_TIMEZONES.map((timezone) => (
+                        <option key={timezone} value={timezone}>
+                          {timezone}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2 xl:col-span-1 xl:justify-start">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-slate-700">
+                        Schedule Start
+                      </span>
+                      <select
+                        required
+                        value={workspaceSettingsForm.scheduleStartHour}
+                        onChange={(event) => {
+                          clearSettingsFeedback();
+                          setWorkspaceSettingsForm((previous) => {
+                            const nextStartHour = Number(event.target.value);
+                            const nextEndHour =
+                              previous.scheduleEndHour < nextStartHour
+                                ? nextStartHour
+                                : previous.scheduleEndHour;
+
+                            return {
+                              ...previous,
+                              scheduleStartHour: nextStartHour,
+                              scheduleEndHour: nextEndHour,
+                            };
+                          });
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      >
+                        {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map((hour) => (
+                          <option key={`start-${hour}`} value={hour}>
+                            {hour.toString().padStart(2, '0')}:00
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-slate-700">
+                        Schedule End
+                      </span>
+                      <select
+                        required
+                        value={workspaceSettingsForm.scheduleEndHour}
+                        onChange={(event) => {
+                          clearSettingsFeedback();
+                          setWorkspaceSettingsForm((previous) => ({
+                            ...previous,
+                            scheduleEndHour: Number(event.target.value),
+                          }));
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      >
+                        {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
+                          (hour) => hour >= workspaceSettingsForm.scheduleStartHour,
+                        ).map((hour) => (
+                          <option key={`end-${hour}`} value={hour}>
+                            {hour.toString().padStart(2, '0')}:00
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end">
               <button
                 type="submit"
                 disabled={isSubmittingWorkspaceSettings}
@@ -941,40 +1199,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             </div>
           </form>
         </section>
-
-        <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-rose-900">Danger Zone</h3>
-              <p className="mt-1 text-sm text-rose-800">
-                Canceling the workspace preserves history and deactivates rooms, reservations,
-                memberships, and invitations.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsCancelWorkspaceFormVisible(true);
-                setIsCancelWorkspaceCredentialsUnlocked(false);
-                setCancelWorkspaceForm((previous) => ({
-                  ...previous,
-                  workspaceName: '',
-                  email: '',
-                  password: '',
-                }));
-              }}
-              className="rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-            >
-              Cancel Workspace
-            </button>
-          </div>
-        </section>
       </div>
     ) : activeSubpanel === 'resources' ? (
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Meeting Rooms</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Resources</h3>
             <p className="mt-1 text-sm text-slate-600">
               Create, rename, and retire rooms available to workspace members.
             </p>
@@ -1119,7 +1349,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           </ul>
         ) : null}
       </section>
-    ) : (
+    ) : activeSubpanel === 'members' ? (
       <div className="space-y-4">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1204,14 +1434,61 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           ) : null}
         </section>
       </div>
+    ) : (
+      <div className="space-y-4">
+        <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-rose-900">Workspace Cancellation</h3>
+              <p className="mt-1 text-sm text-rose-800">
+                Retire the workspace when it should no longer accept active rooms, reservations,
+                memberships, or invitations.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="rounded-xl border border-rose-200 bg-white/90 p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-rose-700">
+                What Happens Next
+              </h4>
+              <ul className="mt-3 space-y-2 text-sm text-rose-900">
+                <li>Active rooms are marked as cancelled and stop accepting new reservations.</li>
+                <li>Future reservations are cancelled while historical records stay preserved.</li>
+                <li>Memberships and invitations are deactivated as part of the workspace shutdown.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-xl border border-rose-200 bg-white/90 p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-rose-700">
+                Confirmation Required
+              </h4>
+              <p className="mt-3 text-sm text-rose-900">
+                You will need the workspace name, your admin email, and your password to confirm
+                cancellation.
+              </p>
+              <p className="mt-2 text-sm text-rose-800">
+                This action is logical and preserves the workspace history for audit and reporting.
+              </p>
+              <button
+                type="button"
+                onClick={openCancelWorkspaceDialog}
+                className="mt-4 rounded-lg border border-rose-500 bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+              >
+                Cancel Workspace
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
     );
 
   return {
     rightSidebar,
     main: (
       <div className="space-y-4">
-        <div className="grid items-start gap-3 xl:grid-cols-[max-content_minmax(0,1fr)]">
-          <aside className="xl:sticky xl:top-6">
+        <div className="grid items-start gap-3 xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <aside className="xl:sticky xl:top-4">
             <nav className="flex flex-col gap-1" aria-label="Admin subpanels">
               {ADMIN_SUBPANELS.map((subpanel) => {
                 const isActive = subpanel.id === activeSubpanel;
@@ -1223,26 +1500,23 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     aria-label={subpanel.label}
                     aria-current={isActive ? 'page' : undefined}
                     scroll={false}
-                    className={`relative rounded-md px-2 py-1 text-sm transition ${
+                    className={`block rounded-lg px-3 py-2 text-sm transition ${
                       isActive
-                        ? 'font-semibold text-slate-950'
+                        ? 'bg-brand/10 font-semibold text-brand ring-1 ring-brand/15 shadow-sm'
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
-                    <span
-                      className={`absolute inset-y-1 left-0 w-0.5 rounded-r-full ${
-                        isActive ? 'bg-brand' : 'bg-transparent'
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span className="block pl-2">{subpanel.label}</span>
+                    <span className="flex items-center gap-2.5">
+                      <AdminSubpanelIcon id={subpanel.id} />
+                      <span className="block">{subpanel.label}</span>
+                    </span>
                   </Link>
                 );
               })}
             </nav>
           </aside>
 
-          <div>{activeSubpanelContent}</div>
+          <div className="pt-2 sm:pt-3">{activeSubpanelContent}</div>
         </div>
 
         {isCancelWorkspaceFormVisible ? (
@@ -1250,10 +1524,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             open={isCancelWorkspaceFormVisible}
             labelledBy="cancel-workspace-dialog-title"
             dismissLabel="Close workspace cancellation dialog"
-            onDismiss={() => {
-              setIsCancelWorkspaceFormVisible(false);
-              setIsCancelWorkspaceCredentialsUnlocked(false);
-            }}
+            onDismiss={closeCancelWorkspaceDialog}
           >
             <div className="relative w-full max-w-lg rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-xl">
               <div className="flex items-start justify-between gap-3">
@@ -1271,10 +1542,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsCancelWorkspaceFormVisible(false);
-                    setIsCancelWorkspaceCredentialsUnlocked(false);
-                  }}
+                  onClick={closeCancelWorkspaceDialog}
                   disabled={isCancellingWorkspace}
                   className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1380,10 +1648,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsCancelWorkspaceFormVisible(false);
-                      setIsCancelWorkspaceCredentialsUnlocked(false);
-                    }}
+                    onClick={closeCancelWorkspaceDialog}
                     disabled={isCancellingWorkspace}
                     className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >

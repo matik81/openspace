@@ -19,12 +19,13 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   await page.getByLabel('Web Address').fill('atlas.north');
   await page.getByRole('button', { name: 'Save Settings' }).click();
   await expect(page).toHaveURL(`${workspaceAdminPathBySlug('atlas.north')}?panel=settings`);
+  await expect(page.getByText('Settings saved.')).toBeVisible();
   await expect(page.getByLabel('Display Name')).toHaveValue('Atlas North');
   await expect(page.getByLabel('Web Address')).toHaveValue('atlas.north');
 
   await page.getByRole('link', { name: 'Resources' }).click();
   const roomsSection = page.locator('section').filter({
-    has: page.getByRole('heading', { name: 'Meeting Rooms' }),
+    has: page.getByRole('heading', { name: 'Resources' }),
   });
   await roomsSection.getByPlaceholder('Room name').fill('War Room');
   await roomsSection.getByPlaceholder('Description (optional)').fill('Escalation room');
@@ -69,6 +70,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
+  await page.getByRole('link', { name: 'Cancellation' }).click();
   await page.getByRole('button', { name: 'Cancel Workspace' }).click();
 
   const dialog = page.getByRole('dialog').filter({
@@ -94,11 +96,16 @@ test('supports direct admin subpanel links and falls back to settings for invali
 }) => {
   await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=resources`);
 
-  await expect(page.getByRole('heading', { name: 'Meeting Rooms' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await expect(page.getByLabel('Display Name')).not.toBeVisible();
+
+  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=cancellation`);
+
+  await expect(page.getByRole('heading', { name: 'Workspace Cancellation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel Workspace' })).toBeVisible();
 
   await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=unknown`);
 
   await expect(page.getByLabel('Display Name')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Meeting Rooms' })).not.toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Resources' })).not.toBeVisible();
 });

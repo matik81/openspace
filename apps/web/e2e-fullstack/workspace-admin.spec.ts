@@ -11,7 +11,7 @@ test('creates a room and invitation against the real API from the admin page', a
 
   await page.getByRole('link', { name: 'Resources' }).click();
   const roomsSection = page
-    .getByRole('heading', { name: 'Meeting Rooms' })
+    .getByRole('heading', { name: 'Resources' })
     .locator('xpath=ancestor::section[1]');
 
   await roomsSection.getByPlaceholder('Room name').fill('Full-stack Room');

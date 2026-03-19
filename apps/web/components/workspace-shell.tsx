@@ -66,6 +66,7 @@ type WorkspaceShellProps = {
   selectedWorkspaceName?: string;
   pageTitle: string;
   pageDescription: string;
+  pageContentPaddingClassName?: string;
   pageBackHref?: string;
   pageBackLabel?: string;
   pageBackAriaLabel?: string;
@@ -110,6 +111,7 @@ export function WorkspaceShell({
   selectedWorkspaceName,
   pageTitle,
   pageDescription,
+  pageContentPaddingClassName,
   pageBackHref,
   pageBackLabel,
   pageBackAriaLabel,
@@ -603,6 +605,8 @@ export function WorkspaceShell({
   const effectiveRightSidebar = pageRightSidebar ?? null;
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
+  const resolvedPageContentPaddingClassName =
+    pageContentPaddingClassName ?? (hasTopBlockContent ? 'p-4 sm:p-5' : 'p-3 sm:p-4');
   const canLeaveSelectedWorkspace =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
     selectedWorkspace.membership.role !== 'ADMIN';
@@ -730,9 +734,7 @@ export function WorkspaceShell({
                 ) : null}
 
                 <div
-                  className={`min-h-0 flex-1 overflow-y-auto ${
-                    hasTopBlockContent ? 'p-4 sm:p-5' : 'p-3 sm:p-4'
-                  }`}
+                  className={`min-h-0 flex-1 overflow-y-auto ${resolvedPageContentPaddingClassName}`}
                 >
                   {pageMainContent}
                 </div>
