@@ -8,7 +8,7 @@ Covered areas:
 
 - API unit tests for auth, health, email provider selection, environment validation, and the global exception filter
 - API integration tests for auth flows, invitation flows, domain rules, booking overlap rules, and rate limits
-- web unit and component tests for time helpers, workspace routing, public auth UI, account settings, workspace shell, calendar rendering, and sidebar behavior
+- web unit and component tests for time helpers, workspace routing, public auth UI, account settings, workspace shell, calendar rendering, and workspace switcher behavior
 - web Playwright mock E2E for public home, dashboard, session handling, workspace admin, and workspace booking flows
 - web Playwright full-stack E2E for auth and dashboard, workspace admin, and workspace booking flows
 

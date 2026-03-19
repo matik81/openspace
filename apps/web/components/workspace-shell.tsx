@@ -16,8 +16,8 @@ import {
   type CriticalUserActionFormState,
 } from '@/components/layout/CriticalUserActionModal';
 import { Header } from '@/components/layout/Header';
-import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
+import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
@@ -58,7 +58,6 @@ export type WorkspaceShellRenderContext = {
 
 type WorkspaceShellPageLayout = {
   main: ReactNode;
-  leftSidebar?: ReactNode;
   rightSidebar?: ReactNode;
 };
 
@@ -126,14 +125,12 @@ export function WorkspaceShell({
     invitationId: string;
     action: InvitationAction;
   } | null>(null);
-  const [isSavingWorkspaceOrder, setIsSavingWorkspaceOrder] = useState(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [createWorkspaceForm, setCreateWorkspaceForm] = useState<CreateWorkspaceFormState>(
     createWorkspaceInitialState,
   );
   const [createWorkspaceError, setCreateWorkspaceError] = useState<ErrorPayload | null>(null);
-  const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const [accountSettingsForm, setAccountSettingsForm] = useState<AccountSettingsFormState>(
@@ -248,7 +245,6 @@ export function WorkspaceShell({
   }, [items]);
 
   useEffect(() => {
-    setIsLeftSidebarOpenMobile(false);
     setIsRightSidebarOpenMobile(false);
   }, [selectedWorkspaceId, selectedWorkspaceName]);
 
@@ -582,88 +578,6 @@ export function WorkspaceShell({
     ],
   );
 
-  const persistWorkspaceOrder = useCallback(
-    async (nextItems: WorkspaceItem[]) => {
-      setIsSavingWorkspaceOrder(true);
-      setError(null);
-
-      try {
-        const response = await fetch('/api/workspaces/order', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            workspaceIds: nextItems.map((item) => item.id),
-          }),
-        });
-        const payload = await safeReadJson(response);
-
-        if (!response.ok) {
-          const normalized = normalizeErrorPayload(payload, response.status);
-          if (isUserSuspendedError(normalized)) {
-            await logoutSuspendedUser(router);
-            return false;
-          }
-          if (normalized.code === 'UNAUTHORIZED') {
-            router.replace('/login?reason=session-expired');
-            return false;
-          }
-          if (normalized.code === 'EMAIL_NOT_VERIFIED') {
-            router.replace('/verify-email');
-            return false;
-          }
-          setError(normalized);
-          return false;
-        }
-
-        return true;
-      } catch {
-        setError({
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Unable to reach API service',
-        });
-        return false;
-      } finally {
-        setIsSavingWorkspaceOrder(false);
-      }
-    },
-    [router],
-  );
-
-  const handleReorderWorkspaces = useCallback(
-    async (workspaceIds: string[]) => {
-      if (isSavingWorkspaceOrder) {
-        return;
-      }
-
-      const currentItems = items;
-      const byId = new Map(currentItems.map((item) => [item.id, item]));
-      const nextItems = workspaceIds
-        .map((id) => byId.get(id) ?? null)
-        .filter((item): item is WorkspaceItem => item !== null);
-
-      if (nextItems.length !== currentItems.length) {
-        return;
-      }
-
-      const unchanged = nextItems.every((item, index) => item.id === currentItems[index]?.id);
-      if (unchanged) {
-        return;
-      }
-
-      setItems(nextItems);
-      workspaceItemsCache = nextItems;
-
-      const saved = await persistWorkspaceOrder(nextItems);
-      if (!saved) {
-        setItems(currentItems);
-        workspaceItemsCache = currentItems;
-      }
-    },
-    [isSavingWorkspaceOrder, items, persistWorkspaceOrder],
-  );
-
   const renderedChildren = children({
     items,
     selectedWorkspace,
@@ -683,68 +597,18 @@ export function WorkspaceShell({
   const pageMainContent = hasCustomLayout
     ? (renderedChildren as WorkspaceShellPageLayout).main
     : renderedChildren;
-  const pageLeftSidebar = hasCustomLayout
-    ? ((renderedChildren as WorkspaceShellPageLayout).leftSidebar ?? null)
-    : null;
   const pageRightSidebar = hasCustomLayout
     ? ((renderedChildren as WorkspaceShellPageLayout).rightSidebar ?? null)
     : null;
   const effectiveRightSidebar = pageRightSidebar ?? null;
   const hasPageHeader = Boolean(pageTitle || pageDescription);
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
-  const workspaceRowActionsById = items.reduce<
-    Record<
-      string,
-      Array<{
-        key: string;
-        label: string;
-        kind: 'default' | 'primary';
-        loading: boolean;
-        disabled: boolean;
-        onClick: () => void;
-      }>
-    >
-  >((accumulator, item) => {
-    if (item.invitation?.status !== 'PENDING' || item.membership) {
-      return accumulator;
-    }
-
-    accumulator[item.id] = [
-      {
-        key: 'accept-invitation',
-        label: 'Accept',
-        kind: 'primary',
-        loading:
-          pendingInvitationAction?.invitationId === item.invitation.id &&
-          pendingInvitationAction.action === 'accept',
-        disabled: pendingInvitationAction?.invitationId === item.invitation.id,
-        onClick: () => void runInvitationAction(item.invitation!.id, 'accept'),
-      },
-      {
-        key: 'reject-invitation',
-        label: 'Reject',
-        kind: 'default',
-        loading:
-          pendingInvitationAction?.invitationId === item.invitation.id &&
-          pendingInvitationAction.action === 'reject',
-        disabled: pendingInvitationAction?.invitationId === item.invitation.id,
-        onClick: () => void runInvitationAction(item.invitation!.id, 'reject'),
-      },
-    ];
-
-    return accumulator;
-  }, {});
-  const leftSidebarActions: Array<{
-    key: string;
-    label: string;
-    kind?: 'default' | 'danger' | 'primary';
-    disabled?: boolean;
-    loading?: boolean;
-    onClick: () => void;
-  }> = [];
   const canLeaveSelectedWorkspace =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
     selectedWorkspace.membership.role !== 'ADMIN';
+  const canOpenSelectedWorkspaceAdmin =
+    selectedWorkspace?.membership?.status === 'ACTIVE' &&
+    selectedWorkspace.membership.role === 'ADMIN';
   const userMenuActions = currentUser
     ? [
         {
@@ -787,47 +651,41 @@ export function WorkspaceShell({
       ]
     : undefined;
 
-  const createWorkspaceContent = (
-    <div>
-      <button
-        type="button"
-        onClick={() => {
-          resetCreateWorkspaceForm();
-          setIsCreateWorkspaceModalOpen(true);
-        }}
-        className="w-full rounded-lg border border-transparent bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95"
-      >
-        Create new workspace
-      </button>
-    </div>
-  );
-
   return (
     <div className="h-screen overflow-hidden bg-slate-100">
       <Header
         user={currentUser}
         onLogout={() => void handleLogout()}
-        onToggleLeftSidebar={() => setIsLeftSidebarOpenMobile(true)}
         onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
+        leftContent={
+          <div className="flex min-w-0 items-center gap-2">
+            <WorkspaceSwitcher
+              workspaces={items}
+              selectedWorkspace={selectedWorkspace}
+              onSelectWorkspace={(workspace) => {
+                router.push(buildWorkspacePathFromSlug(workspace.slug));
+              }}
+              onCreateWorkspace={() => {
+                resetCreateWorkspaceForm();
+                setIsCreatingWorkspace(false);
+                setIsCreateWorkspaceModalOpen(true);
+              }}
+            />
+            {canOpenSelectedWorkspaceAdmin && selectedWorkspace ? (
+              <Link
+                href={buildWorkspaceAdminPathFromSlug(selectedWorkspace.slug)}
+                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
+              >
+                Admin
+              </Link>
+            ) : null}
+          </div>
+        }
         userActions={userMenuActions}
         showGuestActions={false}
       />
 
       <div className="flex h-full pt-16">
-        <LeftSidebar
-          isOpenOnMobile={isLeftSidebarOpenMobile}
-          onCloseMobile={() => setIsLeftSidebarOpenMobile(false)}
-          workspaces={items}
-          selectedWorkspaceId={selectedWorkspace?.id ?? selectedWorkspaceId}
-          onSelectWorkspace={(workspace) => router.push(buildWorkspacePathFromSlug(workspace.slug))}
-          onReorderWorkspaces={(workspaceIds) => void handleReorderWorkspaces(workspaceIds)}
-          isSavingWorkspaceOrder={isSavingWorkspaceOrder}
-          actions={leftSidebarActions}
-          workspaceActionsById={workspaceRowActionsById}
-          createWorkspaceContent={createWorkspaceContent}
-          extraContent={pageLeftSidebar}
-        />
-
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto">
             <div className="h-full p-3 sm:p-4">

@@ -173,7 +173,7 @@ Implemented web behavior:
 
 - Public auth UI supports login, registration, email verification, and password reset.
 - Dashboard shows visible workspaces and pending invitations.
-- Workspace shell supports workspace reordering, room browsing, booking creation, booking update, booking cancellation, and invitation accept or reject actions.
+- Workspace shell supports top-bar workspace switching, room browsing, booking creation, booking update, booking cancellation, and invitation accept or reject actions.
 - Admin pages support workspace settings, room CRUD, invitation creation, active member listing, pending invitation listing, and admin summary loading.
 - Account management is available from the authenticated shell.
 - Logout goes through the backend and revokes the refresh token.

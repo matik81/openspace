@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 
 type HeaderUser = {
   firstName: string;
@@ -28,8 +28,8 @@ type HeaderUserAction = {
 export function Header({
   user,
   onLogout,
-  onToggleLeftSidebar,
   onToggleRightSidebar,
+  leftContent,
   guestActions,
   userActions,
   brandHref = '/dashboard',
@@ -37,8 +37,8 @@ export function Header({
 }: {
   user: HeaderUser;
   onLogout: () => void;
-  onToggleLeftSidebar: () => void;
   onToggleRightSidebar: () => void;
+  leftContent?: ReactNode;
   guestActions?: HeaderGuestAction[];
   userActions?: HeaderUserAction[];
   brandHref?: string;
@@ -46,9 +46,7 @@ export function Header({
 }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const displayName = user
-    ? `${user.firstName} ${user.lastName}`.trim() || user.email
-    : null;
+  const displayName = user ? `${user.firstName} ${user.lastName}`.trim() || user.email : null;
   const initials = user
     ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase() || 'U'
     : null;
@@ -82,21 +80,14 @@ export function Header({
   return (
     <header className="fixed inset-x-0 top-0 z-40 h-16 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-full w-full max-w-[1920px] items-center justify-between gap-3 px-3 sm:px-4">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleLeftSidebar}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 lg:hidden"
-            aria-label="Open workspace sidebar"
-          >
-            ≡
-          </button>
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href={brandHref}
             className="rounded-md px-2 py-1 text-base font-semibold tracking-tight text-slate-900 hover:bg-slate-50"
           >
             openspace
           </Link>
+          {leftContent ? <div className="min-w-0">{leftContent}</div> : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -106,7 +97,11 @@ export function Header({
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 xl:hidden"
             aria-label="Open right sidebar"
           >
-            ⋯
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+              <circle cx="10" cy="4" r="1.5" />
+              <circle cx="10" cy="10" r="1.5" />
+              <circle cx="10" cy="16" r="1.5" />
+            </svg>
           </button>
 
           {!user ? (
@@ -217,4 +212,3 @@ export function Header({
     </header>
   );
 }
-

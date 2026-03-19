@@ -214,6 +214,169 @@ describe('WorkspaceShell', () => {
     expect(screen.getByLabelText('Email')).toHaveValue('');
   });
 
+  it('opens the create workspace modal from the header switcher menu', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/workspaces') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'workspace-1',
+                name: 'Focus Lab',
+                slug: 'focus-lab',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'ADMIN',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      if (url === '/api/auth/me') {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'ada@example.com',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <WorkspaceShell selectedWorkspaceId="workspace-1" pageTitle="" pageDescription="">
+        {() => <p>Workspace content</p>}
+      </WorkspaceShell>,
+    );
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Focus Lab/i })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Focus Lab/i }));
+    await user.click(screen.getByRole('menuitem', { name: /New workspace/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Create Workspace' })).toBeVisible();
+  });
+
+  it('switches workspaces from the header dropdown', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/workspaces') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'workspace-1',
+                name: 'Focus Lab',
+                slug: 'focus-lab',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'ADMIN',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+              {
+                id: 'workspace-2',
+                name: 'Blue Room',
+                slug: 'blue-room',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'MEMBER',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      if (url === '/api/auth/me') {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'ada@example.com',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <WorkspaceShell selectedWorkspaceId="workspace-1" pageTitle="" pageDescription="">
+        {() => <p>Workspace content</p>}
+      </WorkspaceShell>,
+    );
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Focus Lab/i })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Focus Lab/i }));
+    await user.click(screen.getByRole('menuitemradio', { name: /Blue Room/i }));
+
+    expect(pushMock).toHaveBeenCalledWith('/blue-room');
+  });
+
   it('resolves selected workspace from the slug-based route parameter', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

@@ -9,14 +9,14 @@ import {
 } from './support/mock-workspace-app';
 
 async function openUserMenu(page: Page) {
-  await page.locator('button[aria-haspopup="menu"]:not([data-nextjs-dev-tools-button])').click();
+  await page.locator('header button.rounded-full[aria-haspopup="menu"]').click();
 }
 
 test.beforeEach(async ({ page }) => {
   await installMockWorkspaceApp(page);
 });
 
-test('keeps dashboard sidebar content visible while bookings refresh in the background', async ({
+test('keeps dashboard switcher and right sidebar content visible while bookings refresh in the background', async ({
   page,
 }) => {
   await installMockWorkspaceApp(page, {
@@ -29,7 +29,7 @@ test('keeps dashboard sidebar content visible while bookings refresh in the back
   const todayMarker = page.locator(`button[aria-label="Select ${todayDateKey}"] .rounded-full`);
 
   await page.goto('/dashboard');
-  await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Workspaces/i })).toBeVisible();
   await expect(todayMarker).toHaveCount(1);
 
   await page.goto(workspacePathBySlug(MOCK_SLUGS.adminWorkspace));
@@ -37,7 +37,7 @@ test('keeps dashboard sidebar content visible while bookings refresh in the back
 
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: 'Visible Workspaces' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Deep Work/i })).toBeVisible({ timeout: 150 });
+  await expect(page.getByRole('button', { name: /Workspaces/i })).toBeVisible({ timeout: 150 });
   await expect(todayMarker).toHaveCount(1, { timeout: 150 });
 });
 
@@ -63,7 +63,8 @@ test('shows dashboard data and accepts a pending invitation', async ({ page }) =
 test('creates a workspace from the shell and lands in the admin panel', async ({ page }) => {
   await page.goto('/dashboard');
 
-  await page.getByRole('button', { name: 'Create new workspace' }).click();
+  await page.getByRole('button', { name: /Workspaces/i }).click();
+  await page.getByRole('menuitem', { name: /New workspace/i }).click();
 
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Create Workspace' }),
@@ -81,7 +82,7 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
   await expect(page.getByLabel('Web Address')).toHaveValue('skunkworks');
 });
 
-test('updates account settings and logs out to the public login modal', async ({ page }) => {
+test('updates account settings and logs out to the login page', async ({ page }) => {
   await page.goto('/dashboard');
 
   await openUserMenu(page);
@@ -100,7 +101,7 @@ test('updates account settings and logs out to the public login modal', async ({
   await expect(page.getByRole('menu').getByText('Adele Admin')).toBeVisible();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
 
-  await expect(page).toHaveURL(/auth=login/);
+  await expect(page).toHaveURL('/login');
   await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible();
 });
 

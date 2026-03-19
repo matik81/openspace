@@ -989,22 +989,6 @@ function WorkspaceBookingDashboard({
       onOpenBooking={(booking) => openEditDialog(booking)}
     />
   );
-  const leftSidebar =
-    pageBanner || pageError ? (
-      <div className="space-y-2">
-        {pageBanner ? (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            {pageBanner}
-          </p>
-        ) : null}
-        {pageError ? (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {getErrorDisplayMessage(pageError)}
-          </p>
-        ) : null}
-      </div>
-    ) : null;
-
   const canEditDialogBooking =
     dialog.open && dialog.mode === 'create'
       ? true
@@ -1014,9 +998,22 @@ function WorkspaceBookingDashboard({
     : 'No rooms available for this workspace yet.';
 
   return {
-    leftSidebar,
     main: (
       <div className="flex h-full min-h-0 flex-col gap-3">
+        {pageBanner || pageError ? (
+          <div className="space-y-2">
+            {pageBanner ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {pageBanner}
+              </p>
+            ) : null}
+            {pageError ? (
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {getErrorDisplayMessage(pageError)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1">
           {showScheduleSkeleton ? (
             <div className="h-full rounded-2xl border border-slate-200 bg-white p-4">

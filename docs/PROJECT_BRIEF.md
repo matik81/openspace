@@ -75,7 +75,7 @@ Rules:
 - workspace display names can be non-unique
 - workspace web-address slugs must be unique only among active workspaces
 - a user can own or participate in at most 10 active workspaces by default
-- workspace order in the visible workspace list can be customized per user
+- visible workspace lists respect persisted per-user ordering when preferences exist
 - a workspace can contain at most 100 active rooms by default
 - a workspace can contain at most 1000 active members by default
 - a workspace can contain at most 1000 pending invitations by default
@@ -199,7 +199,7 @@ Implemented frontend flows:
 
 - public auth pages and modal states for login, registration, invitation registration, email verification, and password reset
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
-- workspace shell for booking management, room filtering, and workspace reordering
+- workspace shell for booking management, room filtering, and top-bar workspace switching
 - admin pages for workspace settings, invitations, member list, room management, and destructive confirmations
 - account settings modal for profile update, password change, and account deletion
 

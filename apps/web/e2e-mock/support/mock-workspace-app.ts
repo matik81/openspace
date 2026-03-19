@@ -571,19 +571,6 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
       return responseJson(route, 201, { id: workspaceId });
     }
 
-    if (pathname === '/api/workspaces/order' && method === 'POST') {
-      const body = parseBody(route);
-      const ids = Array.isArray(body?.workspaceIds)
-        ? (body?.workspaceIds as unknown[]).map((value) => String(value))
-        : [];
-      const next = ids
-        .map((id) => findWorkspace(state, id))
-        .filter((workspace): workspace is WorkspaceItem => workspace !== null);
-      const remainder = state.workspaces.filter((workspace) => !ids.includes(workspace.id));
-      state.workspaces = [...next, ...remainder];
-      return responseJson(route, 200, { ok: true });
-    }
-
     const invitationActionMatch = pathname.match(
       /^\/api\/workspaces\/invitations\/([^/]+)\/(accept|reject)$/,
     );

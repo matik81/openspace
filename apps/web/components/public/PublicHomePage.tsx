@@ -4,7 +4,6 @@ import { DateTime } from 'luxon';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { LeftSidebar } from '@/components/layout/LeftSidebar';
 import { RightSidebar } from '@/components/layout/RightSidebar';
 import { PublicAuthModal, type AuthMode } from '@/components/public/PublicAuthModal';
 import {
@@ -47,7 +46,6 @@ function PublicHomePageContent() {
   const [monthKey, setMonthKey] = useState(() =>
     DateTime.now().setZone(PUBLIC_TIMEZONE).toFormat('yyyy-LL'),
   );
-  const [isLeftSidebarOpenMobile, setIsLeftSidebarOpenMobile] = useState(false);
   const [isRightSidebarOpenMobile, setIsRightSidebarOpenMobile] = useState(false);
   const [ipRegistrationError, setIpRegistrationError] = useState<ErrorPayload | null>(null);
 
@@ -174,7 +172,6 @@ function PublicHomePageContent() {
       <Header
         user={null}
         onLogout={() => undefined}
-        onToggleLeftSidebar={() => setIsLeftSidebarOpenMobile(true)}
         onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
         brandHref="/"
         guestActions={[
@@ -194,30 +191,6 @@ function PublicHomePageContent() {
       />
 
       <div className="flex h-full pt-16">
-        <LeftSidebar
-          isOpenOnMobile={isLeftSidebarOpenMobile}
-          onCloseMobile={() => setIsLeftSidebarOpenMobile(false)}
-          workspaces={[]}
-          onSelectWorkspace={() => undefined}
-          actions={[]}
-          extraContent={
-            <section>
-              <div className="relative rounded-lg border border-slate-200 bg-white p-2 transition-colors hover:bg-slate-50">
-                <div className="flex items-center justify-between gap-2 rounded-md px-1 py-1">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center rounded-md text-left"
-                  >
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      Guest preview
-                    </p>
-                  </button>
-                </div>
-              </div>
-            </section>
-          }
-        />
-
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto">
             <div className="h-full p-3 sm:p-4">
@@ -227,6 +200,10 @@ function PublicHomePageContent() {
                     {getErrorDisplayMessage(ipRegistrationError)}
                   </p>
                 ) : null}
+
+                <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                  Guest preview
+                </div>
 
                 <div className="min-h-0 flex-1">
                   <PublicSchedulePreview
@@ -286,7 +263,6 @@ function PublicHomePageSkeleton() {
     <div className="h-screen overflow-hidden bg-slate-100">
       <div className="fixed inset-x-0 top-0 h-16 border-b border-slate-200 bg-white" />
       <div className="flex h-full pt-16">
-        <div className="hidden w-[260px] border-r border-slate-200 bg-slate-50 lg:block" />
         <div className="flex-1 p-3 sm:p-4">
           <div className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm" />
         </div>
