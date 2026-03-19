@@ -174,6 +174,17 @@ function PublicHomePageContent() {
         onLogout={() => undefined}
         onToggleRightSidebar={() => setIsRightSidebarOpenMobile(true)}
         brandHref="/"
+        leftContent={
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-[152px] max-w-[210px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm sm:min-w-[200px] sm:max-w-[280px]">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-slate-900">
+                  Guest preview
+                </span>
+              </span>
+            </div>
+          </div>
+        }
         guestActions={[
           {
             key: 'login',
@@ -200,10 +211,6 @@ function PublicHomePageContent() {
                     {getErrorDisplayMessage(ipRegistrationError)}
                   </p>
                 ) : null}
-
-                <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
-                  Guest preview
-                </div>
 
                 <div className="min-h-0 flex-1">
                   <PublicSchedulePreview
