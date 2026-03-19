@@ -216,6 +216,7 @@ type MemberDirectoryItem = {
   email: string;
   status: MemberDirectoryStatus;
   detail: string;
+  invitationId: string | null;
 };
 
 function formatMemberDirectoryDate(value: string, timezone: string): string {
@@ -265,6 +266,7 @@ function buildMemberDirectoryItems({
       email: member.email,
       status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+      invitationId: null,
     }));
 
   const invitedPeople = invitations.map((invitation) => ({
@@ -273,6 +275,7 @@ function buildMemberDirectoryItems({
     email: invitation.email,
     status: 'INVITED' as const,
     detail: `Invited ${formatMemberDirectoryDate(invitation.createdAt, timezone)}`,
+    invitationId: invitation.id,
   }));
 
   const leftMembers = members
@@ -283,6 +286,7 @@ function buildMemberDirectoryItems({
       email: member.email,
       status: 'LEFT' as const,
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+      invitationId: null,
     }));
 
   return [...activeMembers, ...invitedPeople, ...leftMembers];
@@ -467,6 +471,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [roomEditForm, setRoomEditForm] = useState<RoomEditState>({ name: '', description: '' });
   const [isSubmittingRoom, setIsSubmittingRoom] = useState(false);
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
+  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [settingsBanner, setSettingsBanner] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<ErrorPayload | null>(null);
@@ -975,6 +980,34 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       setIsSubmittingInvite(false);
     },
     [selectedWorkspace, isAdmin, isSubmittingInvite, inviteEmail, loadAdminData, router],
+  );
+
+  const handleRevokeInvitation = useCallback(
+    async (invitationId: string) => {
+      if (!selectedWorkspace || !isAdmin || revokingInvitationId) {
+        return;
+      }
+
+      setRevokingInvitationId(invitationId);
+      const response = await fetch(`/api/workspaces/invitations/${invitationId}/revoke`, {
+        method: 'POST',
+      });
+      const responsePayload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          await logoutSuspendedUser(router);
+          return;
+        }
+        setRevokingInvitationId(null);
+        return;
+      }
+
+      await loadAdminData();
+      setRevokingInvitationId(null);
+    },
+    [selectedWorkspace, isAdmin, revokingInvitationId, loadAdminData, router],
   );
 
   const handleCancelWorkspace = useCallback(
@@ -1501,18 +1534,19 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             <p className="mt-3 text-sm text-slate-600">No members or invitations yet.</p>
           ) : memberDirectoryItems.length > 0 ? (
             <div className="mt-3 overflow-x-auto">
-              <table className="min-w-[720px] w-full table-fixed border-separate border-spacing-0">
+              <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
                 <thead>
                   <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    <th className="w-[24%] border-b border-slate-200 px-3 py-3">Name</th>
-                    <th className="w-[30%] border-b border-slate-200 px-3 py-3">Email</th>
-                    <th className="w-[28%] border-b border-slate-200 px-3 py-3">Timeline</th>
-                    <th className="w-[18%] border-b border-slate-200 px-3 py-3">Status</th>
+                    <th className="w-[22%] border-b border-slate-200 px-3 py-3">Name</th>
+                    <th className="w-[28%] border-b border-slate-200 px-3 py-3">Email</th>
+                    <th className="w-[24%] border-b border-slate-200 px-3 py-3">Timeline</th>
+                    <th className="w-[14%] border-b border-slate-200 px-3 py-3">Status</th>
+                    <th className="w-[12%] border-b border-slate-200 px-3 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {memberDirectoryItems.map((person) => (
-                    <tr key={person.id} className="align-top">
+                    <tr key={person.id} className="align-middle">
                       <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
                         {person.displayName ? (
                           <span className="font-medium text-slate-900">{person.displayName}</span>
@@ -1530,6 +1564,22 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                         <span className={getMemberDirectoryBadgeClassName(person.status)}>
                           {person.status}
                         </span>
+                      </td>
+                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                        {person.invitationId ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRevokeInvitation(person.invitationId!)}
+                            disabled={revokingInvitationId === person.invitationId}
+                            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {revokingInvitationId === person.invitationId
+                              ? 'Revoking...'
+                              : 'Revoke'}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-slate-400">-</span>
+                        )}
                       </td>
                     </tr>
                   ))}

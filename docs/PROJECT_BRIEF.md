@@ -94,6 +94,7 @@ Invitation onboarding rules:
 - the email carries a direct invitation registration link and token
 - registration with a valid invitation token verifies the invited email immediately
 - the workspace invitation itself remains pending until the authenticated verified user accepts or rejects it
+- workspace admins can revoke pending invitations from the admin directory
 
 Invitation fields:
 
@@ -121,7 +122,7 @@ UI expectations:
 
 - pending invitations are visually distinct
 - the user can accept or reject them directly
-- admin views expose summary data plus a unified members directory that distinguishes active, left, and invited people
+- admin views expose summary data plus a unified members directory that distinguishes active, left, and invited people and supports invitation revoke actions
 
 ## 4. Rooms
 

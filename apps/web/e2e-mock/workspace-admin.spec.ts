@@ -60,6 +60,14 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
   ).toContainText('INVITED');
+  await directorySection
+    .getByRole('row')
+    .filter({ hasText: 'teammate@example.com' })
+    .getByRole('button', { name: 'Revoke' })
+    .click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
+  ).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Resources' }).click();
   const warRoomItem = roomsSection.locator('li').filter({

@@ -802,6 +802,56 @@ export class WorkspacesService {
     return { rejected: true };
   }
 
+  async revokeInvitation(authUser: AuthUser, invitationId: string) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedInvitationId = this.requireUuid(invitationId, 'invitationId');
+    const now = new Date();
+    const invitation = await this.prismaService.invitation.findUnique({
+      where: { id: normalizedInvitationId },
+      select: {
+        id: true,
+        workspaceId: true,
+        status: true,
+        expiresAt: true,
+        workspace: { select: { status: true } },
+      },
+    });
+
+    if (!invitation || invitation.workspace.status !== WorkspaceStatus.ACTIVE) {
+      throw new ForbiddenException({
+        code: 'WORKSPACE_NOT_VISIBLE',
+        message: 'Workspace not visible',
+      });
+    }
+
+    await this.assertWorkspaceAdmin(invitation.workspaceId, user);
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new ConflictException({
+        code: 'INVITATION_NOT_PENDING',
+        message: 'Invitation is not pending',
+      });
+    }
+
+    if (invitation.expiresAt <= now) {
+      await this.prismaService.invitation.update({
+        where: { id: invitation.id },
+        data: { status: InvitationStatus.EXPIRED },
+      });
+      throw new ConflictException({
+        code: 'INVITATION_EXPIRED',
+        message: 'Invitation has expired',
+      });
+    }
+
+    await this.prismaService.invitation.update({
+      where: { id: invitation.id },
+      data: { status: InvitationStatus.REVOKED },
+    });
+
+    return { revoked: true };
+  }
+
   async leaveWorkspace(authUser: AuthUser, workspaceId: string, dto: LeaveWorkspaceDto) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');

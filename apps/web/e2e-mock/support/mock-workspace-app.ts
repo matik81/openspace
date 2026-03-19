@@ -581,11 +581,34 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
     }
 
     const invitationActionMatch = pathname.match(
-      /^\/api\/workspaces\/invitations\/([^/]+)\/(accept|reject)$/,
+      /^\/api\/workspaces\/invitations\/([^/]+)\/(accept|reject|revoke)$/,
     );
     if (invitationActionMatch && method === 'POST') {
       const invitationId = invitationActionMatch[1];
       const action = invitationActionMatch[2];
+
+      if (action === 'revoke') {
+        const workspaceId = Object.keys(state.invitationsByWorkspaceId).find(
+          (candidateWorkspaceId) =>
+            (state.invitationsByWorkspaceId[candidateWorkspaceId] ?? []).some(
+              (invitation) => invitation.id === invitationId,
+            ),
+        );
+
+        if (!workspaceId) {
+          return responseJson(route, 404, {
+            code: 'NOT_FOUND',
+            message: 'Invitation not found',
+          } satisfies ErrorPayload);
+        }
+
+        state.invitationsByWorkspaceId[workspaceId] = (
+          state.invitationsByWorkspaceId[workspaceId] ?? []
+        ).filter((invitation) => invitation.id !== invitationId);
+
+        return responseJson(route, 200, { revoked: true });
+      }
+
       const workspace = state.workspaces.find(
         (item) => item.invitation?.id === invitationId || item.id === MOCK_IDS.pendingWorkspace,
       );

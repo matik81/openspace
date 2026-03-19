@@ -41,4 +41,12 @@ test('creates a room and invitation against the real API from the admin page', a
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toContainText('INVITED');
+  await directorySection
+    .getByRole('row')
+    .filter({ hasText: 'real.e2e.member@example.com' })
+    .getByRole('button', { name: 'Revoke' })
+    .click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
+  ).toHaveCount(0);
 });

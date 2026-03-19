@@ -136,6 +136,14 @@ export class WorkspacesController {
     return this.workspacesService.rejectInvitation(this.extractAuthUser(request), invitationId);
   }
 
+  @Post('invitations/:invitationId/revoke')
+  async revokeInvitation(
+    @Req() request: AuthenticatedRequest,
+    @Param('invitationId') invitationId: string,
+  ) {
+    return this.workspacesService.revokeInvitation(this.extractAuthUser(request), invitationId);
+  }
+
   private extractAuthUser(request: AuthenticatedRequest): { userId: string } {
     if (!request.user?.sub) {
       throw new ForbiddenException({

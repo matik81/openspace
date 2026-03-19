@@ -1,10 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import {
-  EMAIL_PROVIDER,
-  EmailProvider,
-} from '../../src/auth/email/email-provider.interface';
+import { EMAIL_PROVIDER, EmailProvider } from '../../src/auth/email/email-provider.interface';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { toLocalDateKey, toLocalTimeParts } from '../../src/common/workspace-time';
@@ -41,9 +38,9 @@ describe('Booking overlap integration', () => {
     hour: number,
     minute = 0,
   ) => {
-    const approximateUtc = new Date(`${dateKey}T${String(hour).padStart(2, '0')}:${String(
-      minute,
-    ).padStart(2, '0')}:00.000Z`);
+    const approximateUtc = new Date(
+      `${dateKey}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00.000Z`,
+    );
 
     for (let offsetMinutes = -18 * 60; offsetMinutes <= 18 * 60; offsetMinutes += 15) {
       const candidate = new Date(approximateUtc.getTime() + offsetMinutes * 60_000);
@@ -122,24 +119,20 @@ describe('Booking overlap integration', () => {
   }
 
   async function registerAndVerify(email: string): Promise<void> {
-    const registerResponse = await request(app.getHttpServer())
-      .post('/api/auth/register')
-      .send({
-        firstName: 'User',
-        lastName: 'Example',
-        email,
-        password,
-      });
+    const registerResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
+      firstName: 'User',
+      lastName: 'Example',
+      email,
+      password,
+    });
 
     expect(registerResponse.status).toBe(201);
     const verificationToken = verificationTokensByEmail[email.toLowerCase()];
     expect(verificationToken).toEqual(expect.any(String));
 
-    const verifyResponse = await request(app.getHttpServer())
-      .post('/api/auth/verify-email')
-      .send({
-        token: verificationToken,
-      });
+    const verifyResponse = await request(app.getHttpServer()).post('/api/auth/verify-email').send({
+      token: verificationToken,
+    });
 
     expect(verifyResponse.status).toBe(201);
     expect(verifyResponse.body).toEqual({ verified: true });
@@ -646,7 +639,9 @@ describe('Booking overlap integration', () => {
     });
 
     const includeHistoryResponse = await request(app.getHttpServer())
-      .get(`/api/workspaces/${workspaceId}/bookings?mine=true&includePast=true&includeCancelled=true`)
+      .get(
+        `/api/workspaces/${workspaceId}/bookings?mine=true&includePast=true&includeCancelled=true`,
+      )
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(includeHistoryResponse.status).toBe(200);
@@ -693,7 +688,7 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('enforces workspace admin access for members and invitations list endpoints', async () => {
+  it('enforces workspace admin access for members and invitation admin endpoints', async () => {
     const adminEmail = 'admin-lists@example.com';
     const memberEmail = 'member-lists@example.com';
     const pendingEmail = 'pending-lists@example.com';
@@ -747,7 +742,9 @@ describe('Booking overlap integration', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(adminMembersResponse.status).toBe(200);
     expect(adminMembersResponse.body.items).toHaveLength(2);
-    const memberEmails = adminMembersResponse.body.items.map((item: { email: string }) => item.email);
+    const memberEmails = adminMembersResponse.body.items.map(
+      (item: { email: string }) => item.email,
+    );
     expect(memberEmails.sort()).toEqual([adminEmail, memberEmail].sort());
 
     const adminInvitationsResponse = await request(app.getHttpServer())
@@ -787,6 +784,45 @@ describe('Booking overlap integration', () => {
       code: 'UNAUTHORIZED',
       message: 'Only workspace admins can perform this action',
     });
+
+    const memberRevokeResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/invitations/${pendingInvitationId}/revoke`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(memberRevokeResponse.status).toBe(403);
+    expect(memberRevokeResponse.body).toEqual({
+      code: 'UNAUTHORIZED',
+      message: 'Only workspace admins can perform this action',
+    });
+
+    const pendingRevokeResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/invitations/${pendingInvitationId}/revoke`)
+      .set('Authorization', `Bearer ${pendingToken}`);
+    expect(pendingRevokeResponse.status).toBe(403);
+    expect(pendingRevokeResponse.body).toEqual({
+      code: 'UNAUTHORIZED',
+      message: 'Only workspace admins can perform this action',
+    });
+
+    const outsiderRevokeResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/invitations/${pendingInvitationId}/revoke`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(outsiderRevokeResponse.status).toBe(403);
+    expect(outsiderRevokeResponse.body).toEqual({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
+
+    const adminRevokeResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/invitations/${pendingInvitationId}/revoke`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminRevokeResponse.status).toBe(201);
+    expect(adminRevokeResponse.body).toEqual({ revoked: true });
+
+    const adminInvitationsAfterRevokeResponse = await request(app.getHttpServer())
+      .get(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminInvitationsAfterRevokeResponse.status).toBe(200);
+    expect(adminInvitationsAfterRevokeResponse.body.items).toHaveLength(0);
   });
 
   it('allows room read access for active members and blocks pending or non-visible users', async () => {
@@ -903,7 +939,10 @@ describe('Booking overlap integration', () => {
       });
     expect(createRoomResponse.status).toBe(201);
     const roomId = createRoomResponse.body.id as string;
-    const localStartDateKey = toLocalDateKey(new Date(Date.now() + 25 * 24 * 60 * 60 * 1000), timezone);
+    const localStartDateKey = toLocalDateKey(
+      new Date(Date.now() + 25 * 24 * 60 * 60 * 1000),
+      timezone,
+    );
     const localEndDateKey = addDaysToDateKey(localStartDateKey, 1);
 
     const response = await request(app.getHttpServer())
