@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildWorkspaceAdminPathFromSlug,
+  buildWorkspaceControlPathFromSlug,
   buildWorkspacePathFromSlug,
   normalizeWorkspaceSlugCandidate,
   resolveWorkspaceByRouteSlug,
@@ -12,9 +12,9 @@ describe('workspace-routing', () => {
     expect(normalizeWorkspaceSlugCandidate('nome.azienda')).toBe('nome.azienda');
   });
 
-  it('builds workspace and admin paths from workspace slugs', () => {
+  it('builds workspace and control-panel paths from workspace slugs', () => {
     expect(buildWorkspacePathFromSlug('nome.azienda')).toBe('/nome.azienda');
-    expect(buildWorkspaceAdminPathFromSlug('nome.azienda')).toBe('/nome.azienda/admin');
+    expect(buildWorkspaceControlPathFromSlug('nome.azienda')).toBe('/nome.azienda/control');
   });
 
   it('resolves workspace by encoded route slug', () => {

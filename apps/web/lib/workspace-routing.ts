@@ -23,8 +23,8 @@ export function buildWorkspacePathFromSlug(workspaceSlug: string): string {
   return `/${encodeURIComponent(workspaceSlug)}`;
 }
 
-export function buildWorkspaceAdminPathFromSlug(workspaceSlug: string): string {
-  return `${buildWorkspacePathFromSlug(workspaceSlug)}/admin`;
+export function buildWorkspaceControlPathFromSlug(workspaceSlug: string): string {
+  return `${buildWorkspacePathFromSlug(workspaceSlug)}/control`;
 }
 
 export function resolveWorkspaceByRouteSlug(

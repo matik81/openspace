@@ -36,7 +36,7 @@ import type {
   WorkspaceMemberListItem,
 } from '@/lib/types';
 import {
-  buildWorkspaceAdminPathFromSlug,
+  buildWorkspaceControlPathFromSlug,
   buildWorkspacePathFromSlug,
   normalizeWorkspaceSlugCandidate,
 } from '@/lib/workspace-routing';
@@ -484,12 +484,12 @@ export default function WorkspaceAdminPage() {
     <WorkspaceShell
       selectedWorkspaceId={workspaceId || undefined}
       selectedWorkspaceName={workspaceName || undefined}
-      pageTitle="Workspace Admin"
+      pageTitle="Control Panel"
       pageDescription="Manage workspace settings, resources, members, and invitations."
       pageContentPaddingClassName="px-4 pb-4 pt-0 sm:px-5 sm:pb-5 sm:pt-0"
       pageBackHref={pageBackHref}
       pageBackLabel="Close"
-      pageBackAriaLabel="Close admin panel"
+      pageBackAriaLabel="Close control panel"
     >
       {(context) => WorkspaceAdminContent({ context })}
     </WorkspaceShell>
@@ -927,7 +927,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       const nextHref = nextWorkspaceSlug
         ? (() => {
             const nextQuery = nextSearchParams.toString();
-            const nextPath = buildWorkspaceAdminPathFromSlug(nextWorkspaceSlug);
+            const nextPath = buildWorkspaceControlPathFromSlug(nextWorkspaceSlug);
             return nextQuery ? `${nextPath}?${nextQuery}` : nextPath;
           })()
         : null;
@@ -1432,7 +1432,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             </div>
             {isLoadingData ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                Refreshing admin data...
+                Refreshing workspace data...
               </span>
             ) : null}
           </div>
@@ -1657,7 +1657,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           </div>
           {isLoadingData ? (
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-              Refreshing admin data...
+              Refreshing workspace data...
             </span>
           ) : null}
         </div>
@@ -1808,7 +1808,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             </div>
             {isLoadingData ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                Refreshing admin data...
+                Refreshing workspace data...
               </span>
             ) : null}
           </div>
@@ -2124,7 +2124,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       <div className="space-y-4">
         <div className="grid items-start gap-3 xl:grid-cols-[14rem_minmax(0,1fr)]">
           <aside className="xl:sticky xl:top-4">
-            <nav className="flex flex-col gap-1" aria-label="Admin subpanels">
+            <nav className="flex flex-col gap-1" aria-label="Control panel sections">
               {visibleAdminSubpanels.map((subpanel) => {
                 const isActive = subpanel.id === activeSubpanel;
 

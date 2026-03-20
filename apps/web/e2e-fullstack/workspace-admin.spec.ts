@@ -1,13 +1,15 @@
 import { loginAsSeededAdmin } from './support/auth';
 import { expect, FULLSTACK_E2E, test } from './support/scenario';
 
-function workspaceAdminPathBySlug(workspaceSlug: string): string {
-  return `/${encodeURIComponent(workspaceSlug)}/admin`;
+function workspaceControlPathBySlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}/control`;
 }
 
-test('creates a room and invitation against the real API from the admin page', async ({ page }) => {
+test('creates a room and invitation against the real API from the control panel', async ({
+  page,
+}) => {
   await loginAsSeededAdmin(page);
-  await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
+  await page.goto(workspaceControlPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
 
   await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Cancellation' })).toBeVisible();
@@ -80,7 +82,7 @@ test('non-owner admins keep resource access, do not see owner-only actions, and 
   page,
 }) => {
   await loginAsSeededAdmin(page);
-  await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.managed.slug));
+  await page.goto(workspaceControlPathBySlug(FULLSTACK_E2E.workspaces.managed.slug));
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();

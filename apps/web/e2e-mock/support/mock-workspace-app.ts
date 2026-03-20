@@ -133,8 +133,8 @@ export function workspacePathBySlug(workspaceSlug: string): string {
   return `/${encodeURIComponent(workspaceSlug)}`;
 }
 
-export function workspaceAdminPathBySlug(workspaceSlug: string): string {
-  return `${workspacePathBySlug(workspaceSlug)}/admin`;
+export function workspaceControlPathBySlug(workspaceSlug: string): string {
+  return `${workspacePathBySlug(workspaceSlug)}/control`;
 }
 
 type MockWorkspaceAppState = {

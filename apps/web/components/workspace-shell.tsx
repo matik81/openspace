@@ -25,7 +25,7 @@ import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
 import {
-  buildWorkspaceAdminPathFromSlug,
+  buildWorkspaceControlPathFromSlug,
   buildWorkspacePathFromSlug,
   normalizeWorkspaceSlugCandidate,
   resolveWorkspaceByRouteSlug,
@@ -351,20 +351,22 @@ export function WorkspaceShell({
 
         const createdWorkspaceId =
           isRecord(payload) && typeof payload.id === 'string' ? payload.id : null;
-        const createdWorkspaceSlug = normalizeWorkspaceSlugCandidate(createWorkspaceForm.slug);
+        const createdWorkspaceSlug = normalizeWorkspaceSlugCandidate(
+          createWorkspaceForm.slug || createWorkspaceForm.name,
+        );
 
         setBanner('Workspace created.');
         closeCreateWorkspaceModal();
         await loadWorkspaces();
         if (createdWorkspaceSlug) {
-          router.push(buildWorkspaceAdminPathFromSlug(createdWorkspaceSlug));
+          router.push(buildWorkspaceControlPathFromSlug(createdWorkspaceSlug));
           return;
         }
         if (createdWorkspaceId) {
           const createdWorkspace =
             workspaceItemsCache?.find((item) => item.id === createdWorkspaceId) ?? null;
           if (createdWorkspace) {
-            router.push(buildWorkspaceAdminPathFromSlug(createdWorkspace.slug));
+            router.push(buildWorkspaceControlPathFromSlug(createdWorkspace.slug));
           }
           return;
         }
@@ -384,7 +386,7 @@ export function WorkspaceShell({
     workspaceItemsCache = null;
     currentUserCache = null;
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
+    router.replace('/?auth=login');
     router.refresh();
   }, [router]);
 
@@ -681,10 +683,10 @@ export function WorkspaceShell({
             />
             {canOpenSelectedWorkspaceAdmin && selectedWorkspace ? (
               <Link
-                href={buildWorkspaceAdminPathFromSlug(selectedWorkspace.slug)}
+                href={buildWorkspaceControlPathFromSlug(selectedWorkspace.slug)}
                 className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
               >
-                Admin
+                Control Panel
               </Link>
             ) : null}
           </div>

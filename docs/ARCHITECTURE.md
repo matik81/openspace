@@ -97,9 +97,9 @@ Primary routes:
 - `/verify-email`
 - `/dashboard`
 - `/workspaces/[workspaceId]`
-- `/workspaces/[workspaceId]/admin`
+- `/workspaces/[workspaceId]/control`
 - `/[workspaceSlug]`
-- `/[workspaceSlug]/admin`
+- `/[workspaceSlug]/control`
 
 Server-side web proxy routes under `apps/web/app/api` forward browser requests to the backend API. They also manage auth cookies and refresh flow.
 

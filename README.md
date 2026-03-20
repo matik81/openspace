@@ -176,16 +176,16 @@ User-facing pages:
 - `/verify-email`
 - `/dashboard`
 - `/workspaces/[workspaceId]`
-- `/workspaces/[workspaceId]/admin`
+- `/workspaces/[workspaceId]/control`
 - `/[workspaceSlug]`
-- `/[workspaceSlug]/admin`
+- `/[workspaceSlug]/control`
 
 Implemented web behavior:
 
 - Public auth UI supports login, registration, email verification, and password reset.
 - Dashboard shows visible workspaces and pending invitations.
 - Workspace shell supports top-bar workspace switching, room browsing, booking creation, booking update, booking cancellation, and invitation accept or reject actions.
-- Admin pages support workspace settings, room CRUD, invitation creation, active member listing, pending invitation listing, and admin summary loading.
+- Control Panel pages support workspace settings, room CRUD, invitation creation, active member listing, pending invitation listing, and admin summary loading.
 - Account management is available from the authenticated shell.
 - Logout goes through the backend and revokes the refresh token.
 - Expired access tokens are refreshed transparently through the web proxy before failing requests back to the UI.

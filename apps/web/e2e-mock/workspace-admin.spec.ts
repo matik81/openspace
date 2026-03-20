@@ -3,7 +3,7 @@ import {
   installMockWorkspaceApp,
   MOCK_NAMES,
   MOCK_SLUGS,
-  workspaceAdminPathBySlug,
+  workspaceControlPathBySlug,
 } from './support/mock-workspace-app';
 
 async function installNonOwnerAdminWorkspace(page: Page) {
@@ -34,16 +34,16 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
   page,
 }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
-  await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Control Panel' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Cancellation' })).toBeVisible();
 
   await page.getByLabel('Display Name').fill('Atlas North');
   await page.getByLabel('Web Address').fill('atlas.north');
   await page.getByRole('button', { name: 'Save Settings' }).click();
-  await expect(page).toHaveURL(`${workspaceAdminPathBySlug('atlas.north')}?panel=settings`);
+  await expect(page).toHaveURL(`${workspaceControlPathBySlug('atlas.north')}?panel=settings`);
   await expect(page.getByText('Settings saved.')).toBeVisible();
   await expect(page.getByLabel('Display Name')).toHaveValue('Atlas North');
   await expect(page.getByLabel('Web Address')).toHaveValue('atlas.north');
@@ -125,7 +125,7 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
 
 test('removes an active member with email and password confirmation', async ({ page }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Members' }).click();
   const directorySection = page.locator('section').filter({
@@ -150,7 +150,7 @@ test('removes an active member with email and password confirmation', async ({ p
 
 test('filters the member directory by status', async ({ page }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Members' }).click();
   const directorySection = page.locator('section').filter({
@@ -196,7 +196,7 @@ test('filters the member directory by status', async ({ page }) => {
 
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Cancellation' }).click();
   await page.getByRole('button', { name: 'Cancel Workspace' }).click();
@@ -219,21 +219,21 @@ test('cancels the workspace and redirects back to the dashboard', async ({ page 
   await expect(page.getByText(MOCK_NAMES.adminWorkspace)).not.toBeVisible();
 });
 
-test('supports direct admin subpanel links and falls back to settings for invalid values', async ({
+test('supports direct control-panel links and falls back to settings for invalid values', async ({
   page,
 }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=resources`);
+  await page.goto(`${workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=resources`);
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await expect(page.getByLabel('Display Name')).not.toBeVisible();
 
-  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=cancellation`);
+  await page.goto(`${workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=cancellation`);
 
   await expect(page.getByRole('heading', { name: 'Workspace Cancellation' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cancel Workspace' })).toBeVisible();
 
-  await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=unknown`);
+  await page.goto(`${workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=unknown`);
 
   await expect(page.getByLabel('Display Name')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Resources' })).not.toBeVisible();
@@ -243,7 +243,7 @@ test('non-owner admins keep resource access, can leave, and do not see owner-onl
   page,
 }) => {
   await installNonOwnerAdminWorkspace(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
@@ -306,7 +306,7 @@ test('non-owner admins keep resource access, can leave, and do not see owner-onl
 
 test('owners do not get a leave-workspace action in the shell menu', async ({ page }) => {
   await installMockWorkspaceApp(page);
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('button', { name: /Ada Admin/i }).click();
   await expect(page.getByRole('menuitem', { name: 'Leave workspace' })).toHaveCount(0);

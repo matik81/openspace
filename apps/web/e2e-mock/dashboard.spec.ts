@@ -4,7 +4,7 @@ import {
   installMockWorkspaceApp,
   MOCK_NAMES,
   MOCK_SLUGS,
-  workspaceAdminPathBySlug,
+  workspaceControlPathBySlug,
   workspacePathBySlug,
 } from './support/mock-workspace-app';
 
@@ -60,7 +60,7 @@ test('shows dashboard data and accepts a pending invitation', async ({ page }) =
   await expect(visibleWorkspacesSection).toContainText('MEMBER / ACTIVE');
 });
 
-test('creates a workspace from the shell and lands in the admin panel', async ({ page }) => {
+test('creates a workspace from the shell and lands in the control panel', async ({ page }) => {
   await page.goto('/dashboard');
 
   await page.getByRole('button', { name: /Workspaces/i }).click();
@@ -76,8 +76,8 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
     .getByRole('button', { name: 'Create workspace', exact: true })
     .click();
 
-  await expect(page).toHaveURL('/skunkworks/admin', { timeout: 10000 });
-  await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
+  await expect(page).toHaveURL('/skunkworks/control', { timeout: 10000 });
+  await expect(page.getByRole('heading', { name: 'Control Panel' })).toBeVisible();
   await expect(page.getByLabel('Display Name')).toHaveValue('Skunkworks');
   await expect(page.getByLabel('Web Address')).toHaveValue('skunkworks');
 });
@@ -123,7 +123,7 @@ test('allows a member to leave a workspace from the shell', async ({ page }) => 
   await expect(page.getByText(MOCK_NAMES.memberWorkspace)).not.toBeVisible();
 });
 
-test('persists the selected mini-calendar date across dashboard, workspaces, and admin', async ({
+test('persists the selected mini-calendar date across dashboard, workspaces, and the control panel', async ({
   page,
 }) => {
   const selectedDateKey = DateTime.now()
@@ -142,7 +142,7 @@ test('persists the selected mini-calendar date across dashboard, workspaces, and
   await page.goto(workspacePathBySlug(MOCK_SLUGS.memberWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
-  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
   await expect(selectedDateButton()).toHaveClass(/bg-cyan-100/);
 
   await page.goto('/dashboard');

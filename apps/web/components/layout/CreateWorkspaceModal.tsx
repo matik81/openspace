@@ -60,8 +60,8 @@ export function CreateWorkspaceModal({
               Create Workspace
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Set a display name, a web address, and a timezone. You will land in the admin area
-              after creation.
+              Set a display name, a web address, and a timezone. You will land in the control
+              panel after creation.
             </p>
           </div>
           <button
