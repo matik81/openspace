@@ -26,6 +26,7 @@ import {
   writeWorkspaceSidebarState,
 } from '@/lib/workspace-sidebar-state';
 import {
+  bookingToLocalRange,
   buildMarkerCountByDateKey,
   buildMiniCalendarCells,
   groupMyBookingsForSidebar,
@@ -423,6 +424,22 @@ function buildWorkspaceSettingsState({
     scheduleStartHour: scheduleStartHour ?? 8,
     scheduleEndHour: scheduleEndHour ?? 18,
   };
+}
+
+function mergeBookingItems(items: BookingListItem[]): BookingListItem[] {
+  const merged = new Map<string, BookingListItem>();
+
+  for (const item of items) {
+    merged.set(item.id, item);
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    if (left.startAt === right.startAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+
+    return left.startAt.localeCompare(right.startAt);
+  });
 }
 
 const adminRightSidebarStateCache = new Map<string, AdminRightSidebarState>();
@@ -1452,9 +1469,21 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       onToday={goToToday}
       miniCalendarCells={miniCalendarCells}
       bookingGroups={myBookingGroups}
-      onOpenBooking={(booking) =>
-        router.push(`${buildWorkspacePathFromSlug(selectedWorkspace.slug)}?bookingId=${booking.id}`)
-      }
+      onOpenBooking={(booking) => {
+        const cachedSidebarState = readWorkspaceSidebarState(selectedWorkspace.id);
+        writeWorkspaceSidebarState(selectedWorkspace.id, {
+          rooms: cachedSidebarState?.rooms?.length ? cachedSidebarState.rooms : rooms,
+          bookings: mergeBookingItems([...(cachedSidebarState?.bookings ?? []), ...myBookings]),
+        });
+
+        const searchParams = new URLSearchParams({ bookingId: booking.id });
+        const local = bookingToLocalRange(booking, selectedWorkspace.timezone);
+        if (local) {
+          searchParams.set('date', local.dateKey);
+        }
+
+        router.push(`${buildWorkspacePathFromSlug(selectedWorkspace.slug)}?${searchParams.toString()}`);
+      }}
     />
   );
 

@@ -5,6 +5,10 @@ function workspaceControlPathBySlug(workspaceSlug: string): string {
   return `/${encodeURIComponent(workspaceSlug)}/control`;
 }
 
+function workspacePathBySlug(workspaceSlug: string): string {
+  return `/${encodeURIComponent(workspaceSlug)}`;
+}
+
 test('creates a room and invitation against the real API from the control panel', async ({
   page,
 }) => {
@@ -78,6 +82,35 @@ test('creates a room and invitation against the real API from the control panel'
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toHaveCount(0);
+});
+
+test('opens a seeded booking from the control panel sidebar against the real API', async ({
+  page,
+}) => {
+  await loginAsSeededAdmin(page);
+  await page.goto(workspaceControlPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
+
+  const myBookingsSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'My bookings' }),
+  });
+  await myBookingsSection
+    .getByRole('button', { name: new RegExp(FULLSTACK_E2E.bookings.existing.subject, 'i') })
+    .click();
+
+  await expect(page).toHaveURL(
+    new RegExp(
+      `${workspacePathBySlug(FULLSTACK_E2E.workspaces.admin.slug).replace('.', '\\.')}\\?bookingId=${FULLSTACK_E2E.bookings.existing.id}&date=\\d{4}-\\d{2}-\\d{2}$`,
+    ),
+  );
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Edit Booking' }),
+  });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Title')).toHaveValue(FULLSTACK_E2E.bookings.existing.subject);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(workspacePathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
 });
 
 test('non-owner admins keep resource access, do not see owner-only actions, and can leave the workspace', async ({

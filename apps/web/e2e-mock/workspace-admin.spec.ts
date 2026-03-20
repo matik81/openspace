@@ -4,6 +4,7 @@ import {
   MOCK_NAMES,
   MOCK_SLUGS,
   workspaceControlPathBySlug,
+  workspacePathBySlug,
 } from './support/mock-workspace-app';
 
 async function installNonOwnerAdminWorkspace(page: Page) {
@@ -240,6 +241,33 @@ test('supports direct control-panel links and falls back to settings for invalid
 
   await expect(page.getByLabel('Display Name')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Resources' })).not.toBeVisible();
+});
+
+test('opens a sidebar reservation from the control panel without replaying the booking query flow', async ({
+  page,
+}) => {
+  await installMockWorkspaceApp(page);
+  await page.goto(workspaceControlPathBySlug(MOCK_SLUGS.adminWorkspace));
+
+  const myBookingsSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'My bookings' }),
+  });
+  await myBookingsSection.getByRole('button', { name: /Deep Work/i }).click();
+
+  await expect(page).toHaveURL(
+    new RegExp(`${workspacePathBySlug(MOCK_SLUGS.adminWorkspace).replace('.', '\\.')}\\?bookingId=booking-admin-mine&date=\\d{4}-\\d{2}-\\d{2}$`),
+  );
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Edit Booking' }),
+  });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Title')).toHaveValue('Deep Work');
+  await page.waitForTimeout(250);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(workspacePathBySlug(MOCK_SLUGS.adminWorkspace));
 });
 
 test('non-owner admins keep resource access, can leave, and do not see owner-only actions', async ({

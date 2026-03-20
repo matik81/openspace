@@ -73,6 +73,7 @@ const emptyBookingDraft: BookingModalDraft = {
   endTimeLocal: '',
 };
 const MAX_BOOKING_DAYS_AHEAD = 365;
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
@@ -224,7 +225,14 @@ function WorkspaceBookingDashboard({
     anchorPoint: null,
   });
   const workspaceIdRef = useRef<string | null>(workspaceId || null);
+  const initializedWorkspaceIdRef = useRef<string | null>(null);
+  const handledRequestedBookingKeyRef = useRef<string | null>(null);
   const requestedBookingId = searchParams?.get('bookingId') ?? null;
+  const requestedDateKey =
+    searchParams?.get('date') && DATE_KEY_PATTERN.test(searchParams.get('date') ?? '')
+      ? searchParams.get('date')
+      : null;
+  const requestedBookingKey = workspace && requestedBookingId ? `${workspace.id}:${requestedBookingId}` : null;
 
   const getBookingAnchorPoint = useCallback((bookingId: string): BookingModalAnchorPoint | null => {
     if (typeof document === 'undefined') {
@@ -253,14 +261,20 @@ function WorkspaceBookingDashboard({
   workspaceIdRef.current = workspaceId || null;
 
   useEffect(() => {
-    if (!workspace) {
+    if (!workspaceId) {
+      initializedWorkspaceIdRef.current = null;
       return;
     }
-    const cachedState = readWorkspaceSidebarState(workspace.id);
+    if (initializedWorkspaceIdRef.current === workspaceId) {
+      return;
+    }
+
+    initializedWorkspaceIdRef.current = workspaceId;
+    const cachedState = readWorkspaceSidebarState(workspaceId);
     setRooms(cachedState?.rooms ?? []);
     setBookings(cachedState?.bookings ?? []);
-    setRoomsWorkspaceId(cachedState ? workspace.id : null);
-    setBookingsWorkspaceId(cachedState ? workspace.id : null);
+    setRoomsWorkspaceId(cachedState ? workspaceId : null);
+    setBookingsWorkspaceId(cachedState ? workspaceId : null);
     setHasLoadedRooms(Boolean(cachedState));
     setHasLoadedBookings(Boolean(cachedState));
     setSelectedBookingId(null);
@@ -273,7 +287,15 @@ function WorkspaceBookingDashboard({
       isSubmitting: false,
       anchorPoint: null,
     });
-  }, [workspace]);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!requestedDateKey || dateKey === requestedDateKey) {
+      return;
+    }
+
+    setDateKey(requestedDateKey);
+  }, [dateKey, requestedDateKey, setDateKey]);
 
   const schedule = useMemo(
     () => resolveScheduleWindowForDate(workspace, dateKey),
@@ -544,6 +566,10 @@ function WorkspaceBookingDashboard({
       anchorPoint: null,
     });
     setSelectedBookingId(null);
+
+    if (requestedBookingId && workspace) {
+      router.replace(buildWorkspacePathFromSlug(workspace.slug), { scroll: false });
+    }
   };
 
   const openCreateDialog = useCallback(
@@ -616,10 +642,17 @@ function WorkspaceBookingDashboard({
   );
 
   useEffect(() => {
+    if (!requestedBookingKey) {
+      handledRequestedBookingKeyRef.current = null;
+      return;
+    }
     if (!workspace) {
       return;
     }
     if (!requestedBookingId || !hasCurrentBookings || dialog.open) {
+      return;
+    }
+    if (handledRequestedBookingKeyRef.current === requestedBookingKey) {
       return;
     }
 
@@ -628,9 +661,10 @@ function WorkspaceBookingDashboard({
       return;
     }
 
+    handledRequestedBookingKeyRef.current = requestedBookingKey;
     openEditDialog(requestedBooking);
-    router.replace(buildWorkspacePathFromSlug(workspace.slug), { scroll: false });
   }, [
+    requestedBookingKey,
     requestedBookingId,
     hasCurrentBookings,
     dialog.open,
