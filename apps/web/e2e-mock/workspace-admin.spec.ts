@@ -78,13 +78,17 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
     'ACTIVE',
   );
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
-  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toBeVisible();
-  await graceRow.getByRole('button', { name: 'Promote to admin' }).click();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Promote to admin' })).toBeVisible();
+  await graceRow.getByRole('menuitem', { name: 'Promote to admin' }).click();
   await expect(graceRow).toContainText('ADMIN');
-  await expect(graceRow.getByRole('button', { name: 'Demote to member' })).toBeVisible();
-  await graceRow.getByRole('button', { name: 'Demote to member' }).click();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Demote to member' })).toBeVisible();
+  await graceRow.getByRole('menuitem', { name: 'Demote to member' }).click();
   await expect(graceRow).toContainText('ACTIVE');
-  await expect(graceRow.getByRole('button', { name: 'Remove' })).toBeVisible();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
   ).toContainText('INACTIVE');
@@ -94,11 +98,9 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
   ).toContainText('INVITED');
-  await directorySection
-    .getByRole('row')
-    .filter({ hasText: 'teammate@example.com' })
-    .getByRole('button', { name: 'Revoke' })
-    .click();
+  const invitedRow = directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' });
+  await invitedRow.getByRole('button', { name: 'Actions' }).click();
+  await invitedRow.getByRole('menuitem', { name: 'Revoke' }).click();
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
   ).toHaveCount(0);
@@ -134,7 +136,8 @@ test('removes an active member with email and password confirmation', async ({ p
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
 
   await expect(graceRow).toContainText('ACTIVE');
-  await graceRow.getByRole('button', { name: 'Remove' }).click();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await graceRow.getByRole('menuitem', { name: 'Remove' }).click();
 
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Remove Member' }),
@@ -145,7 +148,7 @@ test('removes an active member with email and password confirmation', async ({ p
   await dialog.getByRole('button', { name: 'Remove member' }).click();
 
   await expect(graceRow).toContainText('INACTIVE');
-  await expect(graceRow.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+  await expect(graceRow.getByRole('button', { name: 'Actions' })).toHaveCount(0);
 });
 
 test('filters the member directory by status', async ({ page }) => {
@@ -279,9 +282,11 @@ test('non-owner admins keep resource access, can leave, and do not see owner-onl
   });
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
 
-  await expect(graceRow.getByRole('button', { name: 'Remove' })).toBeVisible();
-  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Demote to member' })).toHaveCount(0);
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await expect(graceRow.getByRole('menuitem', { name: 'Promote to admin' })).toHaveCount(0);
+  await expect(graceRow.getByRole('menuitem', { name: 'Demote to member' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   await membersSection.getByPlaceholder('Invite by email').fill('ops-admin@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();

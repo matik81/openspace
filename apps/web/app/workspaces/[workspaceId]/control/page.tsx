@@ -233,6 +233,14 @@ type MemberDirectoryItem = {
   canDemoteToMember: boolean;
 };
 
+type MemberDirectoryActionItem = {
+  key: string;
+  label: string;
+  kind: 'default' | 'warning' | 'danger';
+  disabled: boolean;
+  onClick: () => void;
+};
+
 const MEMBER_DIRECTORY_STATUS_OPTIONS: MemberDirectoryStatus[] = [
   'OWNER',
   'ADMIN',
@@ -380,6 +388,18 @@ function AdminViewportDialog({
       {children}
     </div>,
     portalTarget,
+  );
+}
+
+function MemberDirectoryColumnGroup() {
+  return (
+    <colgroup>
+      <col className="w-[20%]" />
+      <col className="w-[27%]" />
+      <col className="w-[21%]" />
+      <col className="w-[14%]" />
+      <col className="w-[18%]" />
+    </colgroup>
   );
 }
 
@@ -540,6 +560,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
     useState<DeleteRoomConfirmationState | null>(null);
   const [isMemberDirectoryFilterOpen, setIsMemberDirectoryFilterOpen] = useState(false);
+  const [openMemberDirectoryActionMenuId, setOpenMemberDirectoryActionMenuId] = useState<
+    string | null
+  >(null);
   const [visibleMemberDirectoryStatuses, setVisibleMemberDirectoryStatuses] = useState<
     Set<MemberDirectoryStatus>
   >(() => new Set(MEMBER_DIRECTORY_STATUS_OPTIONS));
@@ -568,6 +591,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const adminDataRequestIdRef = useRef(0);
   const lastSelectedWorkspaceIdRef = useRef<string | null>(null);
   const memberDirectoryFilterMenuRef = useRef<HTMLDivElement | null>(null);
+  const memberDirectoryActionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
@@ -632,6 +656,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   );
 
   useEffect(() => {
+    setOpenMemberDirectoryActionMenuId(null);
+
     if (!selectedWorkspaceId) {
       setRooms([]);
       setMembers([]);
@@ -675,6 +701,34 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMemberDirectoryFilterOpen]);
+
+  useEffect(() => {
+    if (!openMemberDirectoryActionMenuId) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (memberDirectoryActionMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setOpenMemberDirectoryActionMenuId(null);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpenMemberDirectoryActionMenuId(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMemberDirectoryActionMenuId]);
 
   const loadAdminData = useCallback(async () => {
     if (!selectedWorkspaceId || !canAccessAdmin) {
@@ -1923,115 +1977,200 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           ) : memberDirectoryItems.length > 0 ? (
             filteredMemberDirectoryItems.length > 0 ? (
               <div className="mt-3 overflow-x-auto">
-                <table className="min-w-[940px] w-full table-fixed border-separate border-spacing-0">
-                  <thead>
-                    <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      <th className="w-[20%] border-b border-slate-200 px-3 py-3">Name</th>
-                      <th className="w-[27%] border-b border-slate-200 px-3 py-3">Email</th>
-                      <th className="w-[21%] border-b border-slate-200 px-3 py-3">Timeline</th>
-                      <th className="w-[14%] border-b border-slate-200 px-3 py-3">Status</th>
-                      <th className="w-[18%] border-b border-slate-200 px-3 py-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMemberDirectoryItems.map((person) => {
-                      const isPromoting =
-                        memberRoleChange?.userId === person.memberUserId &&
-                        memberRoleChange.role === 'ADMIN';
-                      const isDemoting =
-                        memberRoleChange?.userId === person.memberUserId &&
-                        memberRoleChange.role === 'MEMBER';
-                      const hasAction =
-                        person.canRevokeInvitation ||
-                        person.canPromoteToAdmin ||
-                        person.canDemoteToMember ||
-                        person.canRemove;
+                <div className="min-w-[940px]">
+                  <table className="w-full table-fixed border-separate border-spacing-0">
+                    <MemberDirectoryColumnGroup />
+                    <thead>
+                      <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        <th className="border-b border-slate-200 px-3 py-3">Name</th>
+                        <th className="border-b border-slate-200 px-3 py-3">Email</th>
+                        <th className="border-b border-slate-200 px-3 py-3">Timeline</th>
+                        <th className="border-b border-slate-200 px-3 py-3">Status</th>
+                        <th className="border-b border-slate-200 px-3 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                  </table>
+                  <div className="max-h-[28rem] overflow-y-auto">
+                    <table className="w-full table-fixed border-separate border-spacing-0">
+                      <MemberDirectoryColumnGroup />
+                      <tbody>
+                        {filteredMemberDirectoryItems.map((person) => {
+                          const isRevoking =
+                            person.invitationId !== null &&
+                            revokingInvitationId === person.invitationId;
+                          const isPromoting =
+                            memberRoleChange?.userId === person.memberUserId &&
+                            memberRoleChange.role === 'ADMIN';
+                          const isDemoting =
+                            memberRoleChange?.userId === person.memberUserId &&
+                            memberRoleChange.role === 'MEMBER';
+                          const isRemoving =
+                            person.memberUserId !== null &&
+                            removingMemberUserId === person.memberUserId;
+                          const hasAction =
+                            person.canRevokeInvitation ||
+                            person.canPromoteToAdmin ||
+                            person.canDemoteToMember ||
+                            person.canRemove;
+                          const isActionMenuOpen = openMemberDirectoryActionMenuId === person.id;
+                          const rowActionButtonLabel = isRevoking
+                            ? 'Revoking...'
+                            : isPromoting
+                              ? 'Promoting...'
+                              : isDemoting
+                                ? 'Demoting...'
+                                : isRemoving
+                                  ? 'Removing...'
+                                  : 'Actions';
+                          const actionItems: MemberDirectoryActionItem[] = [
+                            person.canRevokeInvitation && person.invitationId
+                              ? {
+                                  key: 'revoke',
+                                  label: 'Revoke',
+                                  kind: 'danger',
+                                  disabled: isRevoking,
+                                  onClick: () => {
+                                    setOpenMemberDirectoryActionMenuId(null);
+                                    void handleRevokeInvitation(person.invitationId!);
+                                  },
+                                }
+                              : null,
+                            person.canPromoteToAdmin && person.memberUserId
+                              ? {
+                                  key: 'promote',
+                                  label: 'Promote to admin',
+                                  kind: 'default',
+                                  disabled: memberRoleChange !== null,
+                                  onClick: () => {
+                                    setOpenMemberDirectoryActionMenuId(null);
+                                    void handleUpdateMemberRole(person.memberUserId!, 'ADMIN');
+                                  },
+                                }
+                              : null,
+                            person.canDemoteToMember && person.memberUserId
+                              ? {
+                                  key: 'demote',
+                                  label: 'Demote to member',
+                                  kind: 'warning',
+                                  disabled: memberRoleChange !== null,
+                                  onClick: () => {
+                                    setOpenMemberDirectoryActionMenuId(null);
+                                    void handleUpdateMemberRole(person.memberUserId!, 'MEMBER');
+                                  },
+                                }
+                              : null,
+                            person.canRemove && person.memberUserId
+                              ? {
+                                  key: 'remove',
+                                  label: 'Remove',
+                                  kind: 'danger',
+                                  disabled: isRemoving,
+                                  onClick: () => {
+                                    setOpenMemberDirectoryActionMenuId(null);
+                                    handleOpenRemoveMemberDialog(person.memberUserId!);
+                                  },
+                                }
+                              : null,
+                          ].filter(
+                            (action): action is MemberDirectoryActionItem => action !== null,
+                          );
 
-                      return (
-                        <tr key={person.id} className="align-middle">
-                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
-                            {person.displayName ? (
-                              <span className="font-medium text-slate-900">
-                                {person.displayName}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
-                          </td>
-                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                            <span className="break-all">{person.email}</span>
-                          </td>
-                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                            {person.detail}
-                          </td>
-                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                            <WorkspaceUserStatusBadge status={person.status} />
-                          </td>
-                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                            {hasAction ? (
-                              <div className="flex flex-wrap gap-2">
-                                {person.canRevokeInvitation && person.invitationId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleRevokeInvitation(person.invitationId!)
-                                    }
-                                    disabled={revokingInvitationId === person.invitationId}
-                                    className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          return (
+                            <tr key={person.id} className="align-middle">
+                              <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
+                                {person.displayName ? (
+                                  <span className="font-medium text-slate-900">
+                                    {person.displayName}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                                <span className="break-all">{person.email}</span>
+                              </td>
+                              <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                                {person.detail}
+                              </td>
+                              <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                                <WorkspaceUserStatusBadge status={person.status} />
+                              </td>
+                              <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                                {hasAction ? (
+                                  <div
+                                    className="relative"
+                                    ref={isActionMenuOpen ? memberDirectoryActionMenuRef : null}
                                   >
-                                    {revokingInvitationId === person.invitationId
-                                      ? 'Revoking...'
-                                      : 'Revoke'}
-                                  </button>
-                                ) : null}
-                                {person.canPromoteToAdmin && person.memberUserId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleUpdateMemberRole(person.memberUserId!, 'ADMIN')
-                                    }
-                                    disabled={memberRoleChange !== null}
-                                    className="rounded-md border border-sky-300 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {isPromoting ? 'Promoting...' : 'Promote to admin'}
-                                  </button>
-                                ) : null}
-                                {person.canDemoteToMember && person.memberUserId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleUpdateMemberRole(person.memberUserId!, 'MEMBER')
-                                    }
-                                    disabled={memberRoleChange !== null}
-                                    className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {isDemoting ? 'Demoting...' : 'Demote to member'}
-                                  </button>
-                                ) : null}
-                                {person.canRemove && person.memberUserId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleOpenRemoveMemberDialog(person.memberUserId!)
-                                    }
-                                    disabled={removingMemberUserId === person.memberUserId}
-                                    className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {removingMemberUserId === person.memberUserId
-                                      ? 'Removing...'
-                                      : 'Remove'}
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-slate-400">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setOpenMemberDirectoryActionMenuId((current) =>
+                                          current === person.id ? null : person.id,
+                                        )
+                                      }
+                                      disabled={
+                                        isRevoking || isPromoting || isDemoting || isRemoving
+                                      }
+                                      className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                      aria-expanded={isActionMenuOpen}
+                                      aria-haspopup="menu"
+                                    >
+                                      {rowActionButtonLabel}
+                                      <svg
+                                        viewBox="0 0 20 20"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={`h-3.5 w-3.5 transition-transform ${
+                                          isActionMenuOpen ? 'rotate-180' : ''
+                                        }`}
+                                        aria-hidden="true"
+                                      >
+                                        <path d="m5 8 5 5 5-5" />
+                                      </svg>
+                                    </button>
+                                    {isActionMenuOpen ? (
+                                      <div
+                                        className="absolute right-0 top-full z-40 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
+                                        role="menu"
+                                        aria-label={`Actions for ${person.displayName ?? person.email}`}
+                                      >
+                                        <div className="space-y-1">
+                                          {actionItems.map((action) => (
+                                            <button
+                                              key={action.key}
+                                              type="button"
+                                              onClick={action.onClick}
+                                              disabled={action.disabled}
+                                              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                                action.kind === 'danger'
+                                                  ? 'text-rose-700 hover:bg-rose-50'
+                                                  : action.kind === 'warning'
+                                                    ? 'text-amber-800 hover:bg-amber-50'
+                                                    : 'text-slate-700 hover:bg-slate-50'
+                                              }`}
+                                              role="menuitem"
+                                            >
+                                              {action.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-slate-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

@@ -42,11 +42,13 @@ test('creates a room and invitation against the real API from the control panel'
   await expect(ownerRow.getByText('Owner', { exact: true })).toHaveCount(0);
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
   await expect(graceRow).toContainText('ACTIVE');
-  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toBeVisible();
-  await graceRow.getByRole('button', { name: 'Promote to admin' }).click();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Promote to admin' })).toBeVisible();
+  await graceRow.getByRole('menuitem', { name: 'Promote to admin' }).click();
   await expect(graceRow).toContainText('ADMIN');
-  await expect(graceRow.getByRole('button', { name: 'Demote to member' })).toBeVisible();
-  await graceRow.getByRole('button', { name: 'Demote to member' }).click();
+  await graceRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(graceRow.getByRole('menuitem', { name: 'Demote to member' })).toBeVisible();
+  await graceRow.getByRole('menuitem', { name: 'Demote to member' }).click();
   await expect(graceRow).toContainText('ACTIVE');
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
@@ -68,11 +70,11 @@ test('creates a room and invitation against the real API from the control panel'
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toContainText('INVITED');
-  await directorySection
-    .getByRole('row')
-    .filter({ hasText: 'real.e2e.member@example.com' })
-    .getByRole('button', { name: 'Revoke' })
-    .click();
+  const invitedRow = directorySection.getByRole('row').filter({
+    hasText: 'real.e2e.member@example.com',
+  });
+  await invitedRow.getByRole('button', { name: 'Actions' }).click();
+  await invitedRow.getByRole('menuitem', { name: 'Revoke' }).click();
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toHaveCount(0);
@@ -119,9 +121,11 @@ test('non-owner admins keep resource access, do not see owner-only actions, and 
   const memberRow = directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' });
 
   await expect(memberRow).toContainText('ACTIVE');
-  await expect(memberRow.getByRole('button', { name: 'Remove' })).toBeVisible();
-  await expect(directorySection.getByRole('button', { name: 'Promote to admin' })).toHaveCount(0);
-  await expect(directorySection.getByRole('button', { name: 'Demote to member' })).toHaveCount(0);
+  await memberRow.getByRole('button', { name: 'Actions' }).click();
+  await expect(memberRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await expect(memberRow.getByRole('menuitem', { name: 'Promote to admin' })).toHaveCount(0);
+  await expect(memberRow.getByRole('menuitem', { name: 'Demote to member' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   await membersSection.getByPlaceholder('Invite by email').fill('managed.e2e.member@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();
