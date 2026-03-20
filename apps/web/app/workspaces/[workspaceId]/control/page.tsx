@@ -10,6 +10,10 @@ import {
   type CriticalUserActionFormState,
 } from '@/components/layout/CriticalUserActionModal';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
+import {
+  WorkspaceUserStatusBadge,
+  type WorkspaceUserStatus,
+} from '@/components/workspace/WorkspaceUserStatusBadge';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
 import { normalizeErrorPayload } from '@/lib/api-contract';
@@ -212,7 +216,7 @@ type AdminRightSidebarState = {
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
 
-type MemberDirectoryStatus = 'OWNER' | 'ADMIN' | 'ACTIVE' | 'INVITED' | 'INACTIVE';
+type MemberDirectoryStatus = WorkspaceUserStatus;
 
 type MemberDirectoryItem = {
   id: string;
@@ -262,25 +266,6 @@ function formatMemberDirectoryDate(value: string, timezone: string): string {
   return zoned.toLocaleString(DateTime.DATE_MED);
 }
 
-function getMemberDirectoryBadgeClassName(status: MemberDirectoryStatus): string {
-  if (status === 'OWNER') {
-    return 'inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-indigo-700';
-  }
-
-  if (status === 'ADMIN') {
-    return 'inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800';
-  }
-
-  if (status === 'ACTIVE') {
-    return 'inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-emerald-800';
-  }
-
-  if (status === 'INVITED') {
-    return 'inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-amber-800';
-  }
-
-  return 'inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-slate-700';
-}
 function buildMemberDirectoryItems({
   members,
   invitations,
@@ -1924,7 +1909,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             }
                             className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
                           />
-                          <span className={getMemberDirectoryBadgeClassName(status)}>{status}</span>
+                          <WorkspaceUserStatusBadge status={status} />
                         </label>
                       );
                     })}
@@ -1980,9 +1965,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             {person.detail}
                           </td>
                           <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                            <span className={getMemberDirectoryBadgeClassName(person.status)}>
-                              {person.status}
-                            </span>
+                            <WorkspaceUserStatusBadge status={person.status} />
                           </td>
                           <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
                             {hasAction ? (

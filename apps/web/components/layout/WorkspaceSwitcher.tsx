@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  resolveWorkspaceUserStatus,
+  WorkspaceUserStatusBadge,
+} from '@/components/workspace/WorkspaceUserStatusBadge';
 import type { WorkspaceItem } from '@/lib/types';
 
 function getWorkspaceMetaLabel(workspace: WorkspaceItem): string {
@@ -105,15 +109,7 @@ export function WorkspaceSwitcher({
               {orderedWorkspaces.map((workspace) => {
                 const isSelected = workspace.id === selectedWorkspace?.id;
                 const hasPendingInvitation = workspace.invitation?.status === 'PENDING';
-                const isOwnerWorkspace =
-                  workspace.membership?.status === 'ACTIVE' &&
-                  currentUserId !== undefined &&
-                  workspace.createdByUserId === currentUserId;
-                const isAdminWorkspace =
-                  workspace.membership?.status === 'ACTIVE' &&
-                  workspace.membership.role === 'ADMIN' &&
-                  !isOwnerWorkspace;
-                const isInvitedWorkspace = hasPendingInvitation && workspace.membership === null;
+                const userStatus = resolveWorkspaceUserStatus({ workspace, currentUserId });
                 const metaLabel = getWorkspaceMetaLabel(workspace);
 
                 return (
@@ -157,21 +153,7 @@ export function WorkspaceSwitcher({
                         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                           {workspace.name}
                         </span>
-                        {isOwnerWorkspace ? (
-                          <span className="inline-flex shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-indigo-700">
-                            OWNER
-                          </span>
-                        ) : null}
-                        {isAdminWorkspace ? (
-                          <span className="inline-flex shrink-0 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800">
-                            ADMIN
-                          </span>
-                        ) : null}
-                        {isInvitedWorkspace ? (
-                          <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-amber-800">
-                            INVITED
-                          </span>
-                        ) : null}
+                        {userStatus ? <WorkspaceUserStatusBadge status={userStatus} /> : null}
                       </span>
                       {metaLabel ? (
                         <span

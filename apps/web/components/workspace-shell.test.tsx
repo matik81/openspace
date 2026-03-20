@@ -393,7 +393,7 @@ describe('WorkspaceShell', () => {
     const managedOpsItem = screen.getByRole('menuitemradio', { name: /Managed Ops/i });
 
     expect(within(focusLabItem).getByText('OWNER')).toBeVisible();
-    expect(within(blueRoomItem).queryByText('ADMIN')).not.toBeInTheDocument();
+    expect(within(blueRoomItem).getByText('ACTIVE')).toBeVisible();
     expect(within(managedOpsItem).getByText('ADMIN')).toBeVisible();
 
     await user.click(blueRoomItem);
