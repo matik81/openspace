@@ -9,7 +9,7 @@ function getWorkspaceMetaLabel(workspace: WorkspaceItem): string {
   }
 
   if (workspace.invitation?.status === 'PENDING') {
-    return 'Pending invitation';
+    return '';
   }
 
   return workspace.timezone;
@@ -106,6 +106,7 @@ export function WorkspaceSwitcher({
                 const isAdminWorkspace =
                   workspace.membership?.status === 'ACTIVE' &&
                   workspace.membership.role === 'ADMIN';
+                const isInvitedWorkspace = hasPendingInvitation && workspace.membership === null;
                 const metaLabel = getWorkspaceMetaLabel(workspace);
 
                 return (
@@ -152,6 +153,11 @@ export function WorkspaceSwitcher({
                         {isAdminWorkspace ? (
                           <span className="inline-flex shrink-0 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800">
                             ADMIN
+                          </span>
+                        ) : null}
+                        {isInvitedWorkspace ? (
+                          <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-amber-800">
+                            INVITED
                           </span>
                         ) : null}
                       </span>

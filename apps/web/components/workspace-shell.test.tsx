@@ -383,6 +383,100 @@ describe('WorkspaceShell', () => {
     expect(pushMock).toHaveBeenCalledWith('/blue-room');
   });
 
+  it('shows invited workspaces with the INVITED badge in the header dropdown', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/workspaces') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'workspace-1',
+                name: 'Focus Lab',
+                slug: 'focus-lab',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'ADMIN',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
+              {
+                id: 'workspace-2',
+                name: 'Blue Room',
+                slug: 'blue-room',
+                timezone: 'Europe/Rome',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: null,
+                invitation: {
+                  id: 'invitation-1',
+                  email: 'ada@example.com',
+                  status: 'PENDING',
+                  expiresAt: '2026-03-21T12:00:00.000Z',
+                  invitedByUserId: 'user-2',
+                  createdAt: '2026-03-07T12:00:00.000Z',
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      if (url === '/api/auth/me') {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'ada@example.com',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <WorkspaceShell selectedWorkspaceId="workspace-1" pageTitle="" pageDescription="">
+        {() => <p>Workspace content</p>}
+      </WorkspaceShell>,
+    );
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Focus Lab/i })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Focus Lab/i }));
+    const invitedWorkspaceItem = screen.getByRole('menuitemradio', { name: /Blue Room/i });
+
+    expect(within(invitedWorkspaceItem).getByText('INVITED')).toBeVisible();
+    expect(within(invitedWorkspaceItem).queryByText(/Pending invitation/i)).not.toBeInTheDocument();
+  });
+
   it('resolves selected workspace from the slug-based route parameter', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
