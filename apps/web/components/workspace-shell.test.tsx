@@ -193,11 +193,7 @@ describe('WorkspaceShell', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <WorkspaceShell
-        selectedWorkspaceId="workspace-1"
-        pageTitle=""
-        pageDescription=""
-      >
+      <WorkspaceShell selectedWorkspaceId="workspace-1" pageTitle="" pageDescription="">
         {() => <p>Workspace content</p>}
       </WorkspaceShell>,
     );
@@ -330,6 +326,22 @@ describe('WorkspaceShell', () => {
                 },
                 invitation: null,
               },
+              {
+                id: 'workspace-3',
+                name: 'Managed Ops',
+                slug: 'managed-ops',
+                timezone: 'UTC',
+                scheduleStartHour: 8,
+                scheduleEndHour: 18,
+                createdByUserId: 'user-2',
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-07T12:00:00.000Z',
+                membership: {
+                  role: 'ADMIN',
+                  status: 'ACTIVE',
+                },
+                invitation: null,
+              },
             ],
           }),
           {
@@ -378,9 +390,11 @@ describe('WorkspaceShell', () => {
     await user.click(screen.getByRole('button', { name: /Focus Lab/i }));
     const focusLabItem = screen.getByRole('menuitemradio', { name: /Focus Lab/i });
     const blueRoomItem = screen.getByRole('menuitemradio', { name: /Blue Room/i });
+    const managedOpsItem = screen.getByRole('menuitemradio', { name: /Managed Ops/i });
 
-    expect(within(focusLabItem).getByText('ADMIN')).toBeVisible();
+    expect(within(focusLabItem).getByText('OWNER')).toBeVisible();
     expect(within(blueRoomItem).queryByText('ADMIN')).not.toBeInTheDocument();
+    expect(within(managedOpsItem).getByText('ADMIN')).toBeVisible();
 
     await user.click(blueRoomItem);
 

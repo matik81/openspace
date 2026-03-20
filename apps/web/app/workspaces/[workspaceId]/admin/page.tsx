@@ -212,7 +212,7 @@ type AdminRightSidebarState = {
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
 
-type MemberDirectoryStatus = 'ADMIN' | 'ACTIVE' | 'INVITED' | 'INACTIVE';
+type MemberDirectoryStatus = 'OWNER' | 'ADMIN' | 'ACTIVE' | 'INVITED' | 'INACTIVE';
 
 type MemberDirectoryItem = {
   id: string;
@@ -230,6 +230,7 @@ type MemberDirectoryItem = {
 };
 
 const MEMBER_DIRECTORY_STATUS_OPTIONS: MemberDirectoryStatus[] = [
+  'OWNER',
   'ADMIN',
   'ACTIVE',
   'INVITED',
@@ -262,6 +263,10 @@ function formatMemberDirectoryDate(value: string, timezone: string): string {
 }
 
 function getMemberDirectoryBadgeClassName(status: MemberDirectoryStatus): string {
+  if (status === 'OWNER') {
+    return 'inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-indigo-700';
+  }
+
   if (status === 'ADMIN') {
     return 'inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-sky-800';
   }
@@ -276,7 +281,6 @@ function getMemberDirectoryBadgeClassName(status: MemberDirectoryStatus): string
 
   return 'inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold tracking-[0.12em] text-slate-700';
 }
-
 function buildMemberDirectoryItems({
   members,
   invitations,
@@ -301,7 +305,11 @@ function buildMemberDirectoryItems({
         id: `member:${member.userId}`,
         displayName: `${member.firstName} ${member.lastName}`.trim(),
         email: member.email,
-        status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
+        status: isWorkspaceOwner
+          ? ('OWNER' as const)
+          : member.role === 'ADMIN'
+            ? ('ADMIN' as const)
+            : ('ACTIVE' as const),
         detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
         isWorkspaceOwner,
         invitationId: null,
@@ -493,7 +501,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedWorkspace, currentUser, isLoading, loadWorkspaces } = context;
-  const requestedSubpanel = resolveAdminSubpanel(searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY));
+  const requestedSubpanelParam = searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY) ?? null;
+  const requestedSubpanel = resolveAdminSubpanel(requestedSubpanelParam);
   const currentAdminQuery = searchParams?.toString();
   const isSettingsSavedNoticeVisible =
     searchParams?.get(ADMIN_SUCCESS_QUERY_KEY) === ADMIN_SETTINGS_SAVED_NOTICE;
@@ -586,16 +595,17 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     selectedWorkspace?.membership?.status === 'ACTIVE' && (isAdmin || isOwner),
   );
   const canManageWorkspaceResources = canAccessAdmin;
+  const canEditWorkspaceSettings = Boolean(isOwner);
   const canManageWorkspaceRoles = Boolean(isOwner);
   const visibleAdminSubpanels = isOwner
     ? ADMIN_SUBPANELS
-    : ADMIN_SUBPANELS.filter(
-        (subpanel) => subpanel.id === 'resources' || subpanel.id === 'members',
-      );
+    : ADMIN_SUBPANELS.filter((subpanel) => subpanel.id !== 'cancellation');
+  const defaultAdminSubpanel: AdminSubpanelId = isOwner ? 'settings' : 'resources';
   const activeSubpanel =
-    visibleAdminSubpanels.find((subpanel) => subpanel.id === requestedSubpanel)?.id ??
-    visibleAdminSubpanels[0]?.id ??
-    'resources';
+    requestedSubpanelParam === null
+      ? defaultAdminSubpanel
+      : (visibleAdminSubpanels.find((subpanel) => subpanel.id === requestedSubpanel)?.id ??
+        defaultAdminSubpanel);
   const selectedWorkspaceId = selectedWorkspace?.id ?? null;
   const selectedWorkspaceName = selectedWorkspace?.name ?? null;
   const selectedWorkspaceSlug = selectedWorkspace?.slug ?? null;
@@ -1024,13 +1034,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setIsSubmittingRoom(false);
     },
-    [
-      selectedWorkspace,
-      canManageWorkspaceResources,
-      isSubmittingRoom,
-      roomEditForm,
-      loadAdminData,
-    ],
+    [selectedWorkspace, canManageWorkspaceResources, isSubmittingRoom, roomEditForm, loadAdminData],
   );
 
   const handleOpenDeleteRoomConfirmation = useCallback(
@@ -1172,13 +1176,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setRevokingInvitationId(null);
     },
-    [
-      selectedWorkspace,
-      canManageWorkspaceResources,
-      revokingInvitationId,
-      loadAdminData,
-      router,
-    ],
+    [selectedWorkspace, canManageWorkspaceResources, revokingInvitationId, loadAdminData, router],
   );
 
   const closeRemoveMemberDialog = useCallback(() => {
@@ -1443,6 +1441,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             className="mt-4 space-y-4"
             onSubmit={(event) => void handleSaveWorkspaceSettings(event)}
           >
+            {!canEditWorkspaceSettings ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Only the workspace owner can edit these settings. Admins can review them here for
+                reference.
+              </p>
+            ) : null}
+
             {settingsBanner || isSettingsSavedNoticeVisible || settingsError ? (
               <div className="space-y-2">
                 {settingsBanner || isSettingsSavedNoticeVisible ? (
@@ -1480,6 +1485,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     </span>
                     <input
                       required
+                      disabled={!canEditWorkspaceSettings}
                       value={workspaceSettingsForm.name}
                       onChange={(event) => {
                         clearSettingsFeedback();
@@ -1498,7 +1504,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                           };
                         });
                       }}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </label>
 
@@ -1508,6 +1514,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     </span>
                     <input
                       required
+                      disabled={!canEditWorkspaceSettings}
                       value={workspaceSettingsForm.slug}
                       onChange={(event) => {
                         clearSettingsFeedback();
@@ -1516,7 +1523,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                           slug: normalizeWorkspaceSlugCandidate(event.target.value),
                         }));
                       }}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
                     />
                     <p className="mt-1 text-xs text-slate-500">
                       Use lowercase letters, numbers, dots, and hyphens only.
@@ -1540,6 +1547,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     <span className="mb-1 block text-sm font-medium text-slate-700">Timezone</span>
                     <select
                       required
+                      disabled={!canEditWorkspaceSettings}
                       value={workspaceSettingsForm.timezone}
                       onChange={(event) => {
                         clearSettingsFeedback();
@@ -1548,7 +1556,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                           timezone: event.target.value,
                         }));
                       }}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
                     >
                       {IANA_TIMEZONES.map((timezone) => (
                         <option key={timezone} value={timezone}>
@@ -1565,6 +1573,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                       </span>
                       <select
                         required
+                        disabled={!canEditWorkspaceSettings}
                         value={workspaceSettingsForm.scheduleStartHour}
                         onChange={(event) => {
                           clearSettingsFeedback();
@@ -1582,7 +1591,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             };
                           });
                         }}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
                       >
                         {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter((hour) => hour <= 23).map(
                           (hour) => (
@@ -1600,6 +1609,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                       </span>
                       <select
                         required
+                        disabled={!canEditWorkspaceSettings}
                         value={workspaceSettingsForm.scheduleEndHour}
                         onChange={(event) => {
                           clearSettingsFeedback();
@@ -1608,7 +1618,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             scheduleEndHour: Number(event.target.value),
                           }));
                         }}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
                       >
                         {WORKSPACE_SCHEDULE_HOUR_OPTIONS.filter(
                           (hour) => hour >= workspaceSettingsForm.scheduleStartHour,
@@ -1627,7 +1637,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             <div className="flex flex-wrap items-center justify-end">
               <button
                 type="submit"
-                disabled={isSubmittingWorkspaceSettings}
+                disabled={!canEditWorkspaceSettings || isSubmittingWorkspaceSettings}
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Save Settings
@@ -1956,15 +1966,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                         <tr key={person.id} className="align-middle">
                           <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
                             {person.displayName ? (
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-slate-900">
-                                  {person.displayName}
-                                </span>
-                                {person.isWorkspaceOwner ? (
-                                  <span className="inline-flex rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
-                                    Owner
-                                  </span>
-                                ) : null}
+                              <span className="font-medium text-slate-900">
+                                {person.displayName}
                               </span>
                             ) : (
                               <span className="text-slate-400">-</span>

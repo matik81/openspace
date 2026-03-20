@@ -131,7 +131,7 @@ UI expectations:
 - pending invitations are visually distinct
 - the user can accept or reject them directly
 - admin views expose summary data plus a unified members directory that distinguishes active, inactive, and invited people and supports invitation revoke plus member removal actions
-- owner-only actions for workspace settings, workspace cancellation, and admin promotion or demotion are clearly separated from general admin resource actions
+- owner-only editing actions for workspace settings, workspace cancellation, and admin promotion or demotion are clearly separated from general admin resource actions, while delegated admins can still review workspace settings in read-only mode
 
 ## 4. Rooms
 
@@ -210,7 +210,7 @@ Implemented frontend flows:
 - public auth pages and modal states for login, registration, invitation registration, email verification, and password reset
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
 - workspace shell for booking management, room filtering, and top-bar workspace switching
-- workspace admin panel with owner-only settings and cancellation plus shared admin resource and member-management panels
+- workspace admin panel with read-only settings visibility for delegated admins, owner-only settings editing and cancellation, plus shared admin resource and member-management panels
 - active non-admin members can be removed from the members directory after confirmation with the acting user's email and password
 - account settings modal for profile update, password change, and account deletion
 

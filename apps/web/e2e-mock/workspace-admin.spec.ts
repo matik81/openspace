@@ -70,12 +70,10 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
   const directorySection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Directory' }),
   });
-  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toContainText(
-    'ADMIN',
-  );
-  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toContainText(
-    'Owner',
-  );
+  const ownerRow = directorySection.getByRole('row').filter({ hasText: 'Ada Admin' });
+  await expect(ownerRow).toContainText('OWNER');
+  await expect(ownerRow.getByText('ADMIN', { exact: true })).toHaveCount(0);
+  await expect(ownerRow.getByText('Owner', { exact: true })).toHaveCount(0);
   await expect(directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' })).toContainText(
     'ACTIVE',
   );
@@ -174,13 +172,16 @@ test('filters the member directory by status', async ({ page }) => {
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
   ).toHaveCount(0);
-  await expect(filterButton).toContainText('3/4');
+  await expect(filterButton).toContainText('4/5');
 
+  await page.getByRole('checkbox', { name: 'OWNER', exact: true }).click();
   await page.getByRole('checkbox', { name: 'ADMIN', exact: true }).click();
   await page.getByRole('checkbox', { name: 'ACTIVE', exact: true }).click();
   await page.getByRole('checkbox', { name: 'INVITED', exact: true }).click();
 
-  await expect(directorySection.getByText('No people match the selected status filters.')).toBeVisible();
+  await expect(
+    directorySection.getByText('No people match the selected status filters.'),
+  ).toBeVisible();
   await filterButton.click();
   await directorySection.getByRole('button', { name: 'Show all statuses' }).click();
 
@@ -245,9 +246,21 @@ test('non-owner admins keep resource access, can leave, and do not see owner-onl
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Cancellation' })).toHaveCount(0);
-  await expect(page.getByLabel('Display Name')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Workspace Settings' })).toBeVisible();
+  await expect(
+    page.getByText(
+      'Only the workspace owner can edit these settings. Admins can review them here for reference.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel('Display Name')).toBeDisabled();
+  await expect(page.getByLabel('Web Address')).toBeDisabled();
+  await expect(page.getByLabel('Timezone')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save Settings' })).toBeDisabled();
+
+  await page.getByRole('link', { name: 'Resources' }).click();
 
   const roomsSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Resources' }),

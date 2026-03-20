@@ -612,8 +612,7 @@ export function WorkspaceShell({
     currentUser?.id !== undefined &&
     selectedWorkspace.createdByUserId === currentUser.id;
   const canLeaveSelectedWorkspace =
-    selectedWorkspace?.membership?.status === 'ACTIVE' &&
-    !isSelectedWorkspaceOwner;
+    selectedWorkspace?.membership?.status === 'ACTIVE' && !isSelectedWorkspaceOwner;
   const canOpenSelectedWorkspaceAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
     (selectedWorkspace.membership.role === 'ADMIN' || isSelectedWorkspaceOwner);
@@ -670,6 +669,7 @@ export function WorkspaceShell({
             <WorkspaceSwitcher
               workspaces={items}
               selectedWorkspace={selectedWorkspace}
+              currentUserId={currentUser?.id}
               onSelectWorkspace={(workspace) => {
                 router.push(buildWorkspacePathFromSlug(workspace.slug));
               }}

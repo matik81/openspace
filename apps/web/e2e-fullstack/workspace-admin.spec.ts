@@ -34,12 +34,10 @@ test('creates a room and invitation against the real API from the admin page', a
   const directorySection = page
     .getByRole('heading', { name: 'Directory' })
     .locator('xpath=ancestor::section[1]');
-  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' })).toContainText(
-    'ADMIN',
-  );
-  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' })).toContainText(
-    'Owner',
-  );
+  const ownerRow = directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' });
+  await expect(ownerRow).toContainText('OWNER');
+  await expect(ownerRow.getByText('ADMIN', { exact: true })).toHaveCount(0);
+  await expect(ownerRow.getByText('Owner', { exact: true })).toHaveCount(0);
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
   await expect(graceRow).toContainText('ACTIVE');
   await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toBeVisible();
@@ -85,9 +83,21 @@ test('non-owner admins keep resource access, do not see owner-only actions, and 
   await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.managed.slug));
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Cancellation' })).toHaveCount(0);
-  await expect(page.getByLabel('Display Name')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Workspace Settings' })).toBeVisible();
+  await expect(
+    page.getByText(
+      'Only the workspace owner can edit these settings. Admins can review them here for reference.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel('Display Name')).toBeDisabled();
+  await expect(page.getByLabel('Web Address')).toBeDisabled();
+  await expect(page.getByLabel('Timezone')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save Settings' })).toBeDisabled();
+
+  await page.getByRole('link', { name: 'Resources' }).click();
 
   const roomsSection = page
     .getByRole('heading', { name: 'Resources' })
