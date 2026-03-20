@@ -1,8 +1,11 @@
 import type { ComponentProps } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DaySchedule } from '@/components/calendar/DaySchedule';
+import {
+  DaySchedule,
+  resolveEditableBookingPointerDown,
+} from '@/components/calendar/DaySchedule';
 import type { BookingListItem, RoomItem } from '@/lib/types';
 
 const ROOM: RoomItem = {
@@ -85,6 +88,10 @@ function renderSchedule({
   );
 }
 
+function getGlobalInteractionCursorStyleElement() {
+  return document.head.querySelector('style[data-schedule-interaction-cursor]');
+}
+
 describe('DaySchedule', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -112,6 +119,133 @@ describe('DaySchedule', () => {
     await user.click(bookingBlock);
 
     expect(onOpenBooking).toHaveBeenCalledWith(booking);
+  });
+
+  it('keeps editable bookings closed on single click so drag remains available', async () => {
+    const booking = createBooking();
+    const onOpenBooking = vi.fn();
+
+    renderSchedule({
+      bookings: [booking],
+      ownedBookingIds: new Set([booking.id]),
+      editableBookingIds: new Set([booking.id]),
+      onOpenBooking,
+    });
+
+    const user = userEvent.setup();
+    const bookingBlock = screen.getByRole('button', { name: /Personal booking/i });
+
+    await user.click(bookingBlock);
+    expect(onOpenBooking).not.toHaveBeenCalled();
+  });
+
+  it('treats the second pointer-down on the same booking as a double-click open request', () => {
+    const firstPointerDown = resolveEditableBookingPointerDown(null, 'booking-1', 100);
+
+    expect(firstPointerDown).toEqual({
+      shouldOpen: false,
+      next: {
+        bookingId: 'booking-1',
+        timestamp: 100,
+      },
+    });
+
+    expect(resolveEditableBookingPointerDown(firstPointerDown.next, 'booking-1', 220)).toEqual({
+      shouldOpen: true,
+      next: null,
+    });
+  });
+
+  it('keeps editable bookings keyboard accessible', async () => {
+    const booking = createBooking();
+    const onOpenBooking = vi.fn();
+
+    renderSchedule({
+      bookings: [booking],
+      ownedBookingIds: new Set([booking.id]),
+      editableBookingIds: new Set([booking.id]),
+      onOpenBooking,
+    });
+
+    const user = userEvent.setup();
+    const bookingBlock = screen.getByRole('button', { name: /Personal booking/i });
+    bookingBlock.focus();
+    await user.keyboard('{Enter}');
+
+    expect(onOpenBooking).toHaveBeenCalledTimes(1);
+    expect(onOpenBooking).toHaveBeenCalledWith(booking);
+  });
+
+  it('forces the closed-hand cursor on the page while dragging an editable booking', async () => {
+    const booking = createBooking();
+
+    renderSchedule({
+      bookings: [booking],
+      ownedBookingIds: new Set([booking.id]),
+      editableBookingIds: new Set([booking.id]),
+    });
+
+    const bookingBlock = screen.getByRole('button', { name: /Personal booking/i });
+
+    fireEvent.pointerDown(bookingBlock, {
+      clientX: 120,
+      clientY: 240,
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+      buttons: 1,
+    });
+
+    expect(getGlobalInteractionCursorStyleElement()?.textContent).toContain('cursor: grabbing');
+
+    fireEvent.pointerUp(window, {
+      clientX: 120,
+      clientY: 240,
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+      buttons: 0,
+    });
+
+    await waitFor(() => {
+      expect(getGlobalInteractionCursorStyleElement()).toBeNull();
+    });
+  });
+
+  it('forces the resize cursor on the page while resizing an editable booking', async () => {
+    const booking = createBooking();
+
+    renderSchedule({
+      bookings: [booking],
+      ownedBookingIds: new Set([booking.id]),
+      editableBookingIds: new Set([booking.id]),
+    });
+
+    const resizeHandle = screen.getByLabelText('Resize start time');
+
+    fireEvent.pointerDown(resizeHandle, {
+      clientX: 120,
+      clientY: 240,
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+      buttons: 1,
+    });
+
+    expect(getGlobalInteractionCursorStyleElement()?.textContent).toContain('cursor: ns-resize');
+
+    fireEvent.pointerUp(window, {
+      clientX: 120,
+      clientY: 240,
+      pointerId: 1,
+      pointerType: 'mouse',
+      button: 0,
+      buttons: 0,
+    });
+
+    await waitFor(() => {
+      expect(getGlobalInteractionCursorStyleElement()).toBeNull();
+    });
   });
 
   it('renders compatible draft previews in green and conflicting ones in red', () => {

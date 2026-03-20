@@ -1,6 +1,8 @@
 'use client';
 
 import { memo } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
 export type BookingBlockLayout = {
@@ -38,6 +40,7 @@ export const BookingBlock = memo(function BookingBlock({
   isSelected = false,
   showResizeHandles = false,
   onClick,
+  onKeyDown,
   onDragPointerDown,
   onResizePointerDown,
 }: {
@@ -51,7 +54,8 @@ export const BookingBlock = memo(function BookingBlock({
   isClickable?: boolean;
   isSelected?: boolean;
   showResizeHandles?: boolean;
-  onClick?: () => void;
+  onClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onDragPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onResizePointerDown?: (
     edge: 'start' | 'end',
@@ -76,6 +80,7 @@ export const BookingBlock = memo(function BookingBlock({
           type="button"
           data-booking-id={bookingId}
           onClick={onClick}
+          onKeyDown={onKeyDown}
           onPointerDown={onDragPointerDown}
           className={`relative flex h-full w-full flex-col overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition ${getBookingBlockVariantClass(variant)} ${isInteractive ? 'cursor-grab active:cursor-grabbing hover:shadow' : isClickable ? 'cursor-pointer hover:shadow' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand/40' : ''}`}
           title={[title, subtitle, meta].filter(Boolean).join(' · ')}

@@ -70,6 +70,43 @@ type DraftPreview = {
   hasConflict?: boolean;
 };
 
+type EditableBookingPointerDown = {
+  bookingId: string;
+  timestamp: number;
+};
+
+const EDITABLE_BOOKING_DOUBLE_CLICK_WINDOW_MS = 350;
+const GLOBAL_INTERACTION_CURSOR_STYLE_ATTRIBUTE = 'data-schedule-interaction-cursor';
+
+export function resolveEditableBookingPointerDown(
+  previous: EditableBookingPointerDown | null,
+  bookingId: string,
+  timestamp: number,
+): {
+  shouldOpen: boolean;
+  next: EditableBookingPointerDown | null;
+} {
+  if (
+    previous &&
+    previous.bookingId === bookingId &&
+    timestamp - previous.timestamp <= EDITABLE_BOOKING_DOUBLE_CLICK_WINDOW_MS
+  ) {
+    return {
+      shouldOpen: true,
+      next: null,
+    };
+  }
+
+  return {
+    shouldOpen: false,
+    next: { bookingId, timestamp },
+  };
+}
+
+function getInteractionCursor(kind: ActiveInteraction['kind']): 'grabbing' | 'ns-resize' {
+  return kind === 'drag' ? 'grabbing' : 'ns-resize';
+}
+
 export function DaySchedule({
   rooms,
   bookings,
@@ -124,6 +161,7 @@ export function DaySchedule({
   const columnsRef = useRef<HTMLDivElement | null>(null);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const suppressedClickBookingIdRef = useRef<string | null>(null);
+  const lastEditablePointerDownRef = useRef<EditableBookingPointerDown | null>(null);
   const [interaction, setInteraction] = useState<ActiveInteraction | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [commitPreview, setCommitPreview] = useState<PreviewState | null>(null);
@@ -477,6 +515,29 @@ export function DaySchedule({
     };
   }, [interaction, computePreviewFromPointer, onUpdateBooking, onInlineError]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined' || !interaction) {
+      return;
+    }
+
+    const styleElement = document.createElement('style');
+    styleElement.setAttribute(GLOBAL_INTERACTION_CURSOR_STYLE_ATTRIBUTE, '');
+    styleElement.textContent = `
+      html,
+      body,
+      body *,
+      body *::before,
+      body *::after {
+        cursor: ${getInteractionCursor(interaction.kind)} !important;
+      }
+    `;
+    document.head.appendChild(styleElement);
+
+    return () => {
+      styleElement.remove();
+    };
+  }, [interaction]);
+
   const beginInteraction = (
     event: ReactPointerEvent<HTMLButtonElement>,
     booking: BookingListItem,
@@ -484,6 +545,26 @@ export function DaySchedule({
   ) => {
     if (isMutating || committingBookingId || !editableBookingIds.has(booking.id)) {
       return;
+    }
+
+    if (kind === 'drag') {
+      const resolution = resolveEditableBookingPointerDown(
+        lastEditablePointerDownRef.current,
+        booking.id,
+        event.timeStamp,
+      );
+      lastEditablePointerDownRef.current = resolution.next;
+
+      if (resolution.shouldOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setInteraction(null);
+        setPreview(null);
+        onOpenBooking(booking);
+        return;
+      }
+    } else {
+      lastEditablePointerDownRef.current = null;
     }
 
     const local = bookingToLocalRange(booking, timezone);
@@ -517,11 +598,25 @@ export function DaySchedule({
   };
 
   const handleBookingClick = (booking: BookingListItem) => {
-    if (suppressedClickBookingIdRef.current === booking.id) {
-      suppressedClickBookingIdRef.current = null;
-      return;
-    }
-    onOpenBooking(booking);
+    return (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (suppressedClickBookingIdRef.current === booking.id) {
+        suppressedClickBookingIdRef.current = null;
+        return;
+      }
+
+      onOpenBooking(booking);
+    };
+  };
+
+  const handleEditableBookingKeyDown = (booking: BookingListItem) => {
+    return (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      onOpenBooking(booking);
+    };
   };
 
   useEffect(() => {
@@ -588,7 +683,10 @@ export function DaySchedule({
               isClickable={isOwned}
               isSelected={selectedBookingId === item.booking.id}
               showResizeHandles={isEditable}
-              onClick={isOwned ? () => handleBookingClick(item.booking) : undefined}
+              onClick={isOwned && !isEditable ? handleBookingClick(item.booking) : undefined}
+              onKeyDown={
+                isOwned && isEditable ? handleEditableBookingKeyDown(item.booking) : undefined
+              }
               onDragPointerDown={
                 isEditable ? (event) => beginInteraction(event, item.booking, 'drag') : undefined
               }
