@@ -1441,7 +1441,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   );
 
   if (isResolvingSelectedWorkspace) {
-    return <p className="text-slate-600">Loading workspace...</p>;
+    return (
+      <div role="status" aria-label="Loading workspace" className="space-y-3">
+        <div className="h-5 w-40 rounded bg-slate-100" />
+        <div className="h-[480px] rounded-2xl bg-slate-100" />
+      </div>
+    );
   }
 
   if (!selectedWorkspace) {
@@ -1482,7 +1487,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           searchParams.set('date', local.dateKey);
         }
 
-        router.push(`${buildWorkspacePathFromSlug(selectedWorkspace.slug)}?${searchParams.toString()}`);
+        router.push(
+          `${buildWorkspacePathFromSlug(selectedWorkspace.slug)}?${searchParams.toString()}`,
+        );
       }}
     />
   );

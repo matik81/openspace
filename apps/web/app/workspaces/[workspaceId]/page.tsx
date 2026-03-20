@@ -2,7 +2,7 @@
 
 import { DateTime } from 'luxon';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DaySchedule } from '@/components/calendar/DaySchedule';
 import {
   BookingModal,
@@ -92,11 +92,7 @@ export default function WorkspacePage() {
   );
 }
 
-function WorkspacePageContent({
-  context,
-}: {
-  context: WorkspaceShellRenderContext;
-}) {
+function WorkspacePageContent({ context }: { context: WorkspaceShellRenderContext }) {
   const {
     selectedWorkspace,
     currentUser,
@@ -111,7 +107,12 @@ function WorkspacePageContent({
   });
 
   if (isLoading && !selectedWorkspace) {
-    return <p className="text-sm text-slate-600">Loading workspace...</p>;
+    return (
+      <div role="status" aria-label="Loading workspace" className="space-y-3">
+        <div className="h-5 w-40 rounded bg-slate-100" />
+        <div className="h-[480px] rounded-2xl bg-slate-100" />
+      </div>
+    );
   }
 
   if (!selectedWorkspace) {
@@ -232,7 +233,8 @@ function WorkspaceBookingDashboard({
     searchParams?.get('date') && DATE_KEY_PATTERN.test(searchParams.get('date') ?? '')
       ? searchParams.get('date')
       : null;
-  const requestedBookingKey = workspace && requestedBookingId ? `${workspace.id}:${requestedBookingId}` : null;
+  const requestedBookingKey =
+    workspace && requestedBookingId ? `${workspace.id}:${requestedBookingId}` : null;
 
   const getBookingAnchorPoint = useCallback((bookingId: string): BookingModalAnchorPoint | null => {
     if (typeof document === 'undefined') {
@@ -649,7 +651,7 @@ function WorkspaceBookingDashboard({
     if (!workspace) {
       return;
     }
-    if (!requestedBookingId || !hasCurrentBookings || dialog.open) {
+    if (!requestedBookingId || !hasCurrentRooms || !hasCurrentBookings || dialog.open) {
       return;
     }
     if (handledRequestedBookingKeyRef.current === requestedBookingKey) {
@@ -666,6 +668,7 @@ function WorkspaceBookingDashboard({
   }, [
     requestedBookingKey,
     requestedBookingId,
+    hasCurrentRooms,
     hasCurrentBookings,
     dialog.open,
     bookings,
@@ -674,28 +677,24 @@ function WorkspaceBookingDashboard({
     workspace,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!dialog.open || dialog.mode !== 'edit' || !dialog.bookingId || dialog.anchorPoint) {
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
-      const anchorPoint = getBookingAnchorPoint(dialog.bookingId!);
-      if (!anchorPoint) {
-        return;
-      }
+    const anchorPoint = getBookingAnchorPoint(dialog.bookingId);
+    if (!anchorPoint) {
+      return;
+    }
 
-      setDialog((previous) =>
-        previous.open &&
-        previous.mode === 'edit' &&
-        previous.bookingId === dialog.bookingId &&
-        !previous.anchorPoint
-          ? { ...previous, anchorPoint }
-          : previous,
-      );
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
+    setDialog((previous) =>
+      previous.open &&
+      previous.mode === 'edit' &&
+      previous.bookingId === dialog.bookingId &&
+      !previous.anchorPoint
+        ? { ...previous, anchorPoint }
+        : previous,
+    );
   }, [dateKey, dialog, getBookingAnchorPoint, rooms, bookings]);
 
   const dialogDraftPreview = useMemo(() => {

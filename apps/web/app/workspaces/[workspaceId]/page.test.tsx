@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BookingListItem, RoomItem, WorkspaceItem } from '@/lib/types';
 import { writeWorkspaceSidebarState } from '@/lib/workspace-sidebar-state';
 import WorkspacePage from './page';
@@ -20,6 +21,8 @@ const {
   selectedWorkspace,
   setDateKeyMock,
   setMonthKeyMock,
+  sharedSelectedDateListeners,
+  sharedSelectedDateState,
 } = vi.hoisted(() => {
   const selectedWorkspace: WorkspaceItem = {
     id: 'workspace-1',
@@ -63,6 +66,13 @@ const {
     goToPreviousDayMock: vi.fn(),
     goToNextDayMock: vi.fn(),
     scheduleRoomOrders: [] as string[][],
+    sharedSelectedDateState: {
+      current: {
+        dateKey: '2026-03-18',
+        monthKey: '2026-03',
+      },
+    },
+    sharedSelectedDateListeners: new Set<(state: { dateKey: string; monthKey: string }) => void>(),
   };
 });
 
@@ -75,17 +85,49 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => activeSearchParams.current,
 }));
 
-vi.mock('@/hooks/useSharedSelectedDate', () => ({
-  useSharedSelectedDate: () => ({
-    dateKey: '2026-03-18',
-    monthKey: '2026-03',
-    setDateKey: setDateKeyMock,
-    setMonthKey: setMonthKeyMock,
-    goToToday: goToTodayMock,
-    goToPreviousDay: goToPreviousDayMock,
-    goToNextDay: goToNextDayMock,
-  }),
-}));
+vi.mock('@/hooks/useSharedSelectedDate', async () => {
+  const React = await import('react');
+
+  return {
+    useSharedSelectedDate: () => {
+      const [state, setState] = React.useState(sharedSelectedDateState.current);
+
+      React.useEffect(() => {
+        sharedSelectedDateListeners.add(setState);
+        return () => {
+          sharedSelectedDateListeners.delete(setState);
+        };
+      }, []);
+
+      const publishState = (next: { dateKey: string; monthKey: string }) => {
+        sharedSelectedDateState.current = next;
+        sharedSelectedDateListeners.forEach((listener) => listener(next));
+      };
+
+      return {
+        dateKey: state.dateKey,
+        monthKey: state.monthKey,
+        setDateKey: (dateKey: string) => {
+          setDateKeyMock(dateKey);
+          publishState({
+            dateKey,
+            monthKey: dateKey.slice(0, 7),
+          });
+        },
+        setMonthKey: (monthKey: string) => {
+          setMonthKeyMock(monthKey);
+          publishState({
+            ...sharedSelectedDateState.current,
+            monthKey,
+          });
+        },
+        goToToday: goToTodayMock,
+        goToPreviousDay: goToPreviousDayMock,
+        goToNextDay: goToNextDayMock,
+      };
+    },
+  };
+});
 
 vi.mock('@/components/workspace-shell', () => ({
   WorkspaceShell: ({ children }: { children: (context: object) => unknown }) => {
@@ -98,7 +140,12 @@ vi.mock('@/components/workspace-shell', () => ({
     });
 
     if (rendered && typeof rendered === 'object' && 'main' in rendered) {
-      return rendered.main;
+      return (
+        <>
+          {rendered.main}
+          {'rightSidebar' in rendered ? rendered.rightSidebar : null}
+        </>
+      );
     }
 
     return rendered;
@@ -106,11 +153,39 @@ vi.mock('@/components/workspace-shell', () => ({
 }));
 
 vi.mock('@/components/calendar/DaySchedule', () => ({
-  DaySchedule: ({ rooms }: { rooms: RoomItem[] }) => {
+  DaySchedule: ({
+    rooms,
+    bookings,
+    selectedDateKey,
+    onOpenBooking,
+  }: {
+    rooms: RoomItem[];
+    bookings: BookingListItem[];
+    selectedDateKey: string;
+    onOpenBooking: (booking: BookingListItem) => void;
+  }) => {
     const roomNames = rooms.map((room) => room.name);
     scheduleRoomOrders.push(roomNames);
+    const visibleBookings = bookings.filter(
+      (booking) => booking.startAt.slice(0, 10) === selectedDateKey,
+    );
 
-    return <div data-testid="room-order">{roomNames.join(' | ')}</div>;
+    return (
+      <div>
+        <div data-testid="room-order">{roomNames.join(' | ')}</div>
+        <div data-testid="selected-date">{selectedDateKey}</div>
+        {visibleBookings.map((booking) => (
+          <button
+            key={booking.id}
+            type="button"
+            data-booking-id={booking.id}
+            onClick={() => onOpenBooking(booking)}
+          >
+            {booking.subject}
+          </button>
+        ))}
+      </div>
+    );
   },
 }));
 
@@ -119,16 +194,23 @@ vi.mock('@/components/bookings/BookingModal', () => ({
     open,
     mode,
     draft,
+    anchorPoint,
     onClose,
   }: {
     open: boolean;
     mode: 'create' | 'edit';
     draft: { subject: string };
+    anchorPoint?: { clientX: number; clientY: number } | null;
     onClose: () => void;
   }) => {
-    bookingModalRenderMock({ open, mode, subject: draft.subject });
+    bookingModalRenderMock({
+      open,
+      mode,
+      subject: draft.subject,
+      anchorState: anchorPoint ? 'anchored' : 'centered',
+    });
     return open ? (
-      <div data-testid="booking-modal">
+      <div data-testid="booking-modal" data-anchor={anchorPoint ? 'anchored' : 'centered'}>
         <span>{`${mode}:${draft.subject}`}</span>
         <button type="button" onClick={onClose}>
           Close modal
@@ -186,11 +268,21 @@ function buildBooking({
 }
 
 describe('WorkspacePage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     scheduleRoomOrders.length = 0;
     activeSearchParams.current = emptySearchParams;
+    sharedSelectedDateState.current = {
+      dateKey: '2026-03-18',
+      monthKey: '2026-03',
+    };
+    sharedSelectedDateListeners.clear();
     bookingModalRenderMock.mockReset();
     routerReplaceMock.mockReset();
     routerMock.replace = routerReplaceMock;
@@ -266,10 +358,69 @@ describe('WorkspacePage', () => {
     expect(scheduleRoomOrders).not.toContainEqual(['Alpha Room', 'Zulu Room']);
   });
 
+  it('opens a booking from another day without showing a centered modal first', async () => {
+    const requestAnimationFrameMock = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation(() => 1);
+    const cancelAnimationFrameMock = vi
+      .spyOn(window, 'cancelAnimationFrame')
+      .mockImplementation(() => undefined);
+
+    const roomPayload = [buildRoom('room-focus', 'Focus Room', '2026-03-10T08:00:00.000Z')];
+    const bookingPayload = [
+      buildBooking({
+        id: 'booking-cross-day',
+        roomId: 'room-focus',
+        roomName: 'Focus Room',
+        startAt: '2026-03-23T09:00:00.000Z',
+        endAt: '2026-03-23T10:00:00.000Z',
+        subject: 'Quarterly Review',
+      }),
+    ];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith(`/api/workspaces/${selectedWorkspace.id}/rooms?`)) {
+        return new Response(JSON.stringify({ items: roomPayload }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      }
+
+      if (url.startsWith(`/api/workspaces/${selectedWorkspace.id}/bookings?`)) {
+        return new Response(JSON.stringify({ items: bookingPayload }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<WorkspacePage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /Quarterly Review/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('selected-date')).toHaveTextContent('2026-03-23');
+    });
+
+    expect(await screen.findByTestId('booking-modal')).toHaveAttribute('data-anchor', 'anchored');
+
+    requestAnimationFrameMock.mockRestore();
+    cancelAnimationFrameMock.mockRestore();
+  });
+
   it('opens a requested booking only once in strict mode and removes the query param on close', async () => {
-    activeSearchParams.current = new URLSearchParams(
-      'bookingId=booking-requested&date=2026-04-02',
-    );
+    activeSearchParams.current = new URLSearchParams('bookingId=booking-requested&date=2026-04-02');
 
     const roomPayload = [buildRoom('room-focus', 'Focus Room', '2026-03-10T08:00:00.000Z')];
     const bookingPayload = [
@@ -315,9 +466,7 @@ describe('WorkspacePage', () => {
       </StrictMode>,
     );
 
-    expect(await screen.findByTestId('booking-modal')).toHaveTextContent(
-      'edit:Quarterly Review',
-    );
+    expect(await screen.findByTestId('booking-modal')).toHaveTextContent('edit:Quarterly Review');
 
     expect(routerReplaceMock).not.toHaveBeenCalled();
     expect(setDateKeyMock).toHaveBeenCalledWith('2026-04-02');
