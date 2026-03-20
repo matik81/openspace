@@ -55,7 +55,7 @@ test('shows dashboard data and accepts a pending invitation', async ({ page }) =
 
   await page.getByRole('button', { name: 'Accept' }).first().click();
 
-  await expect(page.getByText('Invitation accepted.')).toBeVisible();
+  await expect(page.getByText('Invitation accepted.')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Invitation Inbox' })).not.toBeVisible();
   await expect(visibleWorkspacesSection).toContainText('MEMBER / ACTIVE');
 });
@@ -80,6 +80,7 @@ test('creates a workspace from the shell and lands in the control panel', async 
   await expect(page.getByRole('heading', { name: 'Control Panel' })).toBeVisible();
   await expect(page.getByLabel('Display Name')).toHaveValue('Skunkworks');
   await expect(page.getByLabel('Web Address')).toHaveValue('skunkworks');
+  await expect(page.getByText('Workspace created.')).toHaveCount(0);
 });
 
 test('updates account settings and opens the login modal after logout', async ({ page }) => {
@@ -95,7 +96,7 @@ test('updates account settings and opens the login modal after logout', async ({
   await dialog.getByLabel('First name').fill('Adele');
   await dialog.getByRole('button', { name: 'Save account' }).click();
 
-  await expect(page.getByText('Account updated.')).toBeVisible();
+  await expect(page.getByText('Account updated.')).toHaveCount(0);
 
   await openUserMenu(page);
   await expect(page.getByRole('menu').getByText('Adele Admin')).toBeVisible();

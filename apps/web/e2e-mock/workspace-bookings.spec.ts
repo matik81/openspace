@@ -29,7 +29,7 @@ test('creates, edits, and cancels a booking from the workspace page', async ({ p
   await dialog.getByLabel('Criticality').selectOption('HIGH');
   await dialog.getByRole('button', { name: 'Create' }).click();
 
-  await expect(page.getByText('Booking created.')).toBeVisible();
+  await expect(page.getByText('Booking created.')).toHaveCount(0);
 
   const myBookingsSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'My bookings' }),
@@ -45,13 +45,13 @@ test('creates, edits, and cancels a booking from the workspace page', async ({ p
   await editDialog.getByLabel('Title').fill('Ops Review Updated');
   await editDialog.getByRole('button', { name: 'Save' }).click();
 
-  await expect(page.getByText('Booking updated.')).toBeVisible();
+  await expect(page.getByText('Booking updated.')).toHaveCount(0);
   await expect(myBookingsSection.getByText('Ops Review Updated')).toBeVisible();
 
   await myBookingsSection.getByRole('button', { name: /Ops Review Updated/i }).click();
   await editDialog.getByRole('button', { name: 'Cancel Reservation' }).click();
 
-  await expect(page.getByText('Booking cancelled.')).toBeVisible();
+  await expect(page.getByText('Booking cancelled.')).toHaveCount(0);
   await expect(myBookingsSection.getByText('Ops Review Updated')).not.toBeVisible();
 });
 

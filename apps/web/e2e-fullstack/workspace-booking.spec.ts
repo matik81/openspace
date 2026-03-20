@@ -30,7 +30,7 @@ test('creates and cancels a booking against the real API', async ({ page }) => {
     .getByRole('button', { name: 'Create', exact: true })
     .click();
 
-  await expect(page.getByText('Booking created.')).toBeVisible();
+  await expect(page.getByText('Booking created.')).toHaveCount(0);
 
   const myBookingsSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'My bookings' }),
@@ -45,6 +45,6 @@ test('creates and cancels a booking against the real API', async ({ page }) => {
 
   await editDialog.getByRole('button', { name: 'Cancel Reservation' }).click();
 
-  await expect(page.getByText('Booking cancelled.')).toBeVisible();
+  await expect(page.getByText('Booking cancelled.')).toHaveCount(0);
   await expect(myBookingsSection).not.toContainText('Full-stack booking');
 });

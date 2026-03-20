@@ -157,11 +157,13 @@ vi.mock('@/components/calendar/DaySchedule', () => ({
     rooms,
     bookings,
     selectedDateKey,
+    onInlineError,
     onOpenBooking,
   }: {
     rooms: RoomItem[];
     bookings: BookingListItem[];
     selectedDateKey: string;
+    onInlineError: (message: string) => void;
     onOpenBooking: (booking: BookingListItem) => void;
   }) => {
     const roomNames = rooms.map((room) => room.name);
@@ -174,6 +176,18 @@ vi.mock('@/components/calendar/DaySchedule', () => ({
       <div>
         <div data-testid="room-order">{roomNames.join(' | ')}</div>
         <div data-testid="selected-date">{selectedDateKey}</div>
+        <button
+          type="button"
+          onClick={() => onInlineError('This booking overlaps an existing active booking')}
+        >
+          Trigger room conflict
+        </button>
+        <button
+          type="button"
+          onClick={() => onInlineError('You already have an active booking during this time')}
+        >
+          Trigger user conflict
+        </button>
         {visibleBookings.map((booking) => (
           <button
             key={booking.id}
@@ -480,5 +494,51 @@ describe('WorkspacePage', () => {
     });
 
     expect(routerReplaceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show inline booking conflict errors above the schedule', async () => {
+    const roomPayload = [buildRoom('room-focus', 'Focus Room', '2026-03-10T08:00:00.000Z')];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith(`/api/workspaces/${selectedWorkspace.id}/rooms?`)) {
+        return new Response(JSON.stringify({ items: roomPayload }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      }
+
+      if (url.startsWith(`/api/workspaces/${selectedWorkspace.id}/bookings?`)) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<WorkspacePage />);
+
+    const user = userEvent.setup();
+
+    await screen.findByRole('button', { name: 'Trigger room conflict' });
+
+    await user.click(screen.getByRole('button', { name: 'Trigger room conflict' }));
+    expect(
+      screen.queryByText('This booking overlaps an existing active booking.'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Trigger user conflict' }));
+    expect(
+      screen.queryByText('You already have an active booking during this time.'),
+    ).not.toBeInTheDocument();
   });
 });

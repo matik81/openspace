@@ -299,7 +299,6 @@ export function WorkspaceShell({
         return;
       }
 
-      setBanner(action === 'accept' ? 'Invitation accepted.' : 'Invitation rejected.');
       await loadWorkspaces();
       setPendingInvitationAction(null);
     },
@@ -355,7 +354,6 @@ export function WorkspaceShell({
           createWorkspaceForm.slug || createWorkspaceForm.name,
         );
 
-        setBanner('Workspace created.');
         closeCreateWorkspaceModal();
         await loadWorkspaces();
         if (createdWorkspaceSlug) {
@@ -569,7 +567,6 @@ export function WorkspaceShell({
 
       setCurrentUser(payload);
       currentUserCache = payload;
-      setBanner('Account updated.');
       setIsSubmittingAccountSettings(false);
       closeAccountSettingsModal();
     },

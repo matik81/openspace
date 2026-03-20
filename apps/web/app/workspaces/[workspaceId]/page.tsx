@@ -74,6 +74,10 @@ const emptyBookingDraft: BookingModalDraft = {
 };
 const MAX_BOOKING_DAYS_AHEAD = 365;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const HIDDEN_SCHEDULE_ERROR_MESSAGES = new Set([
+  'This booking overlaps an existing active booking.',
+  'You already have an active booking during this time.',
+]);
 
 export default function WorkspacePage() {
   const params = useParams<WorkspacePageParams>();
@@ -213,7 +217,6 @@ function WorkspaceBookingDashboard({
   const [hasLoadedBookings, setHasLoadedBookings] = useState(Boolean(cachedSidebarState));
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
-  const [pageBanner, setPageBanner] = useState<string | null>(null);
   const [pageError, setPageError] = useState<ErrorPayload | null>(null);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<BookingDialogState>({
@@ -434,7 +437,6 @@ function WorkspaceBookingDashboard({
     if (!workspace || !enabled) {
       return;
     }
-    setPageBanner(null);
     setPageError(null);
     setHasLoadedRooms(false);
     void loadRooms(workspace);
@@ -444,7 +446,6 @@ function WorkspaceBookingDashboard({
     if (!workspace || !enabled) {
       return;
     }
-    setPageBanner(null);
     setPageError(null);
     setHasLoadedBookings(false);
     void loadBookings(workspace);
@@ -591,7 +592,6 @@ function WorkspaceBookingDashboard({
       }
 
       setPageError(null);
-      setPageBanner(null);
       setSelectedBookingId(null);
       setDialog({
         open: true,
@@ -620,7 +620,6 @@ function WorkspaceBookingDashboard({
       }
 
       setPageError(null);
-      setPageBanner(null);
       setSelectedBookingId(booking.id);
       setDialog({
         open: true,
@@ -862,7 +861,6 @@ function WorkspaceBookingDashboard({
       previous.open ? { ...previous, isSubmitting: true, error: null } : previous,
     );
     setPageError(null);
-    setPageBanner(null);
 
     const isEdit = dialog.mode === 'edit' && dialog.bookingId;
     const url = isEdit
@@ -902,7 +900,6 @@ function WorkspaceBookingDashboard({
     }
 
     await loadBookings(workspace);
-    setPageBanner(isEdit ? 'Booking updated.' : 'Booking created.');
     closeDialog();
   };
 
@@ -915,7 +912,6 @@ function WorkspaceBookingDashboard({
       previous.open ? { ...previous, isSubmitting: true, error: null } : previous,
     );
     setPageError(null);
-    setPageBanner(null);
 
     const response = await fetch(
       `/api/workspaces/${workspace.id}/bookings/${dialog.bookingId}/cancel`,
@@ -944,7 +940,6 @@ function WorkspaceBookingDashboard({
     }
 
     await loadBookings(workspace);
-    setPageBanner('Booking cancelled.');
     closeDialog();
   };
 
@@ -979,7 +974,6 @@ function WorkspaceBookingDashboard({
       }
 
       setPageError(null);
-      setPageBanner(null);
 
       const response = await fetch(`/api/workspaces/${workspace.id}/bookings/${booking.id}`, {
         method: 'PATCH',
@@ -1005,7 +999,6 @@ function WorkspaceBookingDashboard({
       }
 
       await loadBookings(workspace);
-      setPageBanner('Booking updated.');
     },
     [bookings, dateKey, enabled, timezone, workspace, loadBookings, router],
   );
@@ -1029,23 +1022,18 @@ function WorkspaceBookingDashboard({
   const emptyScheduleMessage = isBeforeWorkspaceCreation
     ? 'This workspace did not exist on the selected date.'
     : 'No rooms available for this workspace yet.';
+  const pageErrorMessage = pageError ? getErrorDisplayMessage(pageError) : null;
+  const shouldShowPageError = Boolean(
+    pageErrorMessage && !HIDDEN_SCHEDULE_ERROR_MESSAGES.has(pageErrorMessage),
+  );
 
   return {
     main: (
       <div className="flex h-full min-h-0 flex-col gap-3">
-        {pageBanner || pageError ? (
-          <div className="space-y-2">
-            {pageBanner ? (
-              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {pageBanner}
-              </p>
-            ) : null}
-            {pageError ? (
-              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {getErrorDisplayMessage(pageError)}
-              </p>
-            ) : null}
-          </div>
+        {shouldShowPageError ? (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {pageErrorMessage}
+          </p>
         ) : null}
         <div className="min-h-0 flex-1">
           {showScheduleSkeleton ? (

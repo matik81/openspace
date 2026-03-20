@@ -15,7 +15,7 @@ test('logs in with a seeded verified user and accepts a real pending invitation'
 
   await page.getByRole('button', { name: 'Accept' }).first().click();
 
-  await expect(page.getByText('Invitation accepted.')).toBeVisible();
+  await expect(page.getByText('Invitation accepted.')).toHaveCount(0);
   await expect(visibleWorkspacesSection).toContainText(FULLSTACK_E2E.workspaces.pending.name);
   await expect(visibleWorkspacesSection).toContainText('MEMBER / ACTIVE');
 });
