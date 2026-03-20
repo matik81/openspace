@@ -348,7 +348,7 @@ function WorkspaceBookingDashboard({
         return;
       }
 
-      setRooms(payload.items.slice().sort((a, b) => a.name.localeCompare(b.name)));
+      setRooms(payload.items);
       setRoomsWorkspaceId(selected.id);
       setHasLoadedRooms(true);
       setIsLoadingRooms(false);
