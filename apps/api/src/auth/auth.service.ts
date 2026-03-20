@@ -16,7 +16,6 @@ import {
   MembershipStatus,
   User,
   UserStatus,
-  WorkspaceRole,
   WorkspaceStatus,
 } from '../generated/prisma';
 import { compare, hash } from 'bcryptjs';
@@ -502,16 +501,23 @@ export class AuthService {
         },
         select: {
           workspaceId: true,
-          role: true,
+        },
+      });
+      const ownedWorkspaces = await tx.workspace.findMany({
+        where: {
+          createdByUserId: user.id,
+          status: WorkspaceStatus.ACTIVE,
+        },
+        select: {
+          id: true,
         },
       });
 
+      const ownedWorkspaceIds = ownedWorkspaces.map((workspace) => workspace.id);
+      const ownedWorkspaceIdSet = new Set(ownedWorkspaceIds);
       const participantWorkspaceIds = memberships
-        .filter((membership) => membership.role !== WorkspaceRole.ADMIN)
-        .map((membership) => membership.workspaceId);
-      const adminWorkspaceIds = memberships
-        .filter((membership) => membership.role === WorkspaceRole.ADMIN)
-        .map((membership) => membership.workspaceId);
+        .map((membership) => membership.workspaceId)
+        .filter((workspaceId) => !ownedWorkspaceIdSet.has(workspaceId));
 
       if (participantWorkspaceIds.length > 0) {
         await tx.workspaceMember.updateMany({
@@ -540,10 +546,10 @@ export class AuthService {
         });
       }
 
-      if (adminWorkspaceIds.length > 0) {
+      if (ownedWorkspaceIds.length > 0) {
         await tx.workspace.updateMany({
           where: {
-            id: { in: adminWorkspaceIds },
+            id: { in: ownedWorkspaceIds },
             status: WorkspaceStatus.ACTIVE,
           },
           data: {

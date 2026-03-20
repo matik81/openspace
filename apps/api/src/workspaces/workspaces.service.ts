@@ -36,6 +36,23 @@ import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 type AuthUser = { userId: string };
 type VerifiedUser = { id: string; email: string; firstName: string; lastName: string };
+type ActiveWorkspace = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  createdByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  status: WorkspaceStatus;
+};
+type VisibleWorkspaceAccess = {
+  workspace: ActiveWorkspace;
+  membership: { role: WorkspaceRole; status: MembershipStatus } | null;
+  pendingInvitation: { id: string } | null;
+};
 
 @Injectable()
 export class WorkspacesService {
@@ -324,7 +341,7 @@ export class WorkspacesService {
   async updateWorkspace(authUser: AuthUser, workspaceId: string, dto: UpdateWorkspaceDto) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
-    const current = await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+    const current = await this.assertWorkspaceOwner(normalizedWorkspaceId, user);
 
     const name = dto.name !== undefined ? this.requireString(dto.name, 'name') : undefined;
     const slug = dto.slug !== undefined ? this.requireWorkspaceSlug(dto.slug) : undefined;
@@ -431,7 +448,7 @@ export class WorkspacesService {
 
   async cancelWorkspace(authUser: AuthUser, workspaceId: string, dto: CancelWorkspaceDto) {
     const user = await this.requireVerifiedUser(authUser.userId);
-    const workspace = await this.assertWorkspaceAdmin(
+    const workspace = await this.assertWorkspaceOwner(
       this.requireUuid(workspaceId, 'workspaceId'),
       user,
     );
@@ -753,6 +770,14 @@ export class WorkspacesService {
     return { removed: true, cancelledBookingsCount };
   }
 
+  async promoteWorkspaceMemberToAdmin(authUser: AuthUser, workspaceId: string, memberUserId: string) {
+    return this.changeWorkspaceMemberRole(authUser, workspaceId, memberUserId, WorkspaceRole.ADMIN);
+  }
+
+  async demoteWorkspaceAdminToMember(authUser: AuthUser, workspaceId: string, memberUserId: string) {
+    return this.changeWorkspaceMemberRole(authUser, workspaceId, memberUserId, WorkspaceRole.MEMBER);
+  }
+
   async listWorkspacePendingInvitations(authUser: AuthUser, workspaceId: string) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
@@ -936,6 +961,7 @@ export class WorkspacesService {
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const email = this.normalizeEmail(dto.email);
     const password = this.requireString(dto.password, 'password');
+    const workspace = await this.findActiveWorkspaceOrThrow(normalizedWorkspaceId);
     const membership = await this.prismaService.workspaceMember.findFirst({
       where: {
         workspaceId: normalizedWorkspaceId,
@@ -943,7 +969,7 @@ export class WorkspacesService {
         status: MembershipStatus.ACTIVE,
         workspace: { status: WorkspaceStatus.ACTIVE },
       },
-      select: { id: true, role: true },
+      select: { id: true },
     });
     if (!membership) {
       throw new ForbiddenException({
@@ -951,10 +977,10 @@ export class WorkspacesService {
         message: 'Workspace not visible',
       });
     }
-    if (membership.role === WorkspaceRole.ADMIN) {
+    if (workspace.createdByUserId === user.id) {
       throw new ForbiddenException({
-        code: 'ADMIN_CANNOT_LEAVE_WORKSPACE',
-        message: 'Workspace admins cannot leave the workspace',
+        code: 'OWNER_CANNOT_LEAVE_WORKSPACE',
+        message: 'Workspace owner cannot leave the workspace',
       });
     }
     if (user.email !== email) {
@@ -1034,30 +1060,11 @@ export class WorkspacesService {
   }
 
   private async assertWorkspaceAdmin(workspaceId: string, user: VerifiedUser) {
-    const workspace = await this.findActiveWorkspaceOrThrow(workspaceId);
-    const membership = await this.prismaService.workspaceMember.findFirst({
-      where: { workspaceId, userId: user.id, status: MembershipStatus.ACTIVE },
-      select: { role: true },
-    });
-    if (membership?.role === WorkspaceRole.ADMIN) {
-      return workspace;
+    const access = await this.findVisibleWorkspaceAccess(workspaceId, user);
+    if (access.membership?.role === WorkspaceRole.ADMIN) {
+      return access.workspace;
     }
-    if (membership) {
-      throw new ForbiddenException({
-        code: 'UNAUTHORIZED',
-        message: 'Only workspace admins can perform this action',
-      });
-    }
-    const pendingInvitation = await this.prismaService.invitation.findFirst({
-      where: {
-        workspaceId,
-        email: user.email,
-        status: InvitationStatus.PENDING,
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true },
-    });
-    if (pendingInvitation) {
+    if (access.membership || access.pendingInvitation) {
       throw new ForbiddenException({
         code: 'UNAUTHORIZED',
         message: 'Only workspace admins can perform this action',
@@ -1069,7 +1076,108 @@ export class WorkspacesService {
     });
   }
 
-  private async findActiveWorkspaceOrThrow(workspaceId: string) {
+  private async assertWorkspaceOwner(workspaceId: string, user: VerifiedUser) {
+    const access = await this.findVisibleWorkspaceAccess(workspaceId, user);
+    if (access.membership && access.workspace.createdByUserId === user.id) {
+      return access.workspace;
+    }
+    if (access.membership || access.pendingInvitation) {
+      throw new ForbiddenException({
+        code: 'ONLY_WORKSPACE_OWNER',
+        message: 'Only the workspace owner can perform this action',
+      });
+    }
+    throw new ForbiddenException({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
+  }
+
+  private async findVisibleWorkspaceAccess(
+    workspaceId: string,
+    user: VerifiedUser,
+  ): Promise<VisibleWorkspaceAccess> {
+    const workspace = await this.findActiveWorkspaceOrThrow(workspaceId);
+    const [membership, pendingInvitation] = await Promise.all([
+      this.prismaService.workspaceMember.findFirst({
+        where: {
+          workspaceId,
+          userId: user.id,
+          status: MembershipStatus.ACTIVE,
+        },
+        select: { role: true, status: true },
+      }),
+      this.prismaService.invitation.findFirst({
+        where: {
+          workspaceId,
+          email: user.email,
+          status: InvitationStatus.PENDING,
+          expiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    return {
+      workspace,
+      membership,
+      pendingInvitation,
+    };
+  }
+
+  private async changeWorkspaceMemberRole(
+    authUser: AuthUser,
+    workspaceId: string,
+    memberUserId: string,
+    nextRole: WorkspaceRole,
+  ) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    const normalizedMemberUserId = this.requireUuid(memberUserId, 'memberUserId');
+    const workspace = await this.assertWorkspaceOwner(normalizedWorkspaceId, user);
+
+    const membership = await this.prismaService.workspaceMember.findFirst({
+      where: {
+        workspaceId: normalizedWorkspaceId,
+        userId: normalizedMemberUserId,
+        status: MembershipStatus.ACTIVE,
+        workspace: { status: WorkspaceStatus.ACTIVE },
+      },
+      select: { id: true, role: true, status: true, userId: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Active workspace member not found',
+      });
+    }
+
+    if (workspace.createdByUserId === normalizedMemberUserId && membership.role !== nextRole) {
+      throw new ForbiddenException({
+        code: 'OWNER_ROLE_CANNOT_CHANGE',
+        message: 'Workspace owner role cannot change',
+      });
+    }
+
+    if (membership.role === nextRole) {
+      return {
+        userId: membership.userId,
+        role: membership.role,
+        status: membership.status,
+      };
+    }
+
+    const updated = await this.prismaService.workspaceMember.update({
+      where: { id: membership.id },
+      data: { role: nextRole },
+      select: { userId: true, role: true, status: true },
+    });
+
+    return updated;
+  }
+
+  private async findActiveWorkspaceOrThrow(workspaceId: string): Promise<ActiveWorkspace> {
     const workspace = await this.prismaService.workspace.findUnique({
       where: { id: workspaceId },
       select: { ...this.workspaceSelect(), status: true },
@@ -1167,6 +1275,7 @@ export class WorkspacesService {
       timezone: string;
       scheduleStartHour: number;
       scheduleEndHour: number;
+      createdByUserId: string;
       createdAt: Date;
       updatedAt: Date;
       scheduleVersions?: Array<{
@@ -1211,6 +1320,7 @@ export class WorkspacesService {
       timezone: true,
       scheduleStartHour: true,
       scheduleEndHour: true,
+      createdByUserId: true,
       createdAt: true,
       updatedAt: true,
       scheduleVersions: {

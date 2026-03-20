@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   installMockWorkspaceApp,
   MOCK_NAMES,
@@ -6,14 +6,39 @@ import {
   workspaceAdminPathBySlug,
 } from './support/mock-workspace-app';
 
-test.beforeEach(async ({ page }) => {
-  await installMockWorkspaceApp(page);
-});
+async function installNonOwnerAdminWorkspace(page: Page) {
+  const { state } = await installMockWorkspaceApp(page);
+  const workspace = state.workspaces.find((item) => item.id === 'workspace-admin');
+  if (!workspace) {
+    throw new Error('Expected admin workspace to exist');
+  }
 
-test('updates workspace settings and manages rooms and invitations', async ({ page }) => {
+  workspace.createdByUserId = 'user-owner';
+  state.membersByWorkspaceId['workspace-admin'] = [
+    {
+      userId: 'user-owner',
+      firstName: 'Olivia',
+      lastName: 'Owner',
+      email: 'owner@example.com',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      joinedAt: workspace.createdAt,
+    },
+    ...(state.membersByWorkspaceId['workspace-admin'] ?? []),
+  ];
+
+  return state;
+}
+
+test('owner updates workspace settings, manages rooms and invitations, and promotes or demotes admins', async ({
+  page,
+}) => {
+  await installMockWorkspaceApp(page);
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await expect(page.getByRole('heading', { name: 'Workspace Admin' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Cancellation' })).toBeVisible();
 
   await page.getByLabel('Display Name').fill('Atlas North');
   await page.getByLabel('Web Address').fill('atlas.north');
@@ -48,9 +73,20 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toContainText(
     'ADMIN',
   );
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toContainText(
+    'Owner',
+  );
   await expect(directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' })).toContainText(
     'ACTIVE',
   );
+  const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
+  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toBeVisible();
+  await graceRow.getByRole('button', { name: 'Promote to admin' }).click();
+  await expect(graceRow).toContainText('ADMIN');
+  await expect(graceRow.getByRole('button', { name: 'Demote to member' })).toBeVisible();
+  await graceRow.getByRole('button', { name: 'Demote to member' }).click();
+  await expect(graceRow).toContainText('ACTIVE');
+  await expect(graceRow.getByRole('button', { name: 'Remove' })).toBeVisible();
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
   ).toContainText('INACTIVE');
@@ -90,6 +126,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
 });
 
 test('removes an active member with email and password confirmation', async ({ page }) => {
+  await installMockWorkspaceApp(page);
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Members' }).click();
@@ -105,7 +142,7 @@ test('removes an active member with email and password confirmation', async ({ p
     has: page.getByRole('heading', { name: 'Remove Member' }),
   });
 
-  await dialog.getByLabel('Admin email').fill('ada@example.com');
+  await dialog.getByLabel('Email').fill('ada@example.com');
   await dialog.getByLabel('Password').fill('password123');
   await dialog.getByRole('button', { name: 'Remove member' }).click();
 
@@ -114,6 +151,7 @@ test('removes an active member with email and password confirmation', async ({ p
 });
 
 test('filters the member directory by status', async ({ page }) => {
+  await installMockWorkspaceApp(page);
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Members' }).click();
@@ -156,6 +194,7 @@ test('filters the member directory by status', async ({ page }) => {
 });
 
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
+  await installMockWorkspaceApp(page);
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 
   await page.getByRole('link', { name: 'Cancellation' }).click();
@@ -182,6 +221,7 @@ test('cancels the workspace and redirects back to the dashboard', async ({ page 
 test('supports direct admin subpanel links and falls back to settings for invalid values', async ({
   page,
 }) => {
+  await installMockWorkspaceApp(page);
   await page.goto(`${workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace)}?panel=resources`);
 
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
@@ -196,4 +236,65 @@ test('supports direct admin subpanel links and falls back to settings for invali
 
   await expect(page.getByLabel('Display Name')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Resources' })).not.toBeVisible();
+});
+
+test('non-owner admins keep resource access, can leave, and do not see owner-only actions', async ({
+  page,
+}) => {
+  await installNonOwnerAdminWorkspace(page);
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+
+  await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Cancellation' })).toHaveCount(0);
+  await expect(page.getByLabel('Display Name')).toHaveCount(0);
+
+  const roomsSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Resources' }),
+  });
+  await roomsSection.getByPlaceholder('Room name').fill('Ops Room');
+  await roomsSection.getByPlaceholder('Description (optional)').fill('Admin-managed room');
+  await roomsSection.getByPlaceholder('Description (optional)').press('Enter');
+  await expect(roomsSection.getByText('Ops Room')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Members' }).click();
+  const membersSection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Members' }),
+  });
+  const directorySection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Directory' }),
+  });
+  const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
+
+  await expect(graceRow.getByRole('button', { name: 'Remove' })).toBeVisible();
+  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Demote to member' })).toHaveCount(0);
+
+  await membersSection.getByPlaceholder('Invite by email').fill('ops-admin@example.com');
+  await membersSection.getByRole('button', { name: 'Invite' }).click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'ops-admin@example.com' }),
+  ).toContainText('INVITED');
+
+  await page.getByRole('button', { name: /Ada Admin/i }).click();
+  await page.getByRole('menuitem', { name: 'Leave workspace' }).click();
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Leave Workspace' }),
+  });
+
+  await dialog.getByLabel('Email').fill('ada@example.com');
+  await dialog.getByLabel('Password').fill('password123');
+  await dialog.getByRole('button', { name: 'Leave workspace' }).click();
+
+  await expect(page).toHaveURL('/dashboard');
+  await expect(page.getByText(MOCK_NAMES.adminWorkspace)).not.toBeVisible();
+});
+
+test('owners do not get a leave-workspace action in the shell menu', async ({ page }) => {
+  await installMockWorkspaceApp(page);
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+
+  await page.getByRole('button', { name: /Ada Admin/i }).click();
+  await expect(page.getByRole('menuitem', { name: 'Leave workspace' })).toHaveCount(0);
 });

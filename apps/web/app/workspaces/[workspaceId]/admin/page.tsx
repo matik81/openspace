@@ -220,9 +220,13 @@ type MemberDirectoryItem = {
   email: string;
   status: MemberDirectoryStatus;
   detail: string;
+  isWorkspaceOwner: boolean;
   invitationId: string | null;
   memberUserId: string | null;
+  canRevokeInvitation: boolean;
   canRemove: boolean;
+  canPromoteToAdmin: boolean;
+  canDemoteToMember: boolean;
 };
 
 const MEMBER_DIRECTORY_STATUS_OPTIONS: MemberDirectoryStatus[] = [
@@ -277,23 +281,37 @@ function buildMemberDirectoryItems({
   members,
   invitations,
   timezone,
+  ownerUserId,
+  canManageMembers,
+  canManageRoles,
 }: {
   members: WorkspaceMemberListItem[];
   invitations: WorkspaceInvitationSummary[];
   timezone: string;
+  ownerUserId: string | null;
+  canManageMembers: boolean;
+  canManageRoles: boolean;
 }): MemberDirectoryItem[] {
   const activeMembers = members
     .filter((member) => member.status === 'ACTIVE')
-    .map((member) => ({
-      id: `member:${member.userId}`,
-      displayName: `${member.firstName} ${member.lastName}`.trim(),
-      email: member.email,
-      status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
-      detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
-      invitationId: null,
-      memberUserId: member.userId,
-      canRemove: member.role !== 'ADMIN',
-    }));
+    .map((member) => {
+      const isWorkspaceOwner = ownerUserId !== null && member.userId === ownerUserId;
+
+      return {
+        id: `member:${member.userId}`,
+        displayName: `${member.firstName} ${member.lastName}`.trim(),
+        email: member.email,
+        status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
+        detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+        isWorkspaceOwner,
+        invitationId: null,
+        memberUserId: member.userId,
+        canRevokeInvitation: false,
+        canRemove: !isWorkspaceOwner && canManageMembers && member.role !== 'ADMIN',
+        canPromoteToAdmin: !isWorkspaceOwner && canManageRoles && member.role !== 'ADMIN',
+        canDemoteToMember: !isWorkspaceOwner && canManageRoles && member.role === 'ADMIN',
+      };
+    });
 
   const invitedPeople = invitations.map((invitation) => ({
     id: `invitation:${invitation.id}`,
@@ -301,9 +319,13 @@ function buildMemberDirectoryItems({
     email: invitation.email,
     status: 'INVITED' as const,
     detail: `Invited ${formatMemberDirectoryDate(invitation.createdAt, timezone)}`,
+    isWorkspaceOwner: false,
     invitationId: invitation.id,
     memberUserId: null,
+    canRevokeInvitation: canManageMembers,
     canRemove: false,
+    canPromoteToAdmin: false,
+    canDemoteToMember: false,
   }));
 
   const inactiveMembers = members
@@ -314,9 +336,13 @@ function buildMemberDirectoryItems({
       email: member.email,
       status: 'INACTIVE' as const,
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
+      isWorkspaceOwner: ownerUserId !== null && member.userId === ownerUserId,
       invitationId: null,
       memberUserId: member.userId,
+      canRevokeInvitation: false,
       canRemove: false,
+      canPromoteToAdmin: false,
+      canDemoteToMember: false,
     }));
 
   return [...activeMembers, ...invitedPeople, ...inactiveMembers];
@@ -467,7 +493,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedWorkspace, currentUser, isLoading, loadWorkspaces } = context;
-  const activeSubpanel = resolveAdminSubpanel(searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY));
+  const requestedSubpanel = resolveAdminSubpanel(searchParams?.get(ADMIN_SUBPANEL_QUERY_KEY));
   const currentAdminQuery = searchParams?.toString();
   const isSettingsSavedNoticeVisible =
     searchParams?.get(ADMIN_SUCCESS_QUERY_KEY) === ADMIN_SETTINGS_SAVED_NOTICE;
@@ -509,6 +535,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   );
   const [removeMemberError, setRemoveMemberError] = useState<ErrorPayload | null>(null);
   const [removingMemberUserId, setRemovingMemberUserId] = useState<string | null>(null);
+  const [memberRoleChange, setMemberRoleChange] = useState<{
+    userId: string;
+    role: 'ADMIN' | 'MEMBER';
+  } | null>(null);
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [settingsBanner, setSettingsBanner] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<ErrorPayload | null>(null);
@@ -548,6 +578,24 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const isAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
     selectedWorkspace?.membership?.role === 'ADMIN';
+  const isOwner =
+    selectedWorkspace?.membership?.status === 'ACTIVE' &&
+    currentUser?.id !== undefined &&
+    selectedWorkspace.createdByUserId === currentUser.id;
+  const canAccessAdmin = Boolean(
+    selectedWorkspace?.membership?.status === 'ACTIVE' && (isAdmin || isOwner),
+  );
+  const canManageWorkspaceResources = canAccessAdmin;
+  const canManageWorkspaceRoles = Boolean(isOwner);
+  const visibleAdminSubpanels = isOwner
+    ? ADMIN_SUBPANELS
+    : ADMIN_SUBPANELS.filter(
+        (subpanel) => subpanel.id === 'resources' || subpanel.id === 'members',
+      );
+  const activeSubpanel =
+    visibleAdminSubpanels.find((subpanel) => subpanel.id === requestedSubpanel)?.id ??
+    visibleAdminSubpanels[0]?.id ??
+    'resources';
   const selectedWorkspaceId = selectedWorkspace?.id ?? null;
   const selectedWorkspaceName = selectedWorkspace?.name ?? null;
   const selectedWorkspaceSlug = selectedWorkspace?.slug ?? null;
@@ -563,8 +611,18 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         members,
         invitations: pendingInvitations,
         timezone: selectedWorkspace?.timezone ?? 'UTC',
+        ownerUserId: selectedWorkspace?.createdByUserId ?? null,
+        canManageMembers: canManageWorkspaceResources,
+        canManageRoles: canManageWorkspaceRoles,
       }),
-    [members, pendingInvitations, selectedWorkspace?.timezone],
+    [
+      members,
+      pendingInvitations,
+      selectedWorkspace?.timezone,
+      selectedWorkspace?.createdByUserId,
+      canManageWorkspaceResources,
+      canManageWorkspaceRoles,
+    ],
   );
   const filteredMemberDirectoryItems = useMemo(
     () =>
@@ -624,7 +682,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   }, [isMemberDirectoryFilterOpen]);
 
   const loadAdminData = useCallback(async () => {
-    if (!selectedWorkspaceId || !isAdmin) {
+    if (!selectedWorkspaceId || !canAccessAdmin) {
       setRooms([]);
       setMembers([]);
       setPendingInvitations([]);
@@ -656,10 +714,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     setPendingInvitations(payload.invitations.items);
     setHasLoadedAdminData(true);
     setIsLoadingData(false);
-  }, [selectedWorkspaceId, isAdmin]);
+  }, [selectedWorkspaceId, canAccessAdmin]);
 
   const loadMyBookings = useCallback(async () => {
-    if (!selectedWorkspaceId || !isAdmin) {
+    if (!selectedWorkspaceId || !canAccessAdmin) {
       setMyBookings([]);
       return;
     }
@@ -685,7 +743,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     }
 
     setMyBookings(payload.items);
-  }, [bookingLoadDateRange.fromDate, bookingLoadDateRange.toDate, selectedWorkspaceId, isAdmin]);
+  }, [
+    bookingLoadDateRange.fromDate,
+    bookingLoadDateRange.toDate,
+    selectedWorkspaceId,
+    canAccessAdmin,
+  ]);
 
   useEffect(() => {
     if (isResolvingSelectedWorkspace) {
@@ -744,6 +807,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       setIsCancelWorkspaceCredentialsUnlocked(false);
       setDeleteRoomConfirmation(null);
       setIsDeleteRoomCredentialsUnlocked(false);
+      setMemberRoleChange(null);
       lastSelectedWorkspaceIdRef.current = selectedWorkspaceId;
     }
   }, [
@@ -803,7 +867,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const handleSaveWorkspaceSettings = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || isSubmittingWorkspaceSettings) {
+      if (!selectedWorkspace || !isOwner || isSubmittingWorkspaceSettings) {
         return;
       }
 
@@ -869,7 +933,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       pathname,
       router,
       selectedWorkspace,
-      isAdmin,
+      isOwner,
       isSubmittingWorkspaceSettings,
       workspaceSettingsForm,
       loadWorkspaces,
@@ -885,7 +949,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const handleCreateRoom = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || isSubmittingRoom) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || isSubmittingRoom) {
         return;
       }
 
@@ -921,7 +985,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     },
     [
       selectedWorkspace,
-      isAdmin,
+      canManageWorkspaceResources,
       isSubmittingRoom,
       newRoomName,
       newRoomDescription,
@@ -932,7 +996,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
 
   const handleSaveRoom = useCallback(
     async (roomId: string) => {
-      if (!selectedWorkspace || !isAdmin || isSubmittingRoom) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || isSubmittingRoom) {
         return;
       }
 
@@ -960,12 +1024,18 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setIsSubmittingRoom(false);
     },
-    [selectedWorkspace, isAdmin, isSubmittingRoom, roomEditForm, loadAdminData],
+    [
+      selectedWorkspace,
+      canManageWorkspaceResources,
+      isSubmittingRoom,
+      roomEditForm,
+      loadAdminData,
+    ],
   );
 
   const handleOpenDeleteRoomConfirmation = useCallback(
     (roomId: string) => {
-      if (!selectedWorkspace || !isAdmin || deletingRoomId) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || deletingRoomId) {
         return;
       }
 
@@ -983,13 +1053,18 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         password: '',
       });
     },
-    [selectedWorkspace, isAdmin, deletingRoomId, rooms],
+    [selectedWorkspace, canManageWorkspaceResources, deletingRoomId, rooms],
   );
 
   const handleConfirmDeleteRoom = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || deletingRoomId || !deleteRoomConfirmation) {
+      if (
+        !selectedWorkspace ||
+        !canManageWorkspaceResources ||
+        deletingRoomId ||
+        !deleteRoomConfirmation
+      ) {
         return;
       }
 
@@ -1020,13 +1095,19 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setDeletingRoomId(null);
     },
-    [selectedWorkspace, isAdmin, deletingRoomId, deleteRoomConfirmation, loadAdminData],
+    [
+      selectedWorkspace,
+      canManageWorkspaceResources,
+      deletingRoomId,
+      deleteRoomConfirmation,
+      loadAdminData,
+    ],
   );
 
   const handleInvite = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || isSubmittingInvite) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || isSubmittingInvite) {
         return;
       }
 
@@ -1056,12 +1137,19 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setIsSubmittingInvite(false);
     },
-    [selectedWorkspace, isAdmin, isSubmittingInvite, inviteEmail, loadAdminData, router],
+    [
+      selectedWorkspace,
+      canManageWorkspaceResources,
+      isSubmittingInvite,
+      inviteEmail,
+      loadAdminData,
+      router,
+    ],
   );
 
   const handleRevokeInvitation = useCallback(
     async (invitationId: string) => {
-      if (!selectedWorkspace || !isAdmin || revokingInvitationId) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || revokingInvitationId) {
         return;
       }
 
@@ -1084,7 +1172,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       await loadAdminData();
       setRevokingInvitationId(null);
     },
-    [selectedWorkspace, isAdmin, revokingInvitationId, loadAdminData, router],
+    [
+      selectedWorkspace,
+      canManageWorkspaceResources,
+      revokingInvitationId,
+      loadAdminData,
+      router,
+    ],
   );
 
   const closeRemoveMemberDialog = useCallback(() => {
@@ -1095,13 +1189,16 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
 
   const handleOpenRemoveMemberDialog = useCallback(
     (memberUserId: string) => {
-      if (!selectedWorkspace || !isAdmin || removingMemberUserId) {
+      if (!selectedWorkspace || !canManageWorkspaceResources || removingMemberUserId) {
         return;
       }
 
       const member = members.find(
         (item) =>
-          item.userId === memberUserId && item.status === 'ACTIVE' && item.role !== 'ADMIN',
+          item.userId === memberUserId &&
+          item.status === 'ACTIVE' &&
+          item.role !== 'ADMIN' &&
+          item.userId !== selectedWorkspace.createdByUserId,
       );
       if (!member) {
         return;
@@ -1116,13 +1213,18 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         memberDisplayName: memberDisplayName || member.email,
       });
     },
-    [selectedWorkspace, isAdmin, removingMemberUserId, members],
+    [selectedWorkspace, canManageWorkspaceResources, removingMemberUserId, members],
   );
 
   const handleRemoveMember = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || !removeMemberConfirmation || removingMemberUserId) {
+      if (
+        !selectedWorkspace ||
+        !canManageWorkspaceResources ||
+        !removeMemberConfirmation ||
+        removingMemberUserId
+      ) {
         return;
       }
 
@@ -1163,7 +1265,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     },
     [
       selectedWorkspace,
-      isAdmin,
+      canManageWorkspaceResources,
       removeMemberConfirmation,
       removingMemberUserId,
       removeMemberForm,
@@ -1173,10 +1275,50 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     ],
   );
 
+  const handleUpdateMemberRole = useCallback(
+    async (memberUserId: string, role: 'ADMIN' | 'MEMBER') => {
+      if (!selectedWorkspace || !canManageWorkspaceRoles || memberRoleChange) {
+        return;
+      }
+
+      setMemberRoleChange({
+        userId: memberUserId,
+        role,
+      });
+      const response = await fetch(
+        `/api/workspaces/${selectedWorkspace.id}/members/${memberUserId}/${role === 'ADMIN' ? 'promote' : 'demote'}`,
+        {
+          method: 'POST',
+        },
+      );
+      const responsePayload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          setMemberRoleChange(null);
+          await logoutSuspendedUser(router);
+          return;
+        }
+        if (normalized.code === 'UNAUTHORIZED') {
+          setMemberRoleChange(null);
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        setMemberRoleChange(null);
+        return;
+      }
+
+      await loadAdminData();
+      setMemberRoleChange(null);
+    },
+    [selectedWorkspace, canManageWorkspaceRoles, memberRoleChange, router, loadAdminData],
+  );
+
   const handleCancelWorkspace = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!selectedWorkspace || !isAdmin || isCancellingWorkspace) {
+      if (!selectedWorkspace || !isOwner || isCancellingWorkspace) {
         return;
       }
 
@@ -1201,7 +1343,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     },
     [
       selectedWorkspace,
-      isAdmin,
+      isOwner,
       isCancellingWorkspace,
       cancelWorkspaceForm,
       loadWorkspaces,
@@ -1256,10 +1398,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     );
   }
 
-  if (!isAdmin) {
+  if (!canAccessAdmin) {
     return (
       <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-        Only workspace admins can access this page.
+        Only workspace admins and owners can access this page.
       </p>
     );
   }
@@ -1650,7 +1792,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Members</h3>
               <p className="mt-1 text-sm text-slate-600">
-                Invite teammates and review active, former, and pending people in one place.
+                Admins can invite teammates and remove non-admin members. Owners also manage admin
+                access.
               </p>
             </div>
             {isLoadingData ? (
@@ -1785,66 +1928,122 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           ) : memberDirectoryItems.length > 0 ? (
             filteredMemberDirectoryItems.length > 0 ? (
               <div className="mt-3 overflow-x-auto">
-                <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
+                <table className="min-w-[940px] w-full table-fixed border-separate border-spacing-0">
                   <thead>
                     <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      <th className="w-[22%] border-b border-slate-200 px-3 py-3">Name</th>
-                      <th className="w-[28%] border-b border-slate-200 px-3 py-3">Email</th>
-                      <th className="w-[24%] border-b border-slate-200 px-3 py-3">Timeline</th>
+                      <th className="w-[20%] border-b border-slate-200 px-3 py-3">Name</th>
+                      <th className="w-[27%] border-b border-slate-200 px-3 py-3">Email</th>
+                      <th className="w-[21%] border-b border-slate-200 px-3 py-3">Timeline</th>
                       <th className="w-[14%] border-b border-slate-200 px-3 py-3">Status</th>
-                      <th className="w-[12%] border-b border-slate-200 px-3 py-3">Action</th>
+                      <th className="w-[18%] border-b border-slate-200 px-3 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMemberDirectoryItems.map((person) => (
-                      <tr key={person.id} className="align-middle">
-                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
-                          {person.displayName ? (
-                            <span className="font-medium text-slate-900">{person.displayName}</span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                          <span className="break-all">{person.email}</span>
-                        </td>
-                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                          {person.detail}
-                        </td>
-                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                          <span className={getMemberDirectoryBadgeClassName(person.status)}>
-                            {person.status}
-                          </span>
-                        </td>
-                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                          {person.invitationId ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleRevokeInvitation(person.invitationId!)}
-                              disabled={revokingInvitationId === person.invitationId}
-                              className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {revokingInvitationId === person.invitationId
-                                ? 'Revoking...'
-                                : 'Revoke'}
-                            </button>
-                          ) : person.canRemove && person.memberUserId ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenRemoveMemberDialog(person.memberUserId!)}
-                              disabled={removingMemberUserId === person.memberUserId}
-                              className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {removingMemberUserId === person.memberUserId
-                                ? 'Removing...'
-                                : 'Remove'}
-                            </button>
-                          ) : (
-                            <span className="text-sm text-slate-400">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredMemberDirectoryItems.map((person) => {
+                      const isPromoting =
+                        memberRoleChange?.userId === person.memberUserId &&
+                        memberRoleChange.role === 'ADMIN';
+                      const isDemoting =
+                        memberRoleChange?.userId === person.memberUserId &&
+                        memberRoleChange.role === 'MEMBER';
+                      const hasAction =
+                        person.canRevokeInvitation ||
+                        person.canPromoteToAdmin ||
+                        person.canDemoteToMember ||
+                        person.canRemove;
+
+                      return (
+                        <tr key={person.id} className="align-middle">
+                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
+                            {person.displayName ? (
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium text-slate-900">
+                                  {person.displayName}
+                                </span>
+                                {person.isWorkspaceOwner ? (
+                                  <span className="inline-flex rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
+                                    Owner
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                            <span className="break-all">{person.email}</span>
+                          </td>
+                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                            {person.detail}
+                          </td>
+                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                            <span className={getMemberDirectoryBadgeClassName(person.status)}>
+                              {person.status}
+                            </span>
+                          </td>
+                          <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                            {hasAction ? (
+                              <div className="flex flex-wrap gap-2">
+                                {person.canRevokeInvitation && person.invitationId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleRevokeInvitation(person.invitationId!)
+                                    }
+                                    disabled={revokingInvitationId === person.invitationId}
+                                    className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {revokingInvitationId === person.invitationId
+                                      ? 'Revoking...'
+                                      : 'Revoke'}
+                                  </button>
+                                ) : null}
+                                {person.canPromoteToAdmin && person.memberUserId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleUpdateMemberRole(person.memberUserId!, 'ADMIN')
+                                    }
+                                    disabled={memberRoleChange !== null}
+                                    className="rounded-md border border-sky-300 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isPromoting ? 'Promoting...' : 'Promote to admin'}
+                                  </button>
+                                ) : null}
+                                {person.canDemoteToMember && person.memberUserId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleUpdateMemberRole(person.memberUserId!, 'MEMBER')
+                                    }
+                                    disabled={memberRoleChange !== null}
+                                    className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isDemoting ? 'Demoting...' : 'Demote to member'}
+                                  </button>
+                                ) : null}
+                                {person.canRemove && person.memberUserId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenRemoveMemberDialog(person.memberUserId!)
+                                    }
+                                    disabled={removingMemberUserId === person.memberUserId}
+                                    className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {removingMemberUserId === person.memberUserId
+                                      ? 'Removing...'
+                                      : 'Remove'}
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-slate-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1897,7 +2096,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                 Confirmation Required
               </h4>
               <p className="mt-3 text-sm text-rose-900">
-                You will need the workspace name, your admin email, and your password to confirm
+                You will need the workspace name, your owner email, and your password to confirm
                 cancellation.
               </p>
               <p className="mt-2 text-sm text-rose-800">
@@ -1923,7 +2122,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         <div className="grid items-start gap-3 xl:grid-cols-[14rem_minmax(0,1fr)]">
           <aside className="xl:sticky xl:top-4">
             <nav className="flex flex-col gap-1" aria-label="Admin subpanels">
-              {ADMIN_SUBPANELS.map((subpanel) => {
+              {visibleAdminSubpanels.map((subpanel) => {
                 const isActive = subpanel.id === activeSubpanel;
 
                 return (
@@ -2023,7 +2222,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                 <label className="block">
                   <span className="mb-1 block text-sm font-medium text-rose-900">Email</span>
                   <p className="mb-2 text-xs text-rose-800">
-                    Enter your admin account email address.
+                    Enter your owner account email address.
                   </p>
                   <input
                     required
@@ -2098,12 +2297,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           title="Remove Member"
           description={
             removeMemberConfirmation
-              ? `Confirm with your admin email and password to remove ${removeMemberConfirmation.memberDisplayName} (${removeMemberConfirmation.memberEmail}) from this workspace. Future bookings by this member in this workspace will be cancelled.`
-              : 'Confirm with your admin email and password to remove this member from the workspace.'
+              ? `Confirm with your email and password to remove ${removeMemberConfirmation.memberDisplayName} (${removeMemberConfirmation.memberEmail}) from this workspace. Future bookings by this member in this workspace will be cancelled.`
+              : 'Confirm with your email and password to remove this member from the workspace.'
           }
           confirmLabel="Remove member"
           cancelLabel="Keep member"
-          emailLabel="Admin email"
+          emailLabel="Email"
           passwordLabel="Password"
           isSubmitting={Boolean(removingMemberUserId)}
           error={removeMemberError}

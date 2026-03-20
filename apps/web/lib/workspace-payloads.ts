@@ -25,6 +25,7 @@ export function isWorkspaceListPayload(payload: unknown): payload is WorkspaceLi
       typeof item.timezone === 'string' &&
       typeof item.scheduleStartHour === 'number' &&
       typeof item.scheduleEndHour === 'number' &&
+      typeof item.createdByUserId === 'string' &&
       typeof item.createdAt === 'string' &&
       typeof item.updatedAt === 'string' &&
       (item.scheduleVersions === undefined ||

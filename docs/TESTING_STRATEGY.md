@@ -31,8 +31,9 @@ The API integration suite currently covers:
 - invitation accept flow
 - invitation reject flow
 - workspace visibility rules
-- workspace leave flow with future booking cancellation
-- account deletion flow with logical cancellation propagation
+- workspace ownership, owner-only settings and cancellation, explicit admin promotion and demotion, and delegated admin resource management
+- workspace leave flow with owner restriction plus future booking cancellation for non-owner leavers
+- account deletion flow with logical cancellation propagation for owned workspaces and membership cleanup for non-owned workspaces
 - booking creation
 - booking overlap rejection
 - user double-booking rejection inside a workspace
@@ -54,7 +55,7 @@ The web test suite currently includes:
 - Playwright `e2e-mock` suites that run against the Next.js app with mocked backend behavior
 - Playwright `e2e-fullstack` suites that boot the real API and web apps against PostgreSQL
 - public auth coverage includes both standard registration and invitation registration flows
-- workspace admin coverage exercises the sidebar subpanel navigation for settings, resources, and members
+- workspace admin coverage exercises the owner and admin split for settings, cancellation, room management, invitations, member removal, and leave-workspace behavior
 
 Current note:
 

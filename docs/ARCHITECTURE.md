@@ -36,10 +36,13 @@ Notes:
 - Invitation registration context is exposed from the auth domain so public registration can validate invitation deep links.
 - The API bootstrap applies the global `/api` prefix and the shared JSON error filter.
 - Email verification state is embedded in access-token claims and rechecked for workspace access.
+- Workspace ownership is derived from `Workspace.createdByUserId`, not stored as a third membership role.
+- Active workspace admins, including the owner's initial membership, manage rooms, invitations, and non-admin removals.
+- Owner-only workspace actions are settings updates, workspace cancellation, and admin promotion or demotion.
 - A valid invitation registration token can auto-verify the invited email during registration without issuing a second verification email.
 - Refresh tokens are hashed and stored on the `User` record.
 - Rate-limit tracking and suspensions are persisted in PostgreSQL.
-- Account deletion is logical and cascades domain-side logical cancellations where required.
+- Account deletion is logical and cancels owned workspaces while only inactivating non-owned memberships and cancelling the user's future bookings where required.
 
 ## Database
 
@@ -53,6 +56,7 @@ Key design decisions:
 - Database-generated booking `tstzrange` column
 - Database-level active-only overlap protection using PostgreSQL exclusion constraints
 - Partial unique indexes for workspace slugs and room names among active entities only
+- Derived workspace ownership through `Workspace.createdByUserId` while membership roles remain `ADMIN | MEMBER`
 - Logical cancellation through status fields and cancellation timestamps
 - Persisted workspace schedule history through `WorkspaceScheduleVersion`
 - Persisted per-user visible workspace ordering through `UserWorkspacePreference`

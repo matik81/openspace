@@ -1152,17 +1152,17 @@ describe('Booking overlap integration', () => {
     });
   });
 
-  it('allows admins to update workspace settings and blocks members', async () => {
-    const adminEmail = 'workspace-settings-admin@example.com';
+  it('allows the owner to update workspace settings and blocks non-owner members', async () => {
+    const ownerEmail = 'workspace-settings-owner@example.com';
     const memberEmail = 'workspace-settings-member@example.com';
-    await registerAndVerify(adminEmail);
+    await registerAndVerify(ownerEmail);
     await registerAndVerify(memberEmail);
-    const adminToken = await login(adminEmail);
+    const ownerToken = await login(ownerEmail);
     const memberToken = await login(memberEmail);
 
     const createWorkspaceResponse = await request(app.getHttpServer())
       .post('/api/workspaces')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         name: 'Old Workspace Name',
         timezone: 'UTC',
@@ -1176,7 +1176,7 @@ describe('Booking overlap integration', () => {
 
     const inviteMemberResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/invitations`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         email: memberEmail,
       });
@@ -1189,7 +1189,7 @@ describe('Booking overlap integration', () => {
 
     const updateResponse = await request(app.getHttpServer())
       .patch(`/api/workspaces/${workspaceId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         name: 'Updated Workspace Name',
         timezone: 'Europe/Rome',
@@ -1206,11 +1206,11 @@ describe('Booking overlap integration', () => {
       scheduleEndHour: 20,
     });
 
-    const adminListResponse = await request(app.getHttpServer())
+    const ownerListResponse = await request(app.getHttpServer())
       .get('/api/workspaces')
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(adminListResponse.status).toBe(200);
-    expect(adminListResponse.body.items).toContainEqual(
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(ownerListResponse.status).toBe(200);
+    expect(ownerListResponse.body.items).toContainEqual(
       expect.objectContaining({
         id: workspaceId,
         name: 'Updated Workspace Name',
@@ -1228,8 +1228,8 @@ describe('Booking overlap integration', () => {
       });
     expect(memberUpdateResponse.status).toBe(403);
     expect(memberUpdateResponse.body).toEqual({
-      code: 'UNAUTHORIZED',
-      message: 'Only workspace admins can perform this action',
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
     });
   });
 

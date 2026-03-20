@@ -38,6 +38,11 @@ const FULLSTACK_E2E = {
       name: 'Playwright HQ',
       slug: 'playwright.hq',
     },
+    managed: {
+      id: '99999999-9999-4999-8999-999999999999',
+      name: 'Managed Ops',
+      slug: 'managed-ops',
+    },
     pending: {
       id: '44444444-4444-4444-8444-444444444444',
       name: 'Playwright Invite',
@@ -161,6 +166,15 @@ export async function seedFullStackScenario() {
         scheduleEndHour: 18,
         createdByUserId: FULLSTACK_E2E.users.inviter.id,
       },
+      {
+        id: FULLSTACK_E2E.workspaces.managed.id,
+        name: FULLSTACK_E2E.workspaces.managed.name,
+        slug: FULLSTACK_E2E.workspaces.managed.slug,
+        timezone: FULLSTACK_E2E.timezone,
+        scheduleStartHour: 8,
+        scheduleEndHour: 18,
+        createdByUserId: FULLSTACK_E2E.users.inviter.id,
+      },
     ],
   });
 
@@ -176,6 +190,30 @@ export async function seedFullStackScenario() {
         workspaceId: FULLSTACK_E2E.workspaces.pending.id,
         userId: FULLSTACK_E2E.users.inviter.id,
         role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+      {
+        workspaceId: FULLSTACK_E2E.workspaces.admin.id,
+        userId: FULLSTACK_E2E.users.inviter.id,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+      },
+      {
+        workspaceId: FULLSTACK_E2E.workspaces.managed.id,
+        userId: FULLSTACK_E2E.users.inviter.id,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+      {
+        workspaceId: FULLSTACK_E2E.workspaces.managed.id,
+        userId: FULLSTACK_E2E.users.admin.id,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+      {
+        workspaceId: FULLSTACK_E2E.workspaces.managed.id,
+        userId: FULLSTACK_E2E.users.formerMember.id,
+        role: 'MEMBER',
         status: 'ACTIVE',
       },
       {

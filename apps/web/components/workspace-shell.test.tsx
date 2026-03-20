@@ -150,6 +150,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-2',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {
@@ -229,6 +230,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-1',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {
@@ -303,6 +305,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-1',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {
@@ -318,6 +321,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-2',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {
@@ -398,6 +402,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-1',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {
@@ -413,6 +418,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'Europe/Rome',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-2',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: null,
@@ -492,6 +498,7 @@ describe('WorkspaceShell', () => {
                 timezone: 'UTC',
                 scheduleStartHour: 8,
                 scheduleEndHour: 18,
+                createdByUserId: 'user-2',
                 createdAt: '2026-03-07T12:00:00.000Z',
                 updatedAt: '2026-03-07T12:00:00.000Z',
                 membership: {

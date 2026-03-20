@@ -234,6 +234,7 @@ function createPrismaMock(): PrismaService {
       updateMany: jest.fn(async () => ({ count: 0 })),
     },
     workspace: {
+      findMany: jest.fn(async () => []),
       updateMany: jest.fn(async () => ({ count: 0 })),
     },
   };

@@ -58,7 +58,8 @@ A user can create a workspace.
 
 On creation:
 
-- the creator becomes `ADMIN`
+- the creator becomes the workspace owner, derived from `createdByUserId`
+- the creator also receives an active `ADMIN` membership; ownership is not a third persisted membership role
 - the workspace stores timezone and schedule configuration
 
 Workspace attributes:
@@ -75,6 +76,13 @@ Rules:
 - workspace display names can be non-unique
 - workspace web-address slugs must be unique only among active workspaces
 - a user can own or participate in at most 10 active workspaces by default
+- only the owner can update workspace settings
+- only the owner can cancel the workspace
+- only the owner can promote an active member to `ADMIN`
+- only the owner can demote an active `ADMIN` to `MEMBER`
+- active `ADMIN` users can manage rooms, invitations, and removal of non-admin members
+- active `ADMIN` users and `MEMBER` users can leave the workspace
+- the owner cannot leave the workspace and must cancel it instead
 - visible workspace lists respect persisted per-user ordering when preferences exist
 - a workspace can contain at most 100 active rooms by default
 - a workspace can contain at most 1000 active members by default
@@ -123,6 +131,7 @@ UI expectations:
 - pending invitations are visually distinct
 - the user can accept or reject them directly
 - admin views expose summary data plus a unified members directory that distinguishes active, inactive, and invited people and supports invitation revoke plus member removal actions
+- owner-only actions for workspace settings, workspace cancellation, and admin promotion or demotion are clearly separated from general admin resource actions
 
 ## 4. Rooms
 
@@ -201,13 +210,12 @@ Implemented frontend flows:
 - public auth pages and modal states for login, registration, invitation registration, email verification, and password reset
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
 - workspace shell for booking management, room filtering, and top-bar workspace switching
-- workspace admin panel with sidebar subpanels for settings, resources, members, and workspace cancellation
-- active non-admin members can be removed from the members directory after confirmation with the admin email and password
+- workspace admin panel with owner-only settings and cancellation plus shared admin resource and member-management panels
+- active non-admin members can be removed from the members directory after confirmation with the acting user's email and password
 - account settings modal for profile update, password change, and account deletion
 
 ## 8. Future Extensions
 
-- promote other admins
 - configure room-level availability schedules
 - configure per-user usage limits
 - expand route-handler and contract-level frontend coverage

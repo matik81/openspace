@@ -8,6 +8,7 @@ import {
   MembershipStatus,
   RoomStatus,
   UserStatus,
+  WorkspaceRole,
   WorkspaceStatus,
 } from '../../src/generated/prisma';
 import { hashSync } from 'bcryptjs';
@@ -234,6 +235,43 @@ describe('Domain rules integration', () => {
         email,
         password,
       });
+  }
+
+  async function addActiveWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    role: WorkspaceRole = WorkspaceRole.MEMBER,
+  ) {
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
+
+    await prismaService.workspaceMember.upsert({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      update: {
+        role,
+        status: MembershipStatus.ACTIVE,
+      },
+      create: {
+        workspaceId,
+        userId,
+        role,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+  }
+
+  async function updateWorkspaceMemberRole(
+    token: string,
+    workspaceId: string,
+    memberUserId: string,
+    role: 'ADMIN' | 'MEMBER',
+  ) {
+    return request(app.getHttpServer())
+      .post(
+        `/api/workspaces/${workspaceId}/members/${memberUserId}/${role === 'ADMIN' ? 'promote' : 'demote'}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
   }
 
   function futureDateIso(daysAhead: number, hour: number, minute = 0) {
@@ -638,7 +676,127 @@ describe('Domain rules integration', () => {
     );
   });
 
-  it('allows an admin to remove an active member, cancels future bookings, and removes workspace visibility', async () => {
+  it('allows admins to leave the workspace but blocks the owner from leaving', async () => {
+    const owner = await createVerifiedUser('leave-owner@example.com');
+    const admin = await createVerifiedUser('leave-admin-promoted@example.com');
+    const ownerToken = await accessTokenFor(owner.id, owner.email);
+    const adminToken = await accessTokenFor(admin.id, admin.email);
+    const workspaceId = await createWorkspace(ownerToken, 'Admin Leave Workspace');
+
+    const invitationId = await inviteMember(ownerToken, workspaceId, admin.email);
+    await acceptInvitation(adminToken, invitationId);
+
+    const promoteResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      admin.id,
+      'ADMIN',
+    );
+    expect(promoteResponse.status).toBe(200);
+
+    const adminLeaveResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/leave`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: admin.email,
+        password,
+      });
+
+    expect(adminLeaveResponse.status).toBe(201);
+    expect(adminLeaveResponse.body).toEqual({ left: true });
+
+    const adminMembership = await prismaService!.workspaceMember.findFirst({
+      where: { workspaceId, userId: admin.id },
+      select: { status: true },
+    });
+    expect(adminMembership).toEqual({ status: MembershipStatus.INACTIVE });
+
+    const ownerLeaveResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/leave`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        email: owner.email,
+        password,
+      });
+
+    expect(ownerLeaveResponse.status).toBe(403);
+    expect(ownerLeaveResponse.body).toEqual({
+      code: 'OWNER_CANNOT_LEAVE_WORKSPACE',
+      message: 'Workspace owner cannot leave the workspace',
+    });
+  });
+
+  it('lets the owner promote or demote admins and blocks non-owner admins from changing roles', async () => {
+    const owner = await createVerifiedUser('role-owner@example.com');
+    const adminCandidate = await createVerifiedUser('role-admin@example.com');
+    const memberCandidate = await createVerifiedUser('role-member@example.com');
+    const ownerToken = await accessTokenFor(owner.id, owner.email);
+    const adminToken = await accessTokenFor(adminCandidate.id, adminCandidate.email);
+    const workspaceId = await createWorkspace(ownerToken, 'Workspace Role Rules');
+
+    await addActiveWorkspaceMember(workspaceId, adminCandidate.id);
+    await addActiveWorkspaceMember(workspaceId, memberCandidate.id);
+
+    const promoteResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminCandidate.id,
+      'ADMIN',
+    );
+    expect(promoteResponse.status).toBe(200);
+    expect(promoteResponse.body).toEqual({
+      userId: adminCandidate.id,
+      role: 'ADMIN',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const demoteResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminCandidate.id,
+      'MEMBER',
+    );
+    expect(demoteResponse.status).toBe(200);
+    expect(demoteResponse.body).toEqual({
+      userId: adminCandidate.id,
+      role: 'MEMBER',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const rePromoteResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminCandidate.id,
+      'ADMIN',
+    );
+    expect(rePromoteResponse.status).toBe(200);
+
+    const nonOwnerPromoteResponse = await updateWorkspaceMemberRole(
+      adminToken,
+      workspaceId,
+      memberCandidate.id,
+      'ADMIN',
+    );
+    expect(nonOwnerPromoteResponse.status).toBe(403);
+    expect(nonOwnerPromoteResponse.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+
+    const nonOwnerDemoteResponse = await updateWorkspaceMemberRole(
+      adminToken,
+      workspaceId,
+      adminCandidate.id,
+      'MEMBER',
+    );
+    expect(nonOwnerDemoteResponse.status).toBe(403);
+    expect(nonOwnerDemoteResponse.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+  });
+
+  it('allows a non-owner admin to remove an active member, cancels future bookings, and removes workspace visibility', async () => {
     if (!prismaService) {
       throw new Error('Prisma service unavailable');
     }
@@ -650,14 +808,30 @@ describe('Domain rules integration', () => {
     const yesterdayUtc = new Date(todayUtc);
     yesterdayUtc.setUTCDate(yesterdayUtc.getUTCDate() - 1);
 
+    const owner = await createVerifiedUser('remove-owner@example.com');
     const admin = await createVerifiedUser('remove-admin@example.com');
     const member = await createVerifiedUser('remove-member@example.com');
+    const ownerToken = await accessTokenFor(owner.id, owner.email);
     const adminToken = await accessTokenFor(admin.id, admin.email);
     const memberToken = await accessTokenFor(member.id, member.email);
-    const workspaceId = await createWorkspace(adminToken, 'Remove Workspace Member');
+    const workspaceId = await createWorkspace(ownerToken, 'Remove Workspace Member');
+    await addActiveWorkspaceMember(workspaceId, admin.id);
+    await addActiveWorkspaceMember(workspaceId, member.id);
+
+    const promoteResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      admin.id,
+      'ADMIN',
+    );
+    expect(promoteResponse.status).toBe(200);
+    expect(promoteResponse.body).toEqual({
+      userId: admin.id,
+      role: 'ADMIN',
+      status: MembershipStatus.ACTIVE,
+    });
+
     const roomId = await createRoom(adminToken, workspaceId, 'Removal Room');
-    const invitationId = await inviteMember(adminToken, workspaceId, member.email);
-    await acceptInvitation(memberToken, invitationId);
 
     const futureBookingResponse = await request(app.getHttpServer())
       .post(`/api/workspaces/${workspaceId}/bookings`)
@@ -743,16 +917,26 @@ describe('Domain rules integration', () => {
     ]);
 
     expect(activeMembersResponse.status).toBe(200);
-    expect(activeMembersResponse.body.items).toEqual([
-      expect.objectContaining({
-        email: admin.email,
-        status: MembershipStatus.ACTIVE,
-      }),
-    ]);
+    expect(activeMembersResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          email: owner.email,
+          status: MembershipStatus.ACTIVE,
+        }),
+        expect.objectContaining({
+          email: admin.email,
+          status: MembershipStatus.ACTIVE,
+        }),
+      ]),
+    );
 
     expect(adminSummaryResponse.status).toBe(200);
     expect(adminSummaryResponse.body.members.items).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          email: owner.email,
+          status: MembershipStatus.ACTIVE,
+        }),
         expect.objectContaining({
           email: admin.email,
           status: MembershipStatus.ACTIVE,
@@ -784,21 +968,299 @@ describe('Domain rules integration', () => {
     });
   });
 
-  it('cancels member workspaces and admin-owned workspaces when deleting an account', async () => {
+  it('enforces derived owner permissions across settings, role changes, resources, invitations, removal, and leave flows', async () => {
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
+
+    const owner = await createVerifiedUser('owner-permissions@example.com');
+    const adminA = await createVerifiedUser('owner-admin-a@example.com');
+    const adminB = await createVerifiedUser('owner-admin-b@example.com');
+    const member = await createVerifiedUser('owner-member@example.com');
+    const removable = await createVerifiedUser('owner-removable@example.com');
+    const invitee = await createVerifiedUser('owner-invitee@example.com');
+
+    const ownerToken = await accessTokenFor(owner.id, owner.email);
+    const adminAToken = await accessTokenFor(adminA.id, adminA.email);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Owner Permissions Workspace',
+        timezone: 'Europe/Rome',
+      });
+
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    await Promise.all([
+      addActiveWorkspaceMember(workspaceId, adminA.id),
+      addActiveWorkspaceMember(workspaceId, adminB.id),
+      addActiveWorkspaceMember(workspaceId, member.id),
+      addActiveWorkspaceMember(workspaceId, removable.id),
+    ]);
+
+    const visibleWorkspaceResponse = await request(app.getHttpServer())
+      .get(`/api/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+
+    expect(visibleWorkspaceResponse.status).toBe(200);
+    expect(visibleWorkspaceResponse.body.createdByUserId).toBe(owner.id);
+
+    const promoteAdminAResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminA.id,
+      'ADMIN',
+    );
+    expect(promoteAdminAResponse.status).toBe(200);
+    expect(promoteAdminAResponse.body).toMatchObject({
+      userId: adminA.id,
+      role: 'ADMIN',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const promoteAdminBResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminB.id,
+      'ADMIN',
+    );
+    expect(promoteAdminBResponse.status).toBe(200);
+    expect(promoteAdminBResponse.body).toMatchObject({
+      userId: adminB.id,
+      role: 'ADMIN',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const nonOwnerPromoteAttempt = await updateWorkspaceMemberRole(
+      adminAToken,
+      workspaceId,
+      member.id,
+      'ADMIN',
+    );
+    expect(nonOwnerPromoteAttempt.status).toBe(403);
+    expect(nonOwnerPromoteAttempt.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+
+    const nonOwnerDemoteAttempt = await updateWorkspaceMemberRole(
+      adminAToken,
+      workspaceId,
+      adminB.id,
+      'MEMBER',
+    );
+    expect(nonOwnerDemoteAttempt.status).toBe(403);
+    expect(nonOwnerDemoteAttempt.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+
+    const adminUpdateAttempt = await request(app.getHttpServer())
+      .patch(`/api/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({ name: 'Unauthorized rename attempt' });
+    expect(adminUpdateAttempt.status).toBe(403);
+    expect(adminUpdateAttempt.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+
+    const ownerUpdateResponse = await request(app.getHttpServer())
+      .patch(`/api/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Owner Workspace Renamed',
+        timezone: 'Europe/Paris',
+      });
+    expect(ownerUpdateResponse.status).toBe(200);
+    expect(ownerUpdateResponse.body).toMatchObject({
+      id: workspaceId,
+      name: 'Owner Workspace Renamed',
+      timezone: 'Europe/Paris',
+      createdByUserId: owner.id,
+    });
+
+    const adminCancelAttempt = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({
+        workspaceName: 'Owner Workspace Renamed',
+        email: adminA.email,
+        password,
+      });
+    expect(adminCancelAttempt.status).toBe(403);
+    expect(adminCancelAttempt.body).toEqual({
+      code: 'ONLY_WORKSPACE_OWNER',
+      message: 'Only the workspace owner can perform this action',
+    });
+
+    const roomId = await createRoom(adminAToken, workspaceId, 'Owner Admin Room');
+
+    const updateRoomResponse = await request(app.getHttpServer())
+      .patch(`/api/workspaces/${workspaceId}/rooms/${roomId}`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({
+        name: 'Owner Admin Room Updated',
+        description: 'Updated by delegated admin',
+      });
+    expect(updateRoomResponse.status).toBe(200);
+    expect(updateRoomResponse.body).toMatchObject({
+      id: roomId,
+      name: 'Owner Admin Room Updated',
+      description: 'Updated by delegated admin',
+    });
+
+    const inviteResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({
+        email: invitee.email,
+      });
+    expect(inviteResponse.status).toBe(201);
+    expect(inviteResponse.body).toMatchObject({
+      email: invitee.email,
+      status: 'PENDING',
+    });
+
+    const removeResponse = await removeWorkspaceMember(
+      adminAToken,
+      workspaceId,
+      removable.id,
+      adminA.email,
+    );
+    expect(removeResponse.status).toBe(201);
+    expect(removeResponse.body).toEqual({
+      removed: true,
+      cancelledBookingsCount: 0,
+    });
+
+    const promoteMemberResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      member.id,
+      'ADMIN',
+    );
+    expect(promoteMemberResponse.status).toBe(200);
+    expect(promoteMemberResponse.body).toMatchObject({
+      userId: member.id,
+      role: 'ADMIN',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const demoteAdminResponse = await updateWorkspaceMemberRole(
+      ownerToken,
+      workspaceId,
+      adminB.id,
+      'MEMBER',
+    );
+    expect(demoteAdminResponse.status).toBe(200);
+    expect(demoteAdminResponse.body).toMatchObject({
+      userId: adminB.id,
+      role: 'MEMBER',
+      status: MembershipStatus.ACTIVE,
+    });
+
+    const deleteRoomResponse = await request(app.getHttpServer())
+      .delete(`/api/workspaces/${workspaceId}/rooms/${roomId}`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({
+        roomName: 'Owner Admin Room Updated',
+        email: adminA.email,
+        password,
+      });
+    expect(deleteRoomResponse.status).toBe(200);
+    expect(deleteRoomResponse.body).toEqual({
+      cancelled: true,
+      cancelledBookingsCount: 0,
+    });
+
+    const ownerLeaveAttempt = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/leave`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        email: owner.email,
+        password,
+      });
+    expect(ownerLeaveAttempt.status).toBe(403);
+    expect(ownerLeaveAttempt.body).toEqual({
+      code: 'OWNER_CANNOT_LEAVE_WORKSPACE',
+      message: 'Workspace owner cannot leave the workspace',
+    });
+
+    const adminLeaveResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/leave`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .send({
+        email: adminA.email,
+        password,
+      });
+    expect(adminLeaveResponse.status).toBe(201);
+    expect(adminLeaveResponse.body).toEqual({ left: true });
+
+    const adminMembership = await prismaService.workspaceMember.findFirst({
+      where: { workspaceId, userId: adminA.id },
+      select: { status: true, role: true },
+    });
+    expect(adminMembership).toEqual({
+      status: MembershipStatus.INACTIVE,
+      role: 'ADMIN',
+    });
+
+    const ownerCancelResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/cancel`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        workspaceName: 'Owner Workspace Renamed',
+        email: owner.email,
+        password,
+      });
+    expect(ownerCancelResponse.status).toBe(201);
+    expect(ownerCancelResponse.body).toEqual({ cancelled: true });
+
+    const cancelledWorkspace = await prismaService.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { status: true, cancelledAt: true },
+    });
+    expect(cancelledWorkspace).toEqual({
+      status: WorkspaceStatus.CANCELLED,
+      cancelledAt: expect.any(Date),
+    });
+  });
+
+  it('cancels only owned workspaces when deleting an account and leaves non-owned admin workspaces active', async () => {
     if (!prismaService) {
       throw new Error('Prisma service unavailable');
     }
 
     const owner = await createVerifiedUser('delete-owner@example.com');
-    const admin = await createVerifiedUser('delete-admin@example.com');
+    const memberWorkspaceAdmin = await createVerifiedUser('delete-member-admin@example.com');
+    const adminWorkspaceOwner = await createVerifiedUser('delete-admin-owner@example.com');
 
     const ownerToken = await accessTokenFor(owner.id, owner.email);
-    const adminToken = await accessTokenFor(admin.id, admin.email);
+    const memberWorkspaceAdminToken = await accessTokenFor(
+      memberWorkspaceAdmin.id,
+      memberWorkspaceAdmin.email,
+    );
+    const adminWorkspaceOwnerToken = await accessTokenFor(
+      adminWorkspaceOwner.id,
+      adminWorkspaceOwner.email,
+    );
+    const ownedWorkspaceId = await createWorkspace(ownerToken, 'Owned Workspace');
 
-    const memberWorkspaceId = await createWorkspace(adminToken, 'Participant Workspace');
-    const memberRoomId = await createRoom(adminToken, memberWorkspaceId, 'Participant Room');
+    const memberWorkspaceId = await createWorkspace(
+      memberWorkspaceAdminToken,
+      'Participant Workspace',
+    );
+    const memberRoomId = await createRoom(
+      memberWorkspaceAdminToken,
+      memberWorkspaceId,
+      'Participant Room',
+    );
     const memberInvitation = await inviteMember(
-      adminToken,
+      memberWorkspaceAdminToken,
       memberWorkspaceId,
       'delete-owner@example.com',
     );
@@ -815,7 +1277,27 @@ describe('Domain rules integration', () => {
       });
     expect(memberBookingResponse.status).toBe(201);
 
-    const ownedWorkspaceId = await createWorkspace(ownerToken, 'Owned Workspace');
+    const adminWorkspaceId = await createWorkspace(
+      adminWorkspaceOwnerToken,
+      'Delegated Admin Workspace',
+    );
+    const adminWorkspaceRoomId = await createRoom(
+      adminWorkspaceOwnerToken,
+      adminWorkspaceId,
+      'Delegated Admin Room',
+    );
+    await addActiveWorkspaceMember(adminWorkspaceId, owner.id, WorkspaceRole.ADMIN);
+
+    const adminBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${adminWorkspaceId}/bookings`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        roomId: adminWorkspaceRoomId,
+        startAt: futureDateIso(22, 11),
+        endAt: futureDateIso(22, 12),
+        subject: 'Admin booking before account deletion',
+      });
+    expect(adminBookingResponse.status).toBe(201);
 
     const deleteResponse = await request(app.getHttpServer())
       .post('/api/auth/delete-account')
@@ -828,7 +1310,8 @@ describe('Domain rules integration', () => {
     expect(deleteResponse.status).toBe(201);
     expect(deleteResponse.body).toEqual({ cancelled: true });
 
-    const [user, membership, memberBooking, ownedWorkspace] = await Promise.all([
+    const [user, memberMembership, adminMembership, memberBooking, adminBooking, ownedWorkspace, delegatedAdminWorkspace] =
+      await Promise.all([
       prismaService.user.findUnique({
         where: { email: 'delete-owner@example.com' },
         select: { status: true, cancelledAt: true },
@@ -837,12 +1320,24 @@ describe('Domain rules integration', () => {
         where: { workspaceId: memberWorkspaceId, userId: owner.id },
         select: { status: true },
       }),
+      prismaService.workspaceMember.findFirst({
+        where: { workspaceId: adminWorkspaceId, userId: owner.id },
+        select: { status: true, role: true },
+      }),
       prismaService.booking.findUnique({
         where: { id: memberBookingResponse.body.id as string },
         select: { status: true, cancellationReason: true, cancelledAt: true },
       }),
+      prismaService.booking.findUnique({
+        where: { id: adminBookingResponse.body.id as string },
+        select: { status: true, cancellationReason: true, cancelledAt: true },
+      }),
       prismaService.workspace.findUnique({
         where: { id: ownedWorkspaceId },
+        select: { status: true, cancelledAt: true },
+      }),
+      prismaService.workspace.findUnique({
+        where: { id: adminWorkspaceId },
         select: { status: true, cancelledAt: true },
       }),
     ]);
@@ -851,8 +1346,17 @@ describe('Domain rules integration', () => {
       status: UserStatus.CANCELLED,
       cancelledAt: expect.any(Date),
     });
-    expect(membership).toEqual({ status: MembershipStatus.INACTIVE });
+    expect(memberMembership).toEqual({ status: MembershipStatus.INACTIVE });
+    expect(adminMembership).toEqual({
+      status: MembershipStatus.INACTIVE,
+      role: 'ADMIN',
+    });
     expect(memberBooking).toMatchObject({
+      status: BookingStatus.CANCELLED,
+      cancellationReason: BookingCancellationReason.USER_LEFT_WORKSPACE,
+      cancelledAt: expect.any(Date),
+    });
+    expect(adminBooking).toMatchObject({
       status: BookingStatus.CANCELLED,
       cancellationReason: BookingCancellationReason.USER_LEFT_WORKSPACE,
       cancelledAt: expect.any(Date),
@@ -860,6 +1364,10 @@ describe('Domain rules integration', () => {
     expect(ownedWorkspace).toEqual({
       status: WorkspaceStatus.CANCELLED,
       cancelledAt: expect.any(Date),
+    });
+    expect(delegatedAdminWorkspace).toEqual({
+      status: WorkspaceStatus.ACTIVE,
+      cancelledAt: null,
     });
   });
 

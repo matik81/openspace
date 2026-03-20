@@ -9,6 +9,12 @@ test('creates a room and invitation against the real API from the admin page', a
   await loginAsSeededAdmin(page);
   await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.admin.slug));
 
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Cancellation' })).toBeVisible();
+  await page.getByRole('button', { name: /Ada Lovelace/i }).click();
+  await expect(page.getByRole('menuitem', { name: 'Leave workspace' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
   await page.getByRole('link', { name: 'Resources' }).click();
   const roomsSection = page
     .getByRole('heading', { name: 'Resources' })
@@ -31,6 +37,17 @@ test('creates a room and invitation against the real API from the admin page', a
   await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' })).toContainText(
     'ADMIN',
   );
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Lovelace' })).toContainText(
+    'Owner',
+  );
+  const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
+  await expect(graceRow).toContainText('ACTIVE');
+  await expect(graceRow.getByRole('button', { name: 'Promote to admin' })).toBeVisible();
+  await graceRow.getByRole('button', { name: 'Promote to admin' }).click();
+  await expect(graceRow).toContainText('ADMIN');
+  await expect(graceRow.getByRole('button', { name: 'Demote to member' })).toBeVisible();
+  await graceRow.getByRole('button', { name: 'Demote to member' }).click();
+  await expect(graceRow).toContainText('ACTIVE');
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
   ).toContainText('INACTIVE');
@@ -59,4 +76,58 @@ test('creates a room and invitation against the real API from the admin page', a
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toHaveCount(0);
+});
+
+test('non-owner admins keep resource access, do not see owner-only actions, and can leave the workspace', async ({
+  page,
+}) => {
+  await loginAsSeededAdmin(page);
+  await page.goto(workspaceAdminPathBySlug(FULLSTACK_E2E.workspaces.managed.slug));
+
+  await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Cancellation' })).toHaveCount(0);
+  await expect(page.getByLabel('Display Name')).toHaveCount(0);
+
+  const roomsSection = page
+    .getByRole('heading', { name: 'Resources' })
+    .locator('xpath=ancestor::section[1]');
+  await roomsSection.getByPlaceholder('Room name').fill('Managed Room');
+  await roomsSection.getByPlaceholder('Description (optional)').fill('Owned by another user');
+  await roomsSection.getByPlaceholder('Description (optional)').press('Enter');
+  await expect(roomsSection).toContainText('Managed Room');
+
+  await page.getByRole('link', { name: 'Members' }).click();
+  const membersSection = page
+    .getByRole('heading', { name: 'Members' })
+    .locator('xpath=ancestor::section[1]');
+  const directorySection = page
+    .getByRole('heading', { name: 'Directory' })
+    .locator('xpath=ancestor::section[1]');
+  const memberRow = directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' });
+
+  await expect(memberRow).toContainText('ACTIVE');
+  await expect(memberRow.getByRole('button', { name: 'Remove' })).toBeVisible();
+  await expect(directorySection.getByRole('button', { name: 'Promote to admin' })).toHaveCount(0);
+  await expect(directorySection.getByRole('button', { name: 'Demote to member' })).toHaveCount(0);
+
+  await membersSection.getByPlaceholder('Invite by email').fill('managed.e2e.member@example.com');
+  await membersSection.getByRole('button', { name: 'Invite' }).click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'managed.e2e.member@example.com' }),
+  ).toContainText('INVITED');
+
+  await page.getByRole('button', { name: /Ada Lovelace/i }).click();
+  await page.getByRole('menuitem', { name: 'Leave workspace' }).click();
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Leave Workspace' }),
+  });
+
+  await dialog.getByLabel('Email').fill(FULLSTACK_E2E.credentials.email);
+  await dialog.getByLabel('Password').fill(FULLSTACK_E2E.credentials.password);
+  await dialog.getByRole('button', { name: 'Leave workspace' }).click();
+
+  await expect(page).toHaveURL('/dashboard');
+  await expect(page.getByText(FULLSTACK_E2E.workspaces.managed.name)).not.toBeVisible();
 });

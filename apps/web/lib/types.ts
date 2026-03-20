@@ -48,6 +48,7 @@ export type WorkspaceItem = {
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
+  createdByUserId: string;
   createdAt: string;
   updatedAt: string;
   scheduleVersions?: WorkspaceScheduleVersion[];

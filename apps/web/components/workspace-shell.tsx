@@ -607,12 +607,16 @@ export function WorkspaceShell({
   const hasTopBlockContent = hasPageHeader || Boolean(banner) || Boolean(error);
   const resolvedPageContentPaddingClassName =
     pageContentPaddingClassName ?? (hasTopBlockContent ? 'p-4 sm:p-5' : 'p-3 sm:p-4');
+  const isSelectedWorkspaceOwner =
+    selectedWorkspace?.membership?.status === 'ACTIVE' &&
+    currentUser?.id !== undefined &&
+    selectedWorkspace.createdByUserId === currentUser.id;
   const canLeaveSelectedWorkspace =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
-    selectedWorkspace.membership.role !== 'ADMIN';
+    !isSelectedWorkspaceOwner;
   const canOpenSelectedWorkspaceAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
-    selectedWorkspace.membership.role === 'ADMIN';
+    (selectedWorkspace.membership.role === 'ADMIN' || isSelectedWorkspaceOwner);
   const userMenuActions = currentUser
     ? [
         {
@@ -789,7 +793,7 @@ export function WorkspaceShell({
       <CriticalUserActionModal
         open={activeCriticalAction === 'delete-account'}
         title="Delete Account"
-        description="Confirm with your email and password. Your account will be cancelled and admin-owned workspaces will be cancelled."
+        description="Confirm with your email and password. Your account will be cancelled and workspaces you own will be cancelled."
         confirmLabel="Delete account"
         cancelLabel="Keep account"
         emailLabel="Email"

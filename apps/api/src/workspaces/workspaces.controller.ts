@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -122,6 +123,34 @@ export class WorkspacesController {
       workspaceId,
       memberUserId,
       body,
+    );
+  }
+
+  @Post(':workspaceId/members/:memberUserId/promote')
+  @HttpCode(200)
+  async promoteWorkspaceMemberToAdmin(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberUserId') memberUserId: string,
+  ) {
+    return this.workspacesService.promoteWorkspaceMemberToAdmin(
+      this.extractAuthUser(request),
+      workspaceId,
+      memberUserId,
+    );
+  }
+
+  @Post(':workspaceId/members/:memberUserId/demote')
+  @HttpCode(200)
+  async demoteWorkspaceAdminToMember(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberUserId') memberUserId: string,
+  ) {
+    return this.workspacesService.demoteWorkspaceAdminToMember(
+      this.extractAuthUser(request),
+      workspaceId,
+      memberUserId,
     );
   }
 

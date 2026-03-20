@@ -27,6 +27,7 @@ describe('workspace-routing', () => {
           timezone: 'UTC',
           scheduleStartHour: 8,
           scheduleEndHour: 18,
+          createdByUserId: 'user-1',
           createdAt: '2026-03-01T00:00:00.000Z',
           updatedAt: '2026-03-01T00:00:00.000Z',
           membership: {

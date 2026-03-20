@@ -29,6 +29,11 @@ export const FULLSTACK_E2E = {
       name: 'Playwright HQ',
       slug: 'playwright.hq',
     },
+    managed: {
+      id: '99999999-9999-4999-8999-999999999999',
+      name: 'Managed Ops',
+      slug: 'managed-ops',
+    },
     pending: {
       id: '44444444-4444-4444-8444-444444444444',
       name: 'Playwright Invite',

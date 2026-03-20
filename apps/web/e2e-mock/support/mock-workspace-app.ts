@@ -47,6 +47,7 @@ type WorkspaceItem = {
   timezone: string;
   scheduleStartHour: number;
   scheduleEndHour: number;
+  createdByUserId: string;
   createdAt: string;
   updatedAt: string;
   scheduleVersions?: WorkspaceScheduleVersion[];
@@ -103,6 +104,13 @@ export const MOCK_USER: AuthUserSummary = {
   lastName: 'Admin',
 };
 
+export const MOCK_NON_OWNER_ADMIN_USER: AuthUserSummary = {
+  id: 'user-charles',
+  email: 'charles@example.com',
+  firstName: 'Charles',
+  lastName: 'Admin',
+};
+
 export const MOCK_IDS = {
   adminWorkspace: 'workspace-admin',
   memberWorkspace: 'workspace-member',
@@ -145,6 +153,7 @@ type MockWorkspaceAppState = {
 };
 
 type MockWorkspaceAppOptions = {
+  seedState?: (state: MockWorkspaceAppState) => void;
   overrides?: {
     workspaces?: ResponseOverride;
     me?: ResponseOverride;
@@ -218,6 +227,7 @@ function createDefaultState(): MockWorkspaceAppState {
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
+    createdByUserId: MOCK_USER.id,
     createdAt,
     updatedAt: createdAt,
     scheduleVersions: [],
@@ -235,6 +245,7 @@ function createDefaultState(): MockWorkspaceAppState {
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
+    createdByUserId: 'user-focus-owner',
     createdAt,
     updatedAt: createdAt,
     scheduleVersions: [],
@@ -261,6 +272,7 @@ function createDefaultState(): MockWorkspaceAppState {
     timezone,
     scheduleStartHour: DEFAULT_SCHEDULE.startHour,
     scheduleEndHour: DEFAULT_SCHEDULE.endHour,
+    createdByUserId: 'user-pending-owner',
     createdAt,
     updatedAt: createdAt,
     scheduleVersions: [],
@@ -383,6 +395,15 @@ function createDefaultState(): MockWorkspaceAppState {
         joinedAt: createdAt,
       },
       {
+        userId: MOCK_NON_OWNER_ADMIN_USER.id,
+        firstName: MOCK_NON_OWNER_ADMIN_USER.firstName,
+        lastName: MOCK_NON_OWNER_ADMIN_USER.lastName,
+        email: MOCK_NON_OWNER_ADMIN_USER.email,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        joinedAt: createdAt,
+      },
+      {
         userId: 'user-grace',
         firstName: 'Grace',
         lastName: 'Hopper',
@@ -450,6 +471,35 @@ function findWorkspace(state: MockWorkspaceAppState, workspaceId: string) {
   return state.workspaces.find((workspace) => workspace.id === workspaceId) ?? null;
 }
 
+function findActiveMembership(
+  state: MockWorkspaceAppState,
+  workspaceId: string,
+  userId = state.user.id,
+): WorkspaceMemberListItem | null {
+  return (
+    state.membersByWorkspaceId[workspaceId]?.find(
+      (member) => member.userId === userId && member.status === 'ACTIVE',
+    ) ?? null
+  );
+}
+
+function isWorkspaceOwner(state: MockWorkspaceAppState, workspaceId: string): boolean {
+  const workspace = findWorkspace(state, workspaceId);
+  return (
+    workspace !== null &&
+    workspace.createdByUserId === state.user.id &&
+    findActiveMembership(state, workspaceId) !== null
+  );
+}
+
+function canManageWorkspaceResources(
+  state: MockWorkspaceAppState,
+  workspaceId: string,
+): boolean {
+  const membership = findActiveMembership(state, workspaceId);
+  return membership !== null && (membership.role === 'ADMIN' || isWorkspaceOwner(state, workspaceId));
+}
+
 function activeRoomName(
   state: MockWorkspaceAppState,
   workspaceId: string,
@@ -475,6 +525,7 @@ function visibleWorkspaces(state: MockWorkspaceAppState): WorkspaceItem[] {
 
 export async function installMockWorkspaceApp(page: Page, options: MockWorkspaceAppOptions = {}) {
   const state = createDefaultState();
+  options.seedState?.(state);
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -553,6 +604,7 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
         timezone: String(body?.timezone ?? DEFAULT_TIMEZONE),
         scheduleStartHour: Number(body?.scheduleStartHour ?? 8),
         scheduleEndHour: Number(body?.scheduleEndHour ?? 18),
+        createdByUserId: state.user.id,
         createdAt,
         updatedAt: createdAt,
         scheduleVersions: [],
@@ -648,17 +700,48 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
     const leaveWorkspaceMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/leave$/);
     if (leaveWorkspaceMatch && method === 'POST') {
       const workspaceId = leaveWorkspaceMatch[1];
-      state.workspaces = state.workspaces.filter((workspace) => workspace.id !== workspaceId);
-      delete state.roomsByWorkspaceId[workspaceId];
-      delete state.bookingsByWorkspaceId[workspaceId];
-      delete state.membersByWorkspaceId[workspaceId];
-      delete state.invitationsByWorkspaceId[workspaceId];
-      return responseJson(route, 200, { ok: true });
+      if (isWorkspaceOwner(state, workspaceId)) {
+        return responseJson(route, 403, {
+          code: 'OWNER_CANNOT_LEAVE_WORKSPACE',
+          message: 'Workspace owner cannot leave the workspace',
+        } satisfies ErrorPayload);
+      }
+
+      const workspace = findWorkspace(state, workspaceId);
+      const membership = findActiveMembership(state, workspaceId);
+      if (!workspace || !membership) {
+        return responseJson(route, 403, {
+          code: 'WORKSPACE_NOT_VISIBLE',
+          message: 'Workspace not visible',
+        } satisfies ErrorPayload);
+      }
+
+      workspace.membership = {
+        ...workspace.membership!,
+        status: 'INACTIVE',
+      };
+      membership.status = 'INACTIVE';
+      for (const booking of state.bookingsByWorkspaceId[workspaceId] ?? []) {
+        if (
+          booking.createdByUserId === state.user.id &&
+          booking.status === 'ACTIVE' &&
+          DateTime.fromISO(booking.startAt, { zone: 'utc' }) >= DateTime.utc()
+        ) {
+          booking.status = 'CANCELLED';
+        }
+      }
+      return responseJson(route, 200, { left: true });
     }
 
     const workspaceCancelMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/cancel$/);
     if (workspaceCancelMatch && method === 'POST') {
       const workspaceId = workspaceCancelMatch[1];
+      if (!isWorkspaceOwner(state, workspaceId)) {
+        return responseJson(route, 403, {
+          code: 'ONLY_WORKSPACE_OWNER',
+          message: 'Only the workspace owner can perform this action',
+        } satisfies ErrorPayload);
+      }
       state.workspaces = state.workspaces.filter((workspace) => workspace.id !== workspaceId);
       delete state.roomsByWorkspaceId[workspaceId];
       delete state.bookingsByWorkspaceId[workspaceId];
@@ -677,6 +760,13 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
         return responseJson(route, 404, {
           code: 'NOT_FOUND',
           message: 'Workspace not found',
+        } satisfies ErrorPayload);
+      }
+
+      if (!isWorkspaceOwner(state, workspaceId)) {
+        return responseJson(route, 403, {
+          code: 'ONLY_WORKSPACE_OWNER',
+          message: 'Only the workspace owner can perform this action',
         } satisfies ErrorPayload);
       }
 
@@ -796,6 +886,50 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
             (member) => member.status === 'ACTIVE',
           ),
         ),
+      });
+    }
+
+    const memberRoleMatch = pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/members\/([^/]+)\/(promote|demote)$/,
+    );
+    if (memberRoleMatch && method === 'POST') {
+      const [, workspaceId, memberUserId, action] = memberRoleMatch;
+      const role = action === 'promote' ? 'ADMIN' : 'MEMBER';
+      const membership = state.membersByWorkspaceId[workspaceId]?.find(
+        (item) => item.userId === memberUserId && item.status === 'ACTIVE',
+      );
+      const workspace = findWorkspace(state, workspaceId);
+
+      if (!workspace || !membership) {
+        return responseJson(route, 404, {
+          code: 'NOT_FOUND',
+          message: 'Active workspace member not found',
+        } satisfies ErrorPayload);
+      }
+      if (!isWorkspaceOwner(state, workspaceId)) {
+        return responseJson(route, 403, {
+          code: 'ONLY_WORKSPACE_OWNER',
+          message: 'Only the workspace owner can perform this action',
+        } satisfies ErrorPayload);
+      }
+
+      if (workspace.createdByUserId === memberUserId && membership.role !== role) {
+        return responseJson(route, 403, {
+          code: 'OWNER_ROLE_CANNOT_CHANGE',
+          message: 'Workspace owner role cannot change',
+        } satisfies ErrorPayload);
+      }
+
+      membership.role = role;
+      const workspaceItem = findWorkspace(state, workspaceId);
+      if (workspaceItem?.membership?.status === 'ACTIVE' && workspaceItem.createdByUserId === memberUserId) {
+        workspaceItem.membership.role = role;
+      }
+
+      return responseJson(route, 200, {
+        userId: membership.userId,
+        role: membership.role,
+        status: membership.status,
       });
     }
 
