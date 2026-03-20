@@ -46,6 +46,17 @@ Default local URLs:
 
 - web: `http://localhost:3000`
 - api: `http://localhost:3001`
+- Prisma Studio via `pnpm dev:chrome`: `http://localhost:5555`
+
+Local `dev:chrome` helper:
+
+- `pnpm dev:chrome` starts Docker PostgreSQL, applies Prisma migrations, seeds the schema configured for the local API by default, launches the app, opens Prisma Studio, and then opens Chrome
+- `pnpm dev:chrome` also opens `/dev-chrome-helper.html`, a manual-inspection helper with seeded credentials, copy buttons, and quick links into the main frontend states
+- the helper seed now includes 20+ users distributed across owner, delegated admin, active member, invited, inactive former-member, unverified, cancelled, and empty-dashboard scenarios
+- set `DEV_CHROME_SCHEMA` only when you explicitly want to redirect the seed into a different PostgreSQL schema
+- seeded demo login: `playwright.admin@example.com` / `Password123!`
+- seeded demo workspaces include `playwright.hq`, `managed-ops`, and `playwright-invite`
+- override `DEV_CHROME_SCHEMA`, `DEV_CHROME_DATABASE_URL`, or `DEV_CHROME_SEED_COMMAND=none` when you need a different local setup
 
 ## Workspace Commands
 

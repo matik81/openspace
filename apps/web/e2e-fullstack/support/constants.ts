@@ -45,11 +45,27 @@ export const FULLSTACK_E2E = {
       id: '55555555-5555-4555-8555-555555555555',
       name: 'Focus Room',
     },
+    board: {
+      id: '12121212-1212-4121-8121-121212121212',
+      name: 'Board Room',
+    },
+    ops: {
+      id: '13131313-1313-4131-8131-131313131313',
+      name: 'Ops Room',
+    },
   },
   bookings: {
     existing: {
       id: '66666666-6666-4666-8666-666666666666',
       subject: 'Seeded Review',
+    },
+    planning: {
+      id: '14141414-1414-4141-8141-141414141414',
+      subject: 'Planning Sync',
+    },
+    managedOps: {
+      id: '15151515-1515-4151-8151-151515151515',
+      subject: 'Managed Ops Standup',
     },
   },
   invitations: {

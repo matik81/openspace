@@ -61,6 +61,9 @@ Current note:
 
 - `pnpm test` runs the workspace test scripts, including API Jest tests and web Vitest tests
 - Playwright suites are executed separately through `pnpm test:web:e2e:mock` and `pnpm test:web:e2e:fullstack`
+- `pnpm dev:chrome` reuses the full-stack seed dataset against the schema configured for the local API by default so local manual frontend checks can start from a known set of users, workspaces, rooms, bookings, and invitations
+- the web app serves `/dev-chrome-helper.html` as a local manual-inspection helper with copyable credentials and quick links, and `pnpm dev:chrome` opens that tab automatically
+- the helper dataset is intentionally broader than the minimal E2E assertions and includes 20+ users across owner, delegated-admin, active-member, invited, inactive, unverified, cancelled, and empty-state scenarios for manual inspection
 
 ## Local Execution
 

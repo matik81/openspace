@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenSpace Local Helper</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --ink: #111827;
+        --muted: #667085;
+        --line: #d9dde5;
+        --line-strong: #c5cbd6;
+        --accent: #0f172a;
+        --accent-soft: #eef2f7;
+        --success: #166534;
+        --success-soft: #effaf3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: 'Segoe UI', Arial, sans-serif;
+      }
+
+      main {
+        width: min(1280px, calc(100% - 32px));
+        margin: 24px auto 40px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+      }
+
+      .hero {
+        padding: 24px;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.8rem, 3vw, 2.4rem);
+        line-height: 1.1;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .lead {
+        margin-top: 12px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .meta-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--accent-soft);
+        font-size: 0.92rem;
+      }
+
+      .meta-item strong {
+        font-weight: 700;
+      }
+
+      .helper-layout {
+        display: grid;
+        gap: 16px;
+      }
+
+      .section {
+        padding: 20px 24px;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .link-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 0.92rem;
+      }
+
+      .link-pill:hover {
+        border-color: var(--line-strong);
+        background: var(--accent-soft);
+      }
+
+      .table-wrap {
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 980px;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #fbfcfe;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .user-name {
+        font-weight: 700;
+      }
+
+      .copy-field {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+      }
+
+      .copy-field code,
+      .schema-pill code {
+        font-family: Consolas, 'Courier New', monospace;
+        font-size: 0.92rem;
+      }
+
+      .copy-field code {
+        word-break: break-word;
+      }
+
+      .copy-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--accent);
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+
+      .copy-button:hover {
+        border-color: var(--line-strong);
+        background: var(--accent-soft);
+      }
+
+      .copy-button[data-copied='true'] {
+        border-color: var(--success);
+        background: var(--success-soft);
+        color: var(--success);
+      }
+
+      .copy-button svg {
+        width: 15px;
+        height: 15px;
+        stroke: currentColor;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.7;
+      }
+
+      .purpose {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .schema-pill {
+        margin-top: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100% - 20px, 1280px);
+          margin-top: 16px;
+        }
+
+        .hero,
+        .section {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel hero">
+        <h1>OpenSpace Local Helper</h1>
+        <p class="lead">
+          Manual-inspection companion for <code>pnpm dev:chrome</code>. The local demo flow resets
+          and seeds the schema used by your local API configuration on each startup. If you set
+          <code>DEV_CHROME_SCHEMA</code>, that override becomes the seed target.
+        </p>
+        <div class="schema-pill">
+          <strong>Schema source</strong>
+          <code>apps/api/.env by default</code>
+        </div>
+        <div class="meta">
+          <span class="meta-item"><strong>Users</strong><span>23</span></span>
+          <span class="meta-item"><strong>Workspaces</strong><span>6</span></span>
+          <span class="meta-item"><strong>Rooms</strong><span>6</span></span>
+          <span class="meta-item"><strong>Bookings</strong><span>6</span></span>
+          <span class="meta-item"><strong>Invitations</strong><span>6</span></span>
+        </div>
+      </section>
+
+      <section class="helper-layout">
+        <section class="panel section">
+          <h2>Quick Links</h2>
+          <div class="links">
+            <a class="link-pill" href="/?auth=login" target="_blank" rel="noreferrer">Login</a>
+            <a class="link-pill" href="/dashboard" target="_blank" rel="noreferrer">Dashboard</a>
+            <a class="link-pill" href="/playwright.hq" target="_blank" rel="noreferrer"
+              >Playwright HQ</a
+            >
+            <a class="link-pill" href="/playwright.hq/admin" target="_blank" rel="noreferrer"
+              >Playwright HQ Admin</a
+            >
+            <a class="link-pill" href="/managed-ops" target="_blank" rel="noreferrer"
+              >Managed Ops</a
+            >
+            <a class="link-pill" href="/managed-ops/admin" target="_blank" rel="noreferrer"
+              >Managed Ops Admin</a
+            >
+            <a class="link-pill" href="/playwright-invite" target="_blank" rel="noreferrer"
+              >Playwright Invite</a
+            >
+            <a class="link-pill" href="/nordic-lab" target="_blank" rel="noreferrer">Nordic Lab</a>
+            <a class="link-pill" href="/quiet-corner" target="_blank" rel="noreferrer"
+              >Quiet Corner</a
+            >
+            <a class="link-pill" href="/archive-annex" target="_blank" rel="noreferrer"
+              >Archive Annex</a
+            >
+          </div>
+        </section>
+
+        <section class="panel section">
+          <h2>Seeded Users</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">User</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Password</th>
+                  <th scope="col">Purpose</th>
+                </tr>
+              </thead>
+              <tbody id="accounts-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const copyIcon = `
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="5" y="3" width="8" height="10" rx="1.5"></rect>
+          <path d="M3 11V5a2 2 0 0 1 2-2"></path>
+        </svg>
+      `;
+
+      const checkIcon = `
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3.5 8.5 6.5 11.5 12.5 4.5"></path>
+        </svg>
+      `;
+
+      const seededAccounts = [
+        {
+          name: 'Ada Lovelace',
+          email: 'playwright.admin@example.com',
+          password: 'Password123!',
+          purpose:
+            'Owner admin of Playwright HQ, delegated admin in Managed Ops, and pending invite recipient for Playwright Invite.',
+        },
+        {
+          name: 'Grace Hopper',
+          email: 'playwright.inviter@example.com',
+          password: 'Password123!',
+          purpose:
+            'Owner admin of Managed Ops and Playwright Invite, active member of Playwright HQ, and sender of the primary invitation scenario.',
+        },
+        {
+          name: 'Katherine Johnson',
+          email: 'playwright.former@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Managed Ops and inactive former member of Playwright HQ.',
+        },
+        {
+          name: 'Linus Torvalds',
+          email: 'linus.owner@example.com',
+          password: 'Password123!',
+          purpose: 'Owner admin of Nordic Lab.',
+        },
+        {
+          name: 'Margaret Hamilton',
+          email: 'margaret.owner@example.com',
+          password: 'Password123!',
+          purpose:
+            'Owner admin of Quiet Corner and sender of pending plus expired invitation examples.',
+        },
+        {
+          name: 'Barbara Liskov',
+          email: 'barbara.owner@example.com',
+          password: 'Password123!',
+          purpose: 'Owner admin of Archive Annex and sender of the revoked invitation example.',
+        },
+        {
+          name: 'Donald Knuth',
+          email: 'donald.admin@example.com',
+          password: 'Password123!',
+          purpose: 'Delegated admin of Nordic Lab with a seeded booking.',
+        },
+        {
+          name: 'Tim Berners-Lee',
+          email: 'tim.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Playwright HQ.',
+        },
+        {
+          name: 'Ken Thompson',
+          email: 'ken.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Playwright HQ.',
+        },
+        {
+          name: 'Leslie Lamport',
+          email: 'leslie.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of both Playwright HQ and Managed Ops.',
+        },
+        {
+          name: 'Joan Clarke',
+          email: 'joan.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Nordic Lab.',
+        },
+        {
+          name: 'Edsger Dijkstra',
+          email: 'edsger.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Quiet Corner with a seeded booking.',
+        },
+        {
+          name: 'Hedy Lamarr',
+          email: 'hedy.left@example.com',
+          password: 'Password123!',
+          purpose: 'Inactive former member of Quiet Corner.',
+        },
+        {
+          name: 'Radia Perlman',
+          email: 'radia.left@example.com',
+          password: 'Password123!',
+          purpose: 'Inactive former member of Managed Ops.',
+        },
+        {
+          name: 'James Gosling',
+          email: 'james.invited@example.com',
+          password: 'Password123!',
+          purpose: 'Verified account with a pending invitation to Archive Annex.',
+        },
+        {
+          name: 'Frances Allen',
+          email: 'frances.invited@example.com',
+          password: 'Password123!',
+          purpose: 'Verified account with a pending invitation to Nordic Lab.',
+        },
+        {
+          name: 'Dennis Ritchie',
+          email: 'dennis.invited@example.com',
+          password: 'Password123!',
+          purpose: 'Verified account with a pending invitation to Quiet Corner.',
+        },
+        {
+          name: 'Sophie Wilson',
+          email: 'sophie.admin@example.com',
+          password: 'Password123!',
+          purpose: 'Delegated admin of Archive Annex.',
+        },
+        {
+          name: 'Guido van Rossum',
+          email: 'guido.member@example.com',
+          password: 'Password123!',
+          purpose: 'Active member of Archive Annex.',
+        },
+        {
+          name: 'Annie Easley',
+          email: 'annie.unverified@example.com',
+          password: 'Password123!',
+          purpose: 'Unverified account. Login should be blocked until email verification succeeds.',
+        },
+        {
+          name: 'Brenda Romero',
+          email: 'brenda.cancelled@example.com',
+          password: 'Password123!',
+          purpose: 'Cancelled account. Login should be rejected.',
+        },
+        {
+          name: 'Noel Welch',
+          email: 'noel.left@example.com',
+          password: 'Password123!',
+          purpose: 'Inactive former member of Nordic Lab.',
+        },
+        {
+          name: 'Mary Jackson',
+          email: 'mary.empty@example.com',
+          password: 'Password123!',
+          purpose:
+            'Verified account with no visible workspaces or invitations. Useful for empty-dashboard checks.',
+        },
+      ];
+
+      function renderCopyField(value, label) {
+        return `
+          <div class="copy-field">
+            <code>${value}</code>
+            <button
+              class="copy-button"
+              type="button"
+              data-copy-value="${value}"
+              aria-label="${label}"
+              title="Copy"
+            >
+              ${copyIcon}
+            </button>
+          </div>
+        `;
+      }
+
+      function renderAccounts() {
+        const body = document.getElementById('accounts-body');
+        body.innerHTML = seededAccounts
+          .map(
+            (account) => `
+              <tr>
+                <td><span class="user-name">${account.name}</span></td>
+                <td>${renderCopyField(account.email, `Copy email for ${account.name}`)}</td>
+                <td>${renderCopyField(account.password, `Copy password for ${account.name}`)}</td>
+                <td class="purpose">${account.purpose}</td>
+              </tr>
+            `,
+          )
+          .join('');
+      }
+
+      async function copyText(value) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(value);
+          return;
+        }
+
+        const input = document.createElement('textarea');
+        input.value = value;
+        input.setAttribute('readonly', '');
+        input.style.position = 'absolute';
+        input.style.left = '-9999px';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
+
+      function wireCopyButtons() {
+        document.querySelectorAll('[data-copy-value]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            try {
+              await copyText(button.getAttribute('data-copy-value') || '');
+              button.dataset.copied = 'true';
+              button.innerHTML = checkIcon;
+            } catch (error) {
+              button.dataset.copied = 'false';
+            }
+
+            window.setTimeout(() => {
+              button.dataset.copied = 'false';
+              button.innerHTML = copyIcon;
+            }, 1400);
+          });
+        });
+      }
+
+      renderAccounts();
+      wireCopyButtons();
+    </script>
+  </body>
+</html>

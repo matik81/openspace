@@ -1,22 +1,43 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PNPM_CMD = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const DEFAULT_URL = process.env.DEV_CHROME_URL ?? 'http://localhost:3000';
+const DEV_CHROME_HELPER_URL = new URL('/dev-chrome-helper.html', DEFAULT_URL).toString();
 const DEFAULT_PRISMA_STUDIO_URL =
   process.env.DEV_CHROME_PRISMA_STUDIO_URL ?? 'http://localhost:5555';
 const READY_TIMEOUT_MS = readPositiveIntEnv('DEV_CHROME_READY_TIMEOUT_MS', 120_000);
 const USE_TEMP_PROFILE = readBooleanEnv('DEV_CHROME_TEMP_PROFILE', false);
+const DEV_CHROME_SCHEMA_OVERRIDE = process.env.DEV_CHROME_SCHEMA?.trim() || null;
+const DEV_CHROME_SEED_COMMAND = readSeedCommandEnv('DEV_CHROME_SEED_COMMAND', 'reset-and-seed');
 const API_DIR = join(process.cwd(), 'apps', 'api');
 const API_ENV_PATH = join(API_DIR, '.env');
-const DATABASE_PORT = readDatabasePortFromApiEnv() ?? '5432';
+const DEV_CHROME_DATABASE_URL = resolveDevChromeDatabaseUrl();
+const DEV_CHROME_ACTIVE_SCHEMA = readSchemaFromUrl(DEV_CHROME_DATABASE_URL) ?? 'public';
+const DATABASE_HOST = readHostFromUrl(DEV_CHROME_DATABASE_URL, 'localhost');
+const DATABASE_PORT = readPortFromUrl(DEV_CHROME_DATABASE_URL, '5432');
+const API_PORT = process.env.API_PORT?.trim() || readApiEnvValue('API_PORT') || '3001';
+const DEFAULT_API_BASE_URL =
+  process.env.OPENSPACE_API_BASE_URL?.trim() || `http://localhost:${API_PORT}`;
+const DEFAULT_API_HEALTH_URL = new URL('/api/health', DEFAULT_API_BASE_URL).toString();
+const DEV_CHROME_ENV = {
+  ...process.env,
+  DATABASE_URL: DEV_CHROME_DATABASE_URL,
+  API_PORT,
+};
+const WEB_DEV_ENV = {
+  ...process.env,
+  OPENSPACE_API_BASE_URL: DEFAULT_API_BASE_URL,
+};
 const PERSISTENT_PROFILE_DIR = USE_TEMP_PROFILE
   ? null
   : process.env.DEV_CHROME_PROFILE_DIR?.trim() || join(process.cwd(), '.chrome-dev-profile');
 
-let devProcess = null;
+let apiProcess = null;
+let webProcess = null;
 let prismaStudioProcess = null;
 let chromeProcess = null;
 let chromeProfileDir = null;
@@ -54,6 +75,20 @@ function readBooleanEnv(name, fallback) {
   return fallback;
 }
 
+function readSeedCommandEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (['reset', 'seed', 'reset-and-seed', 'none'].includes(normalized)) {
+    return normalized;
+  }
+
+  return fallback;
+}
+
 function readPortFromUrl(url, fallback) {
   try {
     const parsedUrl = new URL(url);
@@ -63,29 +98,63 @@ function readPortFromUrl(url, fallback) {
   }
 }
 
-function readDatabasePortFromApiEnv() {
+function readHostFromUrl(url, fallback) {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.hostname || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readSchemaFromUrl(url) {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.searchParams.get('schema');
+  } catch {
+    return null;
+  }
+}
+
+function readApiEnvValue(key) {
   if (!existsSync(API_ENV_PATH)) {
     return null;
   }
 
   try {
     const envFile = readFileSync(API_ENV_PATH, 'utf8');
-    const databaseUrlLine = envFile
-      .split(/\r?\n/)
-      .find((line) => line.trim().startsWith('DATABASE_URL='));
-
-    if (!databaseUrlLine) {
+    const envLine = envFile.split(/\r?\n/).find((line) => line.trim().startsWith(`${key}=`));
+    if (!envLine) {
       return null;
     }
 
-    const rawUrl = databaseUrlLine.slice('DATABASE_URL='.length).trim();
-    const normalizedUrl = rawUrl.replace(/^['"]|['"]$/g, '');
-    const databaseUrl = new URL(normalizedUrl);
-
-    return databaseUrl.port || null;
+    return envLine
+      .slice(key.length + 1)
+      .trim()
+      .replace(/^['"]|['"]$/g, '');
   } catch {
     return null;
   }
+}
+
+function resolveDevChromeDatabaseUrl() {
+  const explicitDatabaseUrl = process.env.DEV_CHROME_DATABASE_URL?.trim();
+  if (explicitDatabaseUrl) {
+    return explicitDatabaseUrl;
+  }
+
+  const baseDatabaseUrl = process.env.DATABASE_URL?.trim() || readApiEnvValue('DATABASE_URL');
+  if (!baseDatabaseUrl) {
+    throw new Error(
+      'DATABASE_URL is required. Set apps/api/.env or DEV_CHROME_DATABASE_URL before running pnpm dev:chrome.',
+    );
+  }
+
+  const parsedUrl = new URL(baseDatabaseUrl);
+  if (DEV_CHROME_SCHEMA_OVERRIDE) {
+    parsedUrl.searchParams.set('schema', DEV_CHROME_SCHEMA_OVERRIDE);
+  }
+  return parsedUrl.toString();
 }
 
 function runCommand(command, args, options = {}) {
@@ -118,6 +187,64 @@ function runCommand(command, args, options = {}) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTcpReady(host, port, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let lastErrorMessage = 'connection not ready';
+
+  while (Date.now() < deadline) {
+    attempts += 1;
+
+    try {
+      await connectToTcpPort(host, port, 2_500);
+      log(`${label} ready on ${host}:${port}.`);
+      return;
+    } catch (error) {
+      lastErrorMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    if (attempts === 1 || attempts % 5 === 0) {
+      log(`Waiting for ${label} on ${host}:${port}...`);
+    }
+
+    await sleep(1_000);
+  }
+
+  throw new Error(
+    `Timeout waiting for ${label} on ${host}:${port} (${Math.round(
+      timeoutMs / 1000,
+    )}s). Last error: ${lastErrorMessage}`,
+  );
+}
+
+function connectToTcpPort(host, port, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection({
+      host,
+      port: Number.parseInt(String(port), 10),
+    });
+
+    const timer = setTimeout(() => {
+      socket.destroy(new Error(`Timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      socket.end();
+      resolve();
+    });
+
+    socket.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    socket.once('close', () => {
+      clearTimeout(timer);
+    });
+  });
 }
 
 async function fetchWithTimeout(url, timeoutMs) {
@@ -207,13 +334,7 @@ function findChromePath() {
       process.env.PROGRAMFILES &&
         join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
       process.env['PROGRAMFILES(X86)'] &&
-        join(
-          process.env['PROGRAMFILES(X86)'],
-          'Google',
-          'Chrome',
-          'Application',
-          'chrome.exe',
-        ),
+        join(process.env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
       process.env.LOCALAPPDATA &&
         join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
     ].filter(Boolean);
@@ -275,7 +396,8 @@ async function cleanup(reason) {
   }
 
   await terminateProcessTree(prismaStudioProcess, 'Prisma Studio').catch(() => {});
-  await terminateProcessTree(devProcess, 'pnpm dev').catch(() => {});
+  await terminateProcessTree(webProcess, 'web dev server').catch(() => {});
+  await terminateProcessTree(apiProcess, 'api dev server').catch(() => {});
 
   if (chromeProfileDir && !PERSISTENT_PROFILE_DIR) {
     try {
@@ -292,6 +414,36 @@ async function cleanup(reason) {
   }
 }
 
+async function prepareDevChromeDatabase() {
+  log(`Preparing dev database schema "${DEV_CHROME_ACTIVE_SCHEMA}"...`);
+  await waitForTcpReady(DATABASE_HOST, DATABASE_PORT, READY_TIMEOUT_MS, 'PostgreSQL');
+
+  log('Applying Prisma migrations for dev:chrome...');
+  await runCommand(PNPM_CMD, ['exec', 'prisma', 'migrate', 'deploy'], {
+    cwd: API_DIR,
+    env: DEV_CHROME_ENV,
+  });
+
+  if (DEV_CHROME_SEED_COMMAND === 'none') {
+    log('Skipping demo seed because DEV_CHROME_SEED_COMMAND=none.');
+    return;
+  }
+
+  log(`Seeding demo data (${DEV_CHROME_SEED_COMMAND})...`);
+  await runCommand('node', ['scripts/e2e-db.mjs', DEV_CHROME_SEED_COMMAND], {
+    cwd: API_DIR,
+    env: DEV_CHROME_ENV,
+  });
+
+  log(`Seed target schema: ${DEV_CHROME_ACTIVE_SCHEMA}`);
+  log('Demo login: playwright.admin@example.com / Password123!');
+  log(
+    'Manual dataset: 23 users across owner, admin, active, invited, inactive, unverified, and cancelled states.',
+  );
+  log('Demo workspaces: playwright.hq, managed-ops, playwright-invite');
+  log(`Manual inspection helper: ${DEV_CHROME_HELPER_URL}`);
+}
+
 async function main() {
   const chromePath = findChromePath();
   if (!chromePath) {
@@ -306,16 +458,34 @@ async function main() {
     },
   });
 
-  log('Starting development servers...');
-  devProcess = spawn(PNPM_CMD, ['dev'], {
+  await prepareDevChromeDatabase();
+
+  log('Starting API dev server...');
+  apiProcess = spawn(PNPM_CMD, ['--filter', '@openspace/api', 'dev'], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
+    env: DEV_CHROME_ENV,
   });
 
-  devProcess.once('exit', (code, signal) => {
+  apiProcess.once('exit', (code, signal) => {
     if (!cleaningUp) {
       log(
-        `pnpm dev exited unexpectedly (${signal ? `signal ${signal}` : `code ${code ?? 0}`})`,
+        `API dev server exited unexpectedly (${signal ? `signal ${signal}` : `code ${code ?? 0}`})`,
+      );
+    }
+  });
+
+  log('Starting web dev server...');
+  webProcess = spawn(PNPM_CMD, ['--filter', '@openspace/web', 'dev'], {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: WEB_DEV_ENV,
+  });
+
+  webProcess.once('exit', (code, signal) => {
+    if (!cleaningUp) {
+      log(
+        `Web dev server exited unexpectedly (${signal ? `signal ${signal}` : `code ${code ?? 0}`})`,
       );
     }
   });
@@ -336,6 +506,7 @@ async function main() {
       stdio: 'inherit',
       shell: process.platform === 'win32',
       cwd: API_DIR,
+      env: DEV_CHROME_ENV,
     },
   );
 
@@ -358,10 +529,12 @@ async function main() {
 
   ensureChromePreferences(chromeProfileDir);
 
+  log(`Waiting for API readiness on ${DEFAULT_API_HEALTH_URL}...`);
   log(`Waiting for application readiness on ${DEFAULT_URL}...`);
   log(`Waiting for Prisma Studio readiness on ${DEFAULT_PRISMA_STUDIO_URL}...`);
   await Promise.all([
-    waitForHttpReady(DEFAULT_URL, READY_TIMEOUT_MS, devProcess, 'Application'),
+    waitForHttpReady(DEFAULT_API_HEALTH_URL, READY_TIMEOUT_MS, apiProcess, 'API'),
+    waitForHttpReady(DEFAULT_URL, READY_TIMEOUT_MS, webProcess, 'Application'),
     waitForHttpReady(
       DEFAULT_PRISMA_STUDIO_URL,
       READY_TIMEOUT_MS,
@@ -370,7 +543,9 @@ async function main() {
     ),
   ]);
 
-  log(`Opening Chrome on ${DEFAULT_URL} and ${DEFAULT_PRISMA_STUDIO_URL}...`);
+  log(
+    `Opening Chrome on ${DEFAULT_URL}, ${DEFAULT_PRISMA_STUDIO_URL}, and ${DEV_CHROME_HELPER_URL}...`,
+  );
   chromeProcess = spawn(
     chromePath,
     [
@@ -382,6 +557,7 @@ async function main() {
       `--user-data-dir=${chromeProfileDir}`,
       DEFAULT_URL,
       DEFAULT_PRISMA_STUDIO_URL,
+      DEV_CHROME_HELPER_URL,
     ],
     {
       stdio: 'ignore',
