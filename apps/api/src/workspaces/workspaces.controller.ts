@@ -15,6 +15,7 @@ import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { LeaveWorkspaceDto } from './dto/leave-workspace.dto';
+import { RemoveWorkspaceMemberDto } from './dto/remove-workspace-member.dto';
 import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
@@ -107,6 +108,21 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
   ) {
     return this.workspacesService.listWorkspaceMembers(this.extractAuthUser(request), workspaceId);
+  }
+
+  @Post(':workspaceId/members/:memberUserId/remove')
+  async removeWorkspaceMember(
+    @Req() request: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberUserId') memberUserId: string,
+    @Body() body: RemoveWorkspaceMemberDto,
+  ) {
+    return this.workspacesService.removeWorkspaceMember(
+      this.extractAuthUser(request),
+      workspaceId,
+      memberUserId,
+      body,
+    );
   }
 
   @Get(':workspaceId/invitations')

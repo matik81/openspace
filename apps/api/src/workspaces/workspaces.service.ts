@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -29,6 +30,7 @@ import { CancelWorkspaceDto } from './dto/cancel-workspace.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { LeaveWorkspaceDto } from './dto/leave-workspace.dto';
+import { RemoveWorkspaceMemberDto } from './dto/remove-workspace-member.dto';
 import { ReorderVisibleWorkspacesDto } from './dto/reorder-visible-workspaces.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
@@ -674,6 +676,83 @@ export class WorkspacesService {
     };
   }
 
+  async removeWorkspaceMember(
+    authUser: AuthUser,
+    workspaceId: string,
+    memberUserId: string,
+    dto: RemoveWorkspaceMemberDto,
+  ) {
+    const user = await this.requireVerifiedUser(authUser.userId);
+    const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
+    const normalizedMemberUserId = this.requireUuid(memberUserId, 'memberUserId');
+    const email = this.normalizeEmail(dto.email);
+    const password = this.requireString(dto.password, 'password');
+
+    await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
+
+    if (user.email !== email) {
+      this.throwWorkspaceMemberRemovalConfirmationFailed();
+    }
+
+    const membership = await this.prismaService.workspaceMember.findFirst({
+      where: {
+        workspaceId: normalizedWorkspaceId,
+        userId: normalizedMemberUserId,
+        status: MembershipStatus.ACTIVE,
+        workspace: { status: WorkspaceStatus.ACTIVE },
+      },
+      select: { id: true, role: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Active workspace member not found',
+      });
+    }
+
+    if (membership.role === WorkspaceRole.ADMIN) {
+      throw new ForbiddenException({
+        code: 'ADMIN_CANNOT_BE_REMOVED',
+        message: 'Workspace admins cannot be removed',
+      });
+    }
+
+    const credentials = await this.prismaService.user.findUnique({
+      where: { id: user.id },
+      select: { passwordHash: true },
+    });
+    if (!credentials || !(await compare(password, credentials.passwordHash))) {
+      this.throwWorkspaceMemberRemovalConfirmationFailed();
+    }
+
+    const now = new Date();
+    const cancelledBookingsCount = await this.prismaService.$transaction(async (tx) => {
+      await tx.workspaceMember.update({
+        where: { id: membership.id },
+        data: { status: MembershipStatus.INACTIVE },
+      });
+
+      const bookingUpdate = await tx.booking.updateMany({
+        where: {
+          workspaceId: normalizedWorkspaceId,
+          createdByUserId: normalizedMemberUserId,
+          status: BookingStatus.ACTIVE,
+          startAt: { gte: now },
+        },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancelledAt: now,
+          cancellationReason: BookingCancellationReason.USER_LEFT_WORKSPACE,
+        },
+      });
+
+      return bookingUpdate.count;
+    });
+
+    return { removed: true, cancelledBookingsCount };
+  }
+
   async listWorkspacePendingInvitations(authUser: AuthUser, workspaceId: string) {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
@@ -1174,6 +1253,13 @@ export class WorkspacesService {
     throw new ForbiddenException({
       code: 'WORKSPACE_CANCEL_CONFIRMATION_FAILED',
       message: 'Workspace cancellation confirmation failed',
+    });
+  }
+
+  private throwWorkspaceMemberRemovalConfirmationFailed(): never {
+    throw new ForbiddenException({
+      code: 'WORKSPACE_MEMBER_REMOVAL_CONFIRMATION_FAILED',
+      message: 'Workspace member removal confirmation failed',
     });
   }
 

@@ -122,7 +122,7 @@ UI expectations:
 
 - pending invitations are visually distinct
 - the user can accept or reject them directly
-- admin views expose summary data plus a unified members directory that distinguishes active, left, and invited people and supports invitation revoke actions
+- admin views expose summary data plus a unified members directory that distinguishes active, left, and invited people and supports invitation revoke plus member removal actions
 
 ## 4. Rooms
 
@@ -202,6 +202,7 @@ Implemented frontend flows:
 - dashboard for workspace visibility, invitation actions, and pending invitation surfacing
 - workspace shell for booking management, room filtering, and top-bar workspace switching
 - workspace admin panel with sidebar subpanels for settings, resources, members, and workspace cancellation
+- active non-admin members can be removed from the members directory after confirmation with the admin email and password
 - account settings modal for profile update, password change, and account deletion
 
 ## 8. Future Extensions

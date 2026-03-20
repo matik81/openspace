@@ -82,7 +82,7 @@ test('creates a workspace from the shell and lands in the admin panel', async ({
   await expect(page.getByLabel('Web Address')).toHaveValue('skunkworks');
 });
 
-test('updates account settings and logs out to the login page', async ({ page }) => {
+test('updates account settings and opens the login modal after logout', async ({ page }) => {
   await page.goto('/dashboard');
 
   await openUserMenu(page);
@@ -101,7 +101,7 @@ test('updates account settings and logs out to the login page', async ({ page })
   await expect(page.getByRole('menu').getByText('Adele Admin')).toBeVisible();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
 
-  await expect(page).toHaveURL('/login');
+  await expect(page).toHaveURL(/auth=login/);
   await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible();
 });
 

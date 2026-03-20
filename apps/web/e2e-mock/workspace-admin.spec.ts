@@ -89,6 +89,30 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   await expect(roomsSection.getByText('War Room')).not.toBeVisible();
 });
 
+test('removes an active member with email and password confirmation', async ({ page }) => {
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+
+  await page.getByRole('link', { name: 'Members' }).click();
+  const directorySection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Directory' }),
+  });
+  const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
+
+  await expect(graceRow).toContainText('ACTIVE');
+  await graceRow.getByRole('button', { name: 'Remove' }).click();
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Remove Member' }),
+  });
+
+  await dialog.getByLabel('Admin email').fill('ada@example.com');
+  await dialog.getByLabel('Password').fill('password123');
+  await dialog.getByRole('button', { name: 'Remove member' }).click();
+
+  await expect(graceRow).toContainText('LEFT');
+  await expect(graceRow.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+});
+
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {
   await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
 

@@ -2,12 +2,15 @@ export const FALLBACK_ERROR_MESSAGE = 'Something went wrong. Please try again.';
 export const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
 
 export const ERROR_MESSAGE_BY_CODE: Record<string, string> = {
+  ADMIN_CANNOT_BE_REMOVED: 'Workspace admins cannot be removed',
   ACCOUNT_DELETE_CONFIRMATION_FAILED: 'The email or password does not match your account',
   ACCOUNT_UPDATE_CONFIRMATION_FAILED: 'The current password does not match your account',
   CURRENT_PASSWORD_REQUIRED: 'Enter your current password to change your password',
   PASSWORD_MISMATCH: 'The passwords do not match',
   SERVICE_UNAVAILABLE: 'The service is temporarily unavailable. Please try again',
   WORKSPACE_LEAVE_CONFIRMATION_FAILED: 'The email or password does not match your account',
+  WORKSPACE_MEMBER_REMOVAL_CONFIRMATION_FAILED:
+    'The email or password does not match your account',
 };
 
 export const ERROR_MESSAGE_BY_TEXT: Record<string, string> = {

@@ -799,6 +799,46 @@ export async function installMockWorkspaceApp(page: Page, options: MockWorkspace
       });
     }
 
+    const memberDetailMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/members\/([^/]+)$/);
+    if (memberDetailMatch && method === 'DELETE') {
+      const [, workspaceId, memberUserId] = memberDetailMatch;
+      const member = state.membersByWorkspaceId[workspaceId]?.find(
+        (item) => item.userId === memberUserId && item.status === 'ACTIVE',
+      );
+
+      if (!member) {
+        return responseJson(route, 404, {
+          code: 'NOT_FOUND',
+          message: 'Active workspace member not found',
+        } satisfies ErrorPayload);
+      }
+
+      if (member.role === 'ADMIN') {
+        return responseJson(route, 403, {
+          code: 'ADMIN_CANNOT_BE_REMOVED',
+          message: 'Workspace admins cannot be removed',
+        } satisfies ErrorPayload);
+      }
+
+      member.status = 'INACTIVE';
+      let cancelledBookingsCount = 0;
+      for (const booking of state.bookingsByWorkspaceId[workspaceId] ?? []) {
+        if (
+          booking.createdByUserId === memberUserId &&
+          booking.status === 'ACTIVE' &&
+          DateTime.fromISO(booking.startAt, { zone: 'utc' }) >= DateTime.utc()
+        ) {
+          booking.status = 'CANCELLED';
+          cancelledBookingsCount += 1;
+        }
+      }
+
+      return responseJson(route, 200, {
+        removed: true,
+        cancelledBookingsCount,
+      });
+    }
+
     const invitationsMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/invitations$/);
     if (invitationsMatch && method === 'GET') {
       const workspaceId = invitationsMatch[1];

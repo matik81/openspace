@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  CriticalUserActionModal,
+  type CriticalUserActionFormState,
+} from '@/components/layout/CriticalUserActionModal';
 import { WorkspaceRightSidebar } from '@/components/workspace/WorkspaceRightSidebar';
 import { WorkspaceShell, WorkspaceShellRenderContext } from '@/components/workspace-shell';
 import { useSharedSelectedDate } from '@/hooks/useSharedSelectedDate';
@@ -217,6 +221,19 @@ type MemberDirectoryItem = {
   status: MemberDirectoryStatus;
   detail: string;
   invitationId: string | null;
+  memberUserId: string | null;
+  canRemove: boolean;
+};
+
+type RemoveMemberConfirmationState = {
+  memberUserId: string;
+  memberEmail: string;
+  memberDisplayName: string;
+};
+
+const removeMemberInitialFormState: CriticalUserActionFormState = {
+  email: '',
+  password: '',
 };
 
 function formatMemberDirectoryDate(value: string, timezone: string): string {
@@ -267,6 +284,8 @@ function buildMemberDirectoryItems({
       status: member.role === 'ADMIN' ? ('ADMIN' as const) : ('ACTIVE' as const),
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
       invitationId: null,
+      memberUserId: member.userId,
+      canRemove: member.role !== 'ADMIN',
     }));
 
   const invitedPeople = invitations.map((invitation) => ({
@@ -276,6 +295,8 @@ function buildMemberDirectoryItems({
     status: 'INVITED' as const,
     detail: `Invited ${formatMemberDirectoryDate(invitation.createdAt, timezone)}`,
     invitationId: invitation.id,
+    memberUserId: null,
+    canRemove: false,
   }));
 
   const leftMembers = members
@@ -287,6 +308,8 @@ function buildMemberDirectoryItems({
       status: 'LEFT' as const,
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
       invitationId: null,
+      memberUserId: member.userId,
+      canRemove: false,
     }));
 
   return [...activeMembers, ...invitedPeople, ...leftMembers];
@@ -472,6 +495,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [isSubmittingRoom, setIsSubmittingRoom] = useState(false);
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
+  const [removeMemberConfirmation, setRemoveMemberConfirmation] =
+    useState<RemoveMemberConfirmationState | null>(null);
+  const [removeMemberForm, setRemoveMemberForm] = useState<CriticalUserActionFormState>(
+    removeMemberInitialFormState,
+  );
+  const [removeMemberError, setRemoveMemberError] = useState<ErrorPayload | null>(null);
+  const [removingMemberUserId, setRemovingMemberUserId] = useState<string | null>(null);
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [settingsBanner, setSettingsBanner] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<ErrorPayload | null>(null);
@@ -1008,6 +1038,92 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       setRevokingInvitationId(null);
     },
     [selectedWorkspace, isAdmin, revokingInvitationId, loadAdminData, router],
+  );
+
+  const closeRemoveMemberDialog = useCallback(() => {
+    setRemoveMemberConfirmation(null);
+    setRemoveMemberForm(removeMemberInitialFormState);
+    setRemoveMemberError(null);
+  }, []);
+
+  const handleOpenRemoveMemberDialog = useCallback(
+    (memberUserId: string) => {
+      if (!selectedWorkspace || !isAdmin || removingMemberUserId) {
+        return;
+      }
+
+      const member = members.find(
+        (item) =>
+          item.userId === memberUserId && item.status === 'ACTIVE' && item.role !== 'ADMIN',
+      );
+      if (!member) {
+        return;
+      }
+
+      const memberDisplayName = `${member.firstName} ${member.lastName}`.trim();
+      setRemoveMemberForm(removeMemberInitialFormState);
+      setRemoveMemberError(null);
+      setRemoveMemberConfirmation({
+        memberUserId: member.userId,
+        memberEmail: member.email,
+        memberDisplayName: memberDisplayName || member.email,
+      });
+    },
+    [selectedWorkspace, isAdmin, removingMemberUserId, members],
+  );
+
+  const handleRemoveMember = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedWorkspace || !isAdmin || !removeMemberConfirmation || removingMemberUserId) {
+        return;
+      }
+
+      setRemovingMemberUserId(removeMemberConfirmation.memberUserId);
+      setRemoveMemberError(null);
+      const response = await fetch(
+        `/api/workspaces/${selectedWorkspace.id}/members/${removeMemberConfirmation.memberUserId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(removeMemberForm),
+        },
+      );
+      const responsePayload = await safeReadJson(response);
+
+      if (!response.ok) {
+        const normalized = normalizeErrorPayload(responsePayload, response.status);
+        if (isUserSuspendedError(normalized)) {
+          setRemovingMemberUserId(null);
+          await logoutSuspendedUser(router);
+          return;
+        }
+        if (normalized.code === 'UNAUTHORIZED') {
+          setRemovingMemberUserId(null);
+          router.replace('/login?reason=session-expired');
+          return;
+        }
+        setRemoveMemberError(normalized);
+        setRemovingMemberUserId(null);
+        return;
+      }
+
+      closeRemoveMemberDialog();
+      setRemovingMemberUserId(null);
+      await loadAdminData();
+    },
+    [
+      selectedWorkspace,
+      isAdmin,
+      removeMemberConfirmation,
+      removingMemberUserId,
+      removeMemberForm,
+      router,
+      closeRemoveMemberDialog,
+      loadAdminData,
+    ],
   );
 
   const handleCancelWorkspace = useCallback(
@@ -1577,6 +1693,17 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                               ? 'Revoking...'
                               : 'Revoke'}
                           </button>
+                        ) : person.canRemove && person.memberUserId ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRemoveMemberDialog(person.memberUserId!)}
+                            disabled={removingMemberUserId === person.memberUserId}
+                            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {removingMemberUserId === person.memberUserId
+                              ? 'Removing...'
+                              : 'Remove'}
+                          </button>
                         ) : (
                           <span className="text-sm text-slate-400">-</span>
                         )}
@@ -1816,6 +1943,26 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             </div>
           </AdminViewportDialog>
         ) : null}
+
+        <CriticalUserActionModal
+          open={Boolean(removeMemberConfirmation)}
+          title="Remove Member"
+          description={
+            removeMemberConfirmation
+              ? `Confirm with your admin email and password to remove ${removeMemberConfirmation.memberDisplayName} (${removeMemberConfirmation.memberEmail}) from this workspace. Future bookings by this member in this workspace will be cancelled.`
+              : 'Confirm with your admin email and password to remove this member from the workspace.'
+          }
+          confirmLabel="Remove member"
+          cancelLabel="Keep member"
+          emailLabel="Admin email"
+          passwordLabel="Password"
+          isSubmitting={Boolean(removingMemberUserId)}
+          error={removeMemberError}
+          form={removeMemberForm}
+          onChange={setRemoveMemberForm}
+          onClose={closeRemoveMemberDialog}
+          onSubmit={handleRemoveMember}
+        />
 
         {deleteRoomConfirmation ? (
           <AdminViewportDialog

@@ -86,6 +86,10 @@ type MockWorkspaceScheduleVersion = {
   effectiveFrom: Date;
 };
 
+type PrismaServiceMock = PrismaService & {
+  __reset: () => void;
+};
+
 function selectRecord<T extends Record<string, unknown>>(
   record: T,
   select?: Record<string, unknown>,
@@ -104,7 +108,7 @@ function selectRecord<T extends Record<string, unknown>>(
   return selected;
 }
 
-function createPrismaMock(): PrismaService {
+function createPrismaMock(): PrismaServiceMock {
   const users: MockUser[] = [];
   const workspaces: MockWorkspace[] = [];
   const members: MockWorkspaceMember[] = [];
@@ -822,17 +826,32 @@ function createPrismaMock(): PrismaService {
     },
   };
 
+  const transactionMock = jest.fn(
+    async (callback: (tx: typeof delegates) => Promise<unknown>) => callback(delegates),
+  );
+
+  const resetState = () => {
+    users.length = 0;
+    workspaces.length = 0;
+    members.length = 0;
+    invitations.length = 0;
+    verificationTokens.length = 0;
+    userWorkspacePreferences.length = 0;
+    workspaceScheduleVersions.length = 0;
+    transactionMock.mockClear();
+  };
+
   return {
     ...delegates,
-    $transaction: jest.fn(
-      async (callback: (tx: typeof delegates) => Promise<unknown>) => callback(delegates),
-    ),
-  } as unknown as PrismaService;
+    $transaction: transactionMock,
+    __reset: resetState,
+  } as unknown as PrismaServiceMock;
 }
 
 describe('Workspace invitation flow integration', () => {
   let app: INestApplication;
   let appModule: { AppModule: unknown };
+  const originalEnv = { ...process.env };
   const prismaMock = createPrismaMock();
   const verificationTokensByEmail: Record<string, string> = {};
   const invitationTokensByEmail: Record<string, string> = {};
@@ -888,10 +907,23 @@ describe('Workspace invitation flow integration', () => {
     await app.init();
   });
 
+  beforeEach(() => {
+    prismaMock.__reset();
+    jest.clearAllMocks();
+
+    for (const store of [verificationTokensByEmail, invitationTokensByEmail]) {
+      for (const key of Object.keys(store)) {
+        delete store[key];
+      }
+    }
+  });
+
   afterAll(async () => {
     if (app) {
       await app.close();
     }
+
+    process.env = originalEnv;
   });
 
   async function registerAndVerify(email: string): Promise<string> {

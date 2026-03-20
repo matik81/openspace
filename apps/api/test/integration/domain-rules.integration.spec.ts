@@ -19,6 +19,28 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 jest.setTimeout(30000);
 
 describe('Domain rules integration', () => {
+  const envOverrides = {
+    NODE_ENV: 'test',
+    API_PORT: '3001',
+    DATABASE_URL: 'postgresql://openspace:openspace@localhost:5432/openspace?schema=public',
+    JWT_ACCESS_SECRET: '1234567890abcdef',
+    JWT_REFRESH_SECRET: 'abcdef1234567890',
+    JWT_ACCESS_TTL: '15m',
+    JWT_REFRESH_TTL: '7d',
+    EMAIL_VERIFICATION_TTL_MINUTES: '60',
+    MAX_WORKSPACES_PER_USER: '2',
+    MAX_ROOMS_PER_WORKSPACE: '2',
+    MAX_USERS_PER_WORKSPACE: '2',
+    MAX_PENDING_INVITATIONS_PER_WORKSPACE: '2',
+    MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE: '2',
+    MAX_BOOKING_DAYS_AHEAD: '365',
+    MAX_REGISTRATIONS_PER_HOUR_PER_IP: '999',
+    MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER: '999',
+    MAX_ROOM_CREATIONS_PER_HOUR_PER_USER: '999',
+    MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER: '999',
+    MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER: '999',
+  } as const;
+  const previousEnvValues: Partial<Record<keyof typeof envOverrides, string | undefined>> = {};
   let app: INestApplication;
   let prismaService: PrismaService | null = null;
   let appModule: { AppModule: unknown };
@@ -34,26 +56,12 @@ describe('Domain rules integration', () => {
   const password = 'strong-password';
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.API_PORT ??= '3001';
-    process.env.DATABASE_URL ??=
-      'postgresql://openspace:openspace@localhost:5432/openspace?schema=public';
-    process.env.JWT_ACCESS_SECRET ??= '1234567890abcdef';
-    process.env.JWT_REFRESH_SECRET ??= 'abcdef1234567890';
-    process.env.JWT_ACCESS_TTL ??= '15m';
-    process.env.JWT_REFRESH_TTL ??= '7d';
-    process.env.EMAIL_VERIFICATION_TTL_MINUTES ??= '60';
-    process.env.MAX_WORKSPACES_PER_USER = '2';
-    process.env.MAX_ROOMS_PER_WORKSPACE = '2';
-    process.env.MAX_USERS_PER_WORKSPACE = '2';
-    process.env.MAX_PENDING_INVITATIONS_PER_WORKSPACE = '2';
-    process.env.MAX_FUTURE_BOOKINGS_PER_USER_PER_WORKSPACE = '2';
-    process.env.MAX_BOOKING_DAYS_AHEAD = '365';
-    process.env.MAX_REGISTRATIONS_PER_HOUR_PER_IP = '999';
-    process.env.MAX_WORKSPACE_CREATIONS_PER_HOUR_PER_USER = '999';
-    process.env.MAX_ROOM_CREATIONS_PER_HOUR_PER_USER = '999';
-    process.env.MAX_INVITATION_CREATIONS_PER_HOUR_PER_USER = '999';
-    process.env.MAX_BOOKING_CREATIONS_PER_HOUR_PER_USER = '999';
+    for (const [key, value] of Object.entries(envOverrides) as Array<
+      [keyof typeof envOverrides, string]
+    >) {
+      previousEnvValues[key] = process.env[key];
+      process.env[key] = value;
+    }
 
     appModule = await import('../../src/app.module');
 
@@ -80,6 +88,16 @@ describe('Domain rules integration', () => {
   afterAll(async () => {
     await cleanDatabase();
     await app.close();
+
+    for (const [key, previousValue] of Object.entries(previousEnvValues) as Array<
+      [keyof typeof envOverrides, string | undefined]
+    >) {
+      if (previousValue === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previousValue;
+      }
+    }
   });
 
   async function cleanDatabase(): Promise<void> {
@@ -201,6 +219,21 @@ describe('Domain rules integration', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(201);
+  }
+
+  async function removeWorkspaceMember(
+    adminToken: string,
+    workspaceId: string,
+    memberUserId: string,
+    email: string,
+  ) {
+    return request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/members/${memberUserId}/remove`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email,
+        password,
+      });
   }
 
   function futureDateIso(daysAhead: number, hour: number, minute = 0) {
@@ -603,6 +636,152 @@ describe('Domain rules integration', () => {
         }),
       ]),
     );
+  });
+
+  it('allows an admin to remove an active member, cancels future bookings, and removes workspace visibility', async () => {
+    if (!prismaService) {
+      throw new Error('Prisma service unavailable');
+    }
+
+    const now = new Date();
+    const todayUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+    );
+    const yesterdayUtc = new Date(todayUtc);
+    yesterdayUtc.setUTCDate(yesterdayUtc.getUTCDate() - 1);
+
+    const admin = await createVerifiedUser('remove-admin@example.com');
+    const member = await createVerifiedUser('remove-member@example.com');
+    const adminToken = await accessTokenFor(admin.id, admin.email);
+    const memberToken = await accessTokenFor(member.id, member.email);
+    const workspaceId = await createWorkspace(adminToken, 'Remove Workspace Member');
+    const roomId = await createRoom(adminToken, workspaceId, 'Removal Room');
+    const invitationId = await inviteMember(adminToken, workspaceId, member.email);
+    await acceptInvitation(memberToken, invitationId);
+
+    const futureBookingResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        roomId,
+        startAt: futureDateIso(20, 10),
+        endAt: futureDateIso(20, 11),
+        subject: 'Future booking before removal',
+      });
+    expect(futureBookingResponse.status).toBe(201);
+    const futureBookingId = futureBookingResponse.body.id as string;
+
+    const pastBooking = await prismaService.booking.create({
+      data: {
+        workspaceId,
+        roomId,
+        createdByUserId: member.id,
+        startAt: new Date(localUtcIso(yesterdayUtc, 10)),
+        endAt: new Date(localUtcIso(yesterdayUtc, 11)),
+        subject: 'Past booking before removal',
+      },
+      select: { id: true },
+    });
+
+    const removeResponse = await removeWorkspaceMember(
+      adminToken,
+      workspaceId,
+      member.id,
+      admin.email,
+    );
+
+    expect(removeResponse.status).toBe(201);
+    expect(removeResponse.body).toEqual({
+      removed: true,
+      cancelledBookingsCount: 1,
+    });
+
+    const [membership, futureBooking, persistedPastBooking, visibleWorkspaceResponse] =
+      await Promise.all([
+        prismaService.workspaceMember.findFirst({
+          where: { workspaceId, userId: member.id },
+          select: { status: true },
+        }),
+        prismaService.booking.findUnique({
+          where: { id: futureBookingId },
+          select: { status: true, cancellationReason: true, cancelledAt: true },
+        }),
+        prismaService.booking.findUnique({
+          where: { id: pastBooking.id },
+          select: { status: true, cancellationReason: true, cancelledAt: true },
+        }),
+        request(app.getHttpServer())
+          .get(`/api/workspaces/${workspaceId}`)
+          .set('Authorization', `Bearer ${memberToken}`),
+      ]);
+
+    expect(membership).toEqual({ status: MembershipStatus.INACTIVE });
+    expect(futureBooking).toMatchObject({
+      status: BookingStatus.CANCELLED,
+      cancellationReason: BookingCancellationReason.USER_LEFT_WORKSPACE,
+      cancelledAt: expect.any(Date),
+    });
+    expect(persistedPastBooking).toEqual({
+      status: BookingStatus.ACTIVE,
+      cancellationReason: null,
+      cancelledAt: null,
+    });
+
+    expect(visibleWorkspaceResponse.status).toBe(403);
+    expect(visibleWorkspaceResponse.body).toEqual({
+      code: 'WORKSPACE_NOT_VISIBLE',
+      message: 'Workspace not visible',
+    });
+
+    const [activeMembersResponse, adminSummaryResponse] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`/api/workspaces/${workspaceId}/members`)
+        .set('Authorization', `Bearer ${adminToken}`),
+      request(app.getHttpServer())
+        .get(`/api/workspaces/${workspaceId}/admin-summary`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    ]);
+
+    expect(activeMembersResponse.status).toBe(200);
+    expect(activeMembersResponse.body.items).toEqual([
+      expect.objectContaining({
+        email: admin.email,
+        status: MembershipStatus.ACTIVE,
+      }),
+    ]);
+
+    expect(adminSummaryResponse.status).toBe(200);
+    expect(adminSummaryResponse.body.members.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          email: admin.email,
+          status: MembershipStatus.ACTIVE,
+        }),
+        expect.objectContaining({
+          email: member.email,
+          status: MembershipStatus.INACTIVE,
+        }),
+      ]),
+    );
+  });
+
+  it('prevents removing a workspace admin through the member removal flow', async () => {
+    const admin = await createVerifiedUser('remove-admin-blocked@example.com');
+    const adminToken = await accessTokenFor(admin.id, admin.email);
+    const workspaceId = await createWorkspace(adminToken, 'Admin Removal Blocked');
+
+    const removeResponse = await removeWorkspaceMember(
+      adminToken,
+      workspaceId,
+      admin.id,
+      admin.email,
+    );
+
+    expect(removeResponse.status).toBe(403);
+    expect(removeResponse.body).toEqual({
+      code: 'ADMIN_CANNOT_BE_REMOVED',
+      message: 'Workspace admins cannot be removed',
+    });
   });
 
   it('cancels member workspaces and admin-owned workspaces when deleting an account', async () => {
