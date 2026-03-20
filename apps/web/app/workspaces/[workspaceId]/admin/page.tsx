@@ -212,7 +212,7 @@ type AdminRightSidebarState = {
 
 type AdminWorkspaceDataState = WorkspaceAdminSummaryPayload;
 
-type MemberDirectoryStatus = 'ADMIN' | 'ACTIVE' | 'INVITED' | 'LEFT';
+type MemberDirectoryStatus = 'ADMIN' | 'ACTIVE' | 'INVITED' | 'INACTIVE';
 
 type MemberDirectoryItem = {
   id: string;
@@ -224,6 +224,13 @@ type MemberDirectoryItem = {
   memberUserId: string | null;
   canRemove: boolean;
 };
+
+const MEMBER_DIRECTORY_STATUS_OPTIONS: MemberDirectoryStatus[] = [
+  'ADMIN',
+  'ACTIVE',
+  'INVITED',
+  'INACTIVE',
+];
 
 type RemoveMemberConfirmationState = {
   memberUserId: string;
@@ -299,20 +306,20 @@ function buildMemberDirectoryItems({
     canRemove: false,
   }));
 
-  const leftMembers = members
+  const inactiveMembers = members
     .filter((member) => member.status !== 'ACTIVE')
     .map((member) => ({
       id: `member:${member.userId}`,
       displayName: `${member.firstName} ${member.lastName}`.trim(),
       email: member.email,
-      status: 'LEFT' as const,
+      status: 'INACTIVE' as const,
       detail: `Member since ${formatMemberDirectoryDate(member.joinedAt, timezone)}`,
       invitationId: null,
       memberUserId: member.userId,
       canRemove: false,
     }));
 
-  return [...activeMembers, ...invitedPeople, ...leftMembers];
+  return [...activeMembers, ...invitedPeople, ...inactiveMembers];
 }
 
 function AdminViewportDialog({
@@ -508,6 +515,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
   const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
     useState<DeleteRoomConfirmationState | null>(null);
+  const [isMemberDirectoryFilterOpen, setIsMemberDirectoryFilterOpen] = useState(false);
+  const [visibleMemberDirectoryStatuses, setVisibleMemberDirectoryStatuses] = useState<
+    Set<MemberDirectoryStatus>
+  >(() => new Set(MEMBER_DIRECTORY_STATUS_OPTIONS));
   const [isDeleteRoomCredentialsUnlocked, setIsDeleteRoomCredentialsUnlocked] = useState(false);
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState<WorkspaceSettingsState>(() =>
     buildWorkspaceSettingsState({
@@ -532,6 +543,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   );
   const adminDataRequestIdRef = useRef(0);
   const lastSelectedWorkspaceIdRef = useRef<string | null>(null);
+  const memberDirectoryFilterMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin =
     selectedWorkspace?.membership?.status === 'ACTIVE' &&
@@ -554,6 +566,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       }),
     [members, pendingInvitations, selectedWorkspace?.timezone],
   );
+  const filteredMemberDirectoryItems = useMemo(
+    () =>
+      memberDirectoryItems.filter((person) => visibleMemberDirectoryStatuses.has(person.status)),
+    [memberDirectoryItems, visibleMemberDirectoryStatuses],
+  );
+  const hiddenMemberDirectoryStatusCount =
+    MEMBER_DIRECTORY_STATUS_OPTIONS.length - visibleMemberDirectoryStatuses.size;
   const bookingLoadDateRange = useMemo(
     () => resolveBookingLoadDateRange({ timezone: rightSidebarTimezone, monthKey }),
     [monthKey, rightSidebarTimezone],
@@ -575,6 +594,34 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     setPendingInvitations(cachedState?.invitations.items ?? []);
     setHasLoadedAdminData(Boolean(cachedState));
   }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!isMemberDirectoryFilterOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (memberDirectoryFilterMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsMemberDirectoryFilterOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsMemberDirectoryFilterOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMemberDirectoryFilterOpen]);
 
   const loadAdminData = useCallback(async () => {
     if (!selectedWorkspaceId || !isAdmin) {
@@ -1645,74 +1692,176 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                 Keep active members, former members, and invited people in one list.
               </p>
             </div>
+            <div className="relative" ref={memberDirectoryFilterMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsMemberDirectoryFilterOpen((current) => !current)}
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-slate-50 ${
+                  hiddenMemberDirectoryStatusCount > 0
+                    ? 'border-amber-300 bg-amber-50 text-amber-900'
+                    : 'border-slate-200 bg-white text-slate-700'
+                }`}
+                aria-expanded={isMemberDirectoryFilterOpen}
+                aria-haspopup="dialog"
+              >
+                Filter
+                {hiddenMemberDirectoryStatusCount > 0 ? (
+                  <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-amber-900">
+                    {visibleMemberDirectoryStatuses.size}/{MEMBER_DIRECTORY_STATUS_OPTIONS.length}
+                  </span>
+                ) : null}
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-4 w-4 transition-transform ${
+                    isMemberDirectoryFilterOpen ? 'rotate-180' : ''
+                  }`}
+                  aria-hidden="true"
+                >
+                  <path d="m5 8 5 5 5-5" />
+                </svg>
+              </button>
+              {isMemberDirectoryFilterOpen ? (
+                <div
+                  className="absolute right-0 top-full z-40 mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
+                  style={{
+                    width: 'max-content',
+                    maxWidth: 'min(28rem, calc(100vw - 2rem))',
+                  }}
+                >
+                  <div className="flex items-center justify-start">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleMemberDirectoryStatuses(new Set(MEMBER_DIRECTORY_STATUS_OPTIONS))
+                      }
+                      className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                    >
+                      Show all
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {MEMBER_DIRECTORY_STATUS_OPTIONS.map((status) => {
+                      const isVisible = visibleMemberDirectoryStatuses.has(status);
+
+                      return (
+                        <label
+                          key={status}
+                          className="flex cursor-pointer items-center justify-start gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isVisible}
+                            onChange={() =>
+                              setVisibleMemberDirectoryStatuses((previous) => {
+                                const next = new Set(previous);
+
+                                if (next.has(status)) {
+                                  next.delete(status);
+                                } else {
+                                  next.add(status);
+                                }
+
+                                return next;
+                              })
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                          />
+                          <span className={getMemberDirectoryBadgeClassName(status)}>{status}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
           {hasLoadedAdminData && memberDirectoryItems.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No members or invitations yet.</p>
           ) : memberDirectoryItems.length > 0 ? (
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
-                <thead>
-                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    <th className="w-[22%] border-b border-slate-200 px-3 py-3">Name</th>
-                    <th className="w-[28%] border-b border-slate-200 px-3 py-3">Email</th>
-                    <th className="w-[24%] border-b border-slate-200 px-3 py-3">Timeline</th>
-                    <th className="w-[14%] border-b border-slate-200 px-3 py-3">Status</th>
-                    <th className="w-[12%] border-b border-slate-200 px-3 py-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {memberDirectoryItems.map((person) => (
-                    <tr key={person.id} className="align-middle">
-                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
-                        {person.displayName ? (
-                          <span className="font-medium text-slate-900">{person.displayName}</span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <span className="break-all">{person.email}</span>
-                      </td>
-                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        {person.detail}
-                      </td>
-                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                        <span className={getMemberDirectoryBadgeClassName(person.status)}>
-                          {person.status}
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                        {person.invitationId ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRevokeInvitation(person.invitationId!)}
-                            disabled={revokingInvitationId === person.invitationId}
-                            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {revokingInvitationId === person.invitationId
-                              ? 'Revoking...'
-                              : 'Revoke'}
-                          </button>
-                        ) : person.canRemove && person.memberUserId ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRemoveMemberDialog(person.memberUserId!)}
-                            disabled={removingMemberUserId === person.memberUserId}
-                            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {removingMemberUserId === person.memberUserId
-                              ? 'Removing...'
-                              : 'Remove'}
-                          </button>
-                        ) : (
-                          <span className="text-sm text-slate-400">-</span>
-                        )}
-                      </td>
+            filteredMemberDirectoryItems.length > 0 ? (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <th className="w-[22%] border-b border-slate-200 px-3 py-3">Name</th>
+                      <th className="w-[28%] border-b border-slate-200 px-3 py-3">Email</th>
+                      <th className="w-[24%] border-b border-slate-200 px-3 py-3">Timeline</th>
+                      <th className="w-[14%] border-b border-slate-200 px-3 py-3">Status</th>
+                      <th className="w-[12%] border-b border-slate-200 px-3 py-3">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredMemberDirectoryItems.map((person) => (
+                      <tr key={person.id} className="align-middle">
+                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900">
+                          {person.displayName ? (
+                            <span className="font-medium text-slate-900">{person.displayName}</span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                          <span className="break-all">{person.email}</span>
+                        </td>
+                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                          {person.detail}
+                        </td>
+                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                          <span className={getMemberDirectoryBadgeClassName(person.status)}>
+                            {person.status}
+                          </span>
+                        </td>
+                        <td className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                          {person.invitationId ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleRevokeInvitation(person.invitationId!)}
+                              disabled={revokingInvitationId === person.invitationId}
+                              className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {revokingInvitationId === person.invitationId
+                                ? 'Revoking...'
+                                : 'Revoke'}
+                            </button>
+                          ) : person.canRemove && person.memberUserId ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRemoveMemberDialog(person.memberUserId!)}
+                              disabled={removingMemberUserId === person.memberUserId}
+                              className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {removingMemberUserId === person.memberUserId
+                                ? 'Removing...'
+                                : 'Remove'}
+                            </button>
+                          ) : (
+                            <span className="text-sm text-slate-400">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <p>No people match the selected status filters.</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleMemberDirectoryStatuses(new Set(MEMBER_DIRECTORY_STATUS_OPTIONS))
+                  }
+                  className="mt-2 text-sm font-medium text-brand hover:brightness-95"
+                >
+                  Show all statuses
+                </button>
+              </div>
+            )
           ) : null}
         </section>
       </div>

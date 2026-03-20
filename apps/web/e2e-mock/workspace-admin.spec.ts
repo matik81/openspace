@@ -53,7 +53,7 @@ test('updates workspace settings and manages rooms and invitations', async ({ pa
   );
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
-  ).toContainText('LEFT');
+  ).toContainText('INACTIVE');
   await membersSection.getByPlaceholder('Invite by email').fill('teammate@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();
   await expect(page.getByRole('heading', { name: 'Pending Invitations' })).toHaveCount(0);
@@ -109,8 +109,50 @@ test('removes an active member with email and password confirmation', async ({ p
   await dialog.getByLabel('Password').fill('password123');
   await dialog.getByRole('button', { name: 'Remove member' }).click();
 
-  await expect(graceRow).toContainText('LEFT');
+  await expect(graceRow).toContainText('INACTIVE');
   await expect(graceRow.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+});
+
+test('filters the member directory by status', async ({ page }) => {
+  await page.goto(workspaceAdminPathBySlug(MOCK_SLUGS.adminWorkspace));
+
+  await page.getByRole('link', { name: 'Members' }).click();
+  const directorySection = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Directory' }),
+  });
+  const filterButton = directorySection.getByRole('button', { name: /^Filter/ });
+
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toHaveCount(1);
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' })).toHaveCount(
+    1,
+  );
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toHaveCount(1);
+
+  await filterButton.click();
+  await page.getByRole('checkbox', { name: 'INACTIVE', exact: true }).click();
+
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toHaveCount(0);
+  await expect(filterButton).toContainText('3/4');
+
+  await page.getByRole('checkbox', { name: 'ADMIN', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'ACTIVE', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'INVITED', exact: true }).click();
+
+  await expect(directorySection.getByText('No people match the selected status filters.')).toBeVisible();
+  await filterButton.click();
+  await directorySection.getByRole('button', { name: 'Show all statuses' }).click();
+
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Ada Admin' })).toHaveCount(1);
+  await expect(directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' })).toHaveCount(
+    1,
+  );
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toHaveCount(1);
 });
 
 test('cancels the workspace and redirects back to the dashboard', async ({ page }) => {

@@ -33,7 +33,17 @@ test('creates a room and invitation against the real API from the admin page', a
   );
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
-  ).toContainText('LEFT');
+  ).toContainText('INACTIVE');
+  const filterButton = directorySection.getByRole('button', { name: /^Filter/ });
+  await filterButton.click();
+  await page.getByRole('checkbox', { name: 'INACTIVE', exact: true }).click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toHaveCount(0);
+  await directorySection.getByRole('button', { name: 'Show all' }).click();
+  await expect(
+    directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
+  ).toHaveCount(1);
   await membersSection.getByPlaceholder('Invite by email').fill('real.e2e.member@example.com');
   await membersSection.getByRole('button', { name: 'Invite' }).click();
 
