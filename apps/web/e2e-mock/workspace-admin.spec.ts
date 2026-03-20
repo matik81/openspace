@@ -87,7 +87,7 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
   await graceRow.getByRole('menuitem', { name: 'Demote to member' }).click();
   await expect(graceRow).toContainText('ACTIVE');
   await graceRow.getByRole('button', { name: 'Actions' }).click();
-  await expect(graceRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await expect(graceRow.getByRole('menuitem', { name: 'Remove member' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'Katherine Johnson' }),
@@ -100,7 +100,7 @@ test('owner updates workspace settings, manages rooms and invitations, and promo
   ).toContainText('INVITED');
   const invitedRow = directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' });
   await invitedRow.getByRole('button', { name: 'Actions' }).click();
-  await invitedRow.getByRole('menuitem', { name: 'Revoke' }).click();
+  await invitedRow.getByRole('menuitem', { name: 'Revoke invitation' }).click();
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'teammate@example.com' }),
   ).toHaveCount(0);
@@ -137,7 +137,7 @@ test('removes an active member with email and password confirmation', async ({ p
 
   await expect(graceRow).toContainText('ACTIVE');
   await graceRow.getByRole('button', { name: 'Actions' }).click();
-  await graceRow.getByRole('menuitem', { name: 'Remove' }).click();
+  await graceRow.getByRole('menuitem', { name: 'Remove member' }).click();
 
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Remove Member' }),
@@ -283,7 +283,7 @@ test('non-owner admins keep resource access, can leave, and do not see owner-onl
   const graceRow = directorySection.getByRole('row').filter({ hasText: 'Grace Hopper' });
 
   await graceRow.getByRole('button', { name: 'Actions' }).click();
-  await expect(graceRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await expect(graceRow.getByRole('menuitem', { name: 'Remove member' })).toBeVisible();
   await expect(graceRow.getByRole('menuitem', { name: 'Promote to admin' })).toHaveCount(0);
   await expect(graceRow.getByRole('menuitem', { name: 'Demote to member' })).toHaveCount(0);
   await page.keyboard.press('Escape');

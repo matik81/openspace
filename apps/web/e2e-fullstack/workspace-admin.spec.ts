@@ -74,7 +74,7 @@ test('creates a room and invitation against the real API from the control panel'
     hasText: 'real.e2e.member@example.com',
   });
   await invitedRow.getByRole('button', { name: 'Actions' }).click();
-  await invitedRow.getByRole('menuitem', { name: 'Revoke' }).click();
+  await invitedRow.getByRole('menuitem', { name: 'Revoke invitation' }).click();
   await expect(
     directorySection.getByRole('row').filter({ hasText: 'real.e2e.member@example.com' }),
   ).toHaveCount(0);
@@ -122,7 +122,7 @@ test('non-owner admins keep resource access, do not see owner-only actions, and 
 
   await expect(memberRow).toContainText('ACTIVE');
   await memberRow.getByRole('button', { name: 'Actions' }).click();
-  await expect(memberRow.getByRole('menuitem', { name: 'Remove' })).toBeVisible();
+  await expect(memberRow.getByRole('menuitem', { name: 'Remove member' })).toBeVisible();
   await expect(memberRow.getByRole('menuitem', { name: 'Promote to admin' })).toHaveCount(0);
   await expect(memberRow.getByRole('menuitem', { name: 'Demote to member' })).toHaveCount(0);
   await page.keyboard.press('Escape');

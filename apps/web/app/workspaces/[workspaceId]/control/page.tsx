@@ -491,7 +491,7 @@ export default function WorkspaceAdminPage() {
       selectedWorkspaceName={workspaceName || undefined}
       pageTitle="Control Panel"
       pageDescription="Manage workspace settings, resources, members, and invitations."
-      pageContentPaddingClassName="px-4 pb-4 pt-0 sm:px-5 sm:pb-5 sm:pt-0"
+      pageContentPaddingClassName="flex h-full flex-col px-4 pb-4 pt-0 sm:px-5 sm:pb-5 sm:pt-0"
       pageBackHref={pageBackHref}
       pageBackLabel="Close"
       pageBackAriaLabel="Close control panel"
@@ -1835,7 +1835,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         ) : null}
       </section>
     ) : activeSubpanel === 'members' ? (
-      <div className="space-y-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -1874,7 +1874,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           </form>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -1976,8 +1976,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             <p className="mt-3 text-sm text-slate-600">No members or invitations yet.</p>
           ) : memberDirectoryItems.length > 0 ? (
             filteredMemberDirectoryItems.length > 0 ? (
-              <div className="mt-3 overflow-x-auto">
-                <div className="min-w-[940px]">
+              <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-x-auto">
+                <div className="flex min-h-0 min-w-[940px] flex-col">
                   <table className="w-full table-fixed border-separate border-spacing-0">
                     <MemberDirectoryColumnGroup />
                     <thead>
@@ -1990,7 +1990,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                       </tr>
                     </thead>
                   </table>
-                  <div className="max-h-[28rem] overflow-y-auto">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     <table className="w-full table-fixed border-separate border-spacing-0">
                       <MemberDirectoryColumnGroup />
                       <tbody>
@@ -2026,7 +2026,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             person.canRevokeInvitation && person.invitationId
                               ? {
                                   key: 'revoke',
-                                  label: 'Revoke',
+                                  label: 'Revoke invitation',
                                   kind: 'danger',
                                   disabled: isRevoking,
                                   onClick: () => {
@@ -2062,7 +2062,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                             person.canRemove && person.memberUserId
                               ? {
                                   key: 'remove',
-                                  label: 'Remove',
+                                  label: 'Remove member',
                                   kind: 'danger',
                                   disabled: isRemoving,
                                   onClick: () => {
@@ -2243,9 +2243,9 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   return {
     rightSidebar,
     main: (
-      <div className="space-y-4">
-        <div className="grid items-start gap-3 xl:grid-cols-[14rem_minmax(0,1fr)]">
-          <aside className="xl:sticky xl:top-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <aside className="self-start xl:sticky xl:top-4">
             <nav className="flex flex-col gap-1" aria-label="Control panel sections">
               {visibleAdminSubpanels.map((subpanel) => {
                 const isActive = subpanel.id === activeSubpanel;
@@ -2273,7 +2273,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             </nav>
           </aside>
 
-          <div className="pt-2 sm:pt-3">{activeSubpanelContent}</div>
+          <div className="flex min-h-0 min-w-0 flex-col pt-2 sm:pt-3">{activeSubpanelContent}</div>
         </div>
 
         {isCancelWorkspaceFormVisible ? (
