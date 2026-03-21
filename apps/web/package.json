@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm run test:e2e:mock",
+    "pretest:e2e:mock": "pnpm --filter @openspace/shared build",
+    "pretest:e2e:fullstack": "pnpm --filter @openspace/shared build",
     "test:e2e:mock": "playwright test -c ./playwright.mock.config.ts",
     "test:e2e:fullstack": "playwright test -c ./playwright.fullstack.config.ts"
   },
