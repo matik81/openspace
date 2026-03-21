@@ -18,8 +18,10 @@ import {
   UserStatus,
   WorkspaceStatus,
 } from '../generated/prisma';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
+import { requireTrimmedString } from '../common/string-field-validation';
 import {
   isBookingWithinAllowedHours,
   isSingleLocalDay,
@@ -150,7 +152,7 @@ export class BookingsService {
           createdByUserId: user.id,
           startAt,
           endAt,
-          subject: this.requireString(dto.subject, 'subject'),
+          subject: this.requireString(dto.subject, 'subject', STRING_LENGTH_LIMITS.bookingSubject),
           criticality: this.parseCriticality(dto.criticality),
           status: BookingStatus.ACTIVE,
         },
@@ -212,7 +214,10 @@ export class BookingsService {
     const roomId = dto.roomId !== undefined ? this.requireUuid(dto.roomId, 'roomId') : existing.roomId;
     const startAt = dto.startAt !== undefined ? this.parseDate(dto.startAt, 'startAt') : existing.startAt;
     const endAt = dto.endAt !== undefined ? this.parseDate(dto.endAt, 'endAt') : existing.endAt;
-    const subject = dto.subject !== undefined ? this.requireString(dto.subject, 'subject') : existing.subject;
+    const subject =
+      dto.subject !== undefined
+        ? this.requireString(dto.subject, 'subject', STRING_LENGTH_LIMITS.bookingSubject)
+        : existing.subject;
     const criticality =
       dto.criticality !== undefined ? this.parseCriticality(dto.criticality) : existing.criticality;
 
@@ -570,15 +575,16 @@ export class BookingsService {
     return null;
   }
 
-  private requireString(value: string | undefined | null, fieldName: string): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({ code: 'BAD_REQUEST', message: `${fieldName} is required` });
-    }
-    return value.trim();
+  private requireString(
+    value: string | undefined | null,
+    fieldName: string,
+    maxLength?: number,
+  ): string {
+    return requireTrimmedString(value, fieldName, { maxLength });
   }
 
   private normalizeEmail(value: string | undefined | null): string {
-    return this.requireString(value, 'email').toLowerCase();
+    return this.requireString(value, 'email', STRING_LENGTH_LIMITS.userEmail).toLowerCase();
   }
 
   private formatHourLabel(hour: number): string {

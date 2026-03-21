@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
@@ -77,6 +79,11 @@ export async function POST(request: NextRequest, context: WorkspaceRouteContext)
       );
     }
 
+    const nameError = getMaxLengthError(name, 'name', STRING_LENGTH_LIMITS.roomName);
+    if (nameError) {
+      return NextResponse.json<ErrorPayload>(nameError, { status: 400 });
+    }
+
     let description: string | undefined;
     if (Object.prototype.hasOwnProperty.call(body, 'description')) {
       const value = getTrimmedString(body, 'description');
@@ -88,6 +95,15 @@ export async function POST(request: NextRequest, context: WorkspaceRouteContext)
           },
           { status: 400 },
         );
+      }
+
+      const descriptionError = getMaxLengthError(
+        value,
+        'description',
+        STRING_LENGTH_LIMITS.roomDescription,
+      );
+      if (descriptionError) {
+        return NextResponse.json<ErrorPayload>(descriptionError, { status: 400 });
       }
 
       description = value;

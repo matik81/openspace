@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
@@ -80,6 +82,15 @@ export async function POST(request: NextRequest, context: WorkspaceRouteContext)
         },
         { status: 400 },
       );
+    }
+
+    const subjectError = getMaxLengthError(
+      subject,
+      'subject',
+      STRING_LENGTH_LIMITS.bookingSubject,
+    );
+    if (subjectError) {
+      return NextResponse.json<ErrorPayload>(subjectError, { status: 400 });
     }
 
     let criticality: string | undefined;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
@@ -72,6 +74,11 @@ export async function POST(request: NextRequest, context: WorkspaceRouteContext)
         },
         { status: 400 },
       );
+    }
+
+    const emailError = getMaxLengthError(email, 'email', STRING_LENGTH_LIMITS.userEmail);
+    if (emailError) {
+      return NextResponse.json<ErrorPayload>(emailError, { status: 400 });
     }
 
     return proxyAuthenticatedApiRequest(request, {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type BookingRouteContext = {
@@ -99,6 +101,15 @@ export async function PATCH(
           },
           { status: 400 },
         );
+      }
+
+      const subjectError = getMaxLengthError(
+        subject,
+        'subject',
+        STRING_LENGTH_LIMITS.bookingSubject,
+      );
+      if (subjectError) {
+        return NextResponse.json<ErrorPayload>(subjectError, { status: 400 });
       }
       updatePayload.subject = subject;
     }

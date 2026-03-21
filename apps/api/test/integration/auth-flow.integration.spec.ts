@@ -403,6 +403,38 @@ describe('Auth flow integration', () => {
     expect(response.body.code).toBe('INVALID_VERIFICATION_TOKEN');
   });
 
+  it('rejects overlong registration fields and passwords before creating an account', async () => {
+    const overlongFirstNameResponse = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        firstName: 'A'.repeat(101),
+        lastName: 'Lovelace',
+        email: 'too-long-name@example.com',
+        password: 'strong-password',
+      });
+
+    expect(overlongFirstNameResponse.status).toBe(400);
+    expect(overlongFirstNameResponse.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'firstName must be at most 100 characters',
+    });
+
+    const overlongPasswordResponse = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'too-long-password@example.com',
+        password: 'é'.repeat(40),
+      });
+
+    expect(overlongPasswordResponse.status).toBe(400);
+    expect(overlongPasswordResponse.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'password must be at most 72 UTF-8 bytes',
+    });
+  });
+
   it('allows restarting registration for an active user whose email is not verified', async () => {
     const firstRegisterResponse = await request(app.getHttpServer()).post('/api/auth/register').send({
       firstName: 'Ada',

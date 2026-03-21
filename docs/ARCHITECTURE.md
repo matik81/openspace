@@ -43,6 +43,7 @@ Notes:
 - Refresh tokens are hashed and stored on the `User` record.
 - Rate-limit tracking and suspensions are persisted in PostgreSQL.
 - Account deletion is logical and cancels owned workspaces while only inactivating non-owned memberships and cancelling the user's future bookings where required.
+- User-facing persisted string fields use shared max-length constants from `packages/shared` and are validated consistently in the web app, the Next.js proxy routes, and the NestJS services.
 
 ## Database
 
@@ -62,6 +63,7 @@ Key design decisions:
 - Persisted per-user visible workspace ordering through `UserWorkspacePreference`
 - Persisted email verification tokens and password reset tokens
 - Persisted rate-limit operation logs and suspensions
+- Explicit `varchar` bounds for persisted user-facing strings such as names, emails, slugs, room descriptions, booking subjects, token hashes, and IP addresses
 
 Current status model:
 
@@ -112,6 +114,7 @@ Current auth and session lifecycle:
 - authenticated web proxy routes retry once on `401` after calling `/api/auth/refresh`
 - logout calls backend `/api/auth/logout` and then clears cookies locally
 - `OPENSPACE_API_BASE_URL` controls the backend origin and falls back to `http://localhost:3001` in local development
+- shared string-length rules are enforced in browser forms, in proxy-route request parsing, and again in the backend services before persistence
 
 ## Testing Topology
 

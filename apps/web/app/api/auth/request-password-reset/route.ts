@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -19,6 +21,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { code: 'BAD_REQUEST', message: 'email is required' },
         { status: 400 },
       );
+    }
+
+    const emailError = getMaxLengthError(email, 'email', STRING_LENGTH_LIMITS.userEmail);
+    if (emailError) {
+      return NextResponse.json<ErrorPayload>(emailError, { status: 400 });
     }
 
     const result = await proxyApiRequest({

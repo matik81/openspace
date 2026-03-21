@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { FormEvent, useState } from 'react';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload } from '@/lib/types';
@@ -75,6 +79,7 @@ export function AccountSettingsModal({
               <span className="mb-1 block text-sm font-medium text-slate-700">First name</span>
               <input
                 required
+                maxLength={STRING_LENGTH_LIMITS.userFirstName}
                 value={form.firstName}
                 onChange={(event) => onChange({ ...form, firstName: event.target.value })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -85,6 +90,7 @@ export function AccountSettingsModal({
               <span className="mb-1 block text-sm font-medium text-slate-700">Last name</span>
               <input
                 required
+                maxLength={STRING_LENGTH_LIMITS.userLastName}
                 value={form.lastName}
                 onChange={(event) => onChange({ ...form, lastName: event.target.value })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
@@ -111,6 +117,7 @@ export function AccountSettingsModal({
               <span className="mb-1 block text-sm font-medium text-slate-700">Current password</span>
               <input
                 type="password"
+                maxLength={PASSWORD_MAX_UTF8_BYTES}
                 name="account-current-secret"
                 autoComplete="off"
                 data-1p-ignore="true"
@@ -132,6 +139,7 @@ export function AccountSettingsModal({
               </span>
               <input
                 minLength={8}
+                maxLength={PASSWORD_MAX_UTF8_BYTES}
                 type="password"
                 name="account-new-secret"
                 autoComplete="off"
@@ -151,6 +159,7 @@ export function AccountSettingsModal({
               </span>
               <input
                 minLength={8}
+                maxLength={PASSWORD_MAX_UTF8_BYTES}
                 type="password"
                 name="account-confirm-secret"
                 autoComplete="off"

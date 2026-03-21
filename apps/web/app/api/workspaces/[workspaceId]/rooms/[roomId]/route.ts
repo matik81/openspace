@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type RoomRouteContext = {
@@ -54,6 +56,11 @@ export async function PATCH(request: NextRequest, context: RoomRouteContext): Pr
         );
       }
 
+      const nameError = getMaxLengthError(name, 'name', STRING_LENGTH_LIMITS.roomName);
+      if (nameError) {
+        return NextResponse.json<ErrorPayload>(nameError, { status: 400 });
+      }
+
       updatePayload.name = name;
     }
 
@@ -71,6 +78,15 @@ export async function PATCH(request: NextRequest, context: RoomRouteContext): Pr
             },
             { status: 400 },
           );
+        }
+
+        const descriptionError = getMaxLengthError(
+          description,
+          'description',
+          STRING_LENGTH_LIMITS.roomDescription,
+        );
+        if (descriptionError) {
+          return NextResponse.json<ErrorPayload>(descriptionError, { status: 400 });
         }
 
         updatePayload.description = description;
@@ -140,6 +156,21 @@ export async function DELETE(request: NextRequest, context: RoomRouteContext): P
         },
         { status: 400 },
       );
+    }
+
+    const roomNameError = getMaxLengthError(roomName, 'roomName', STRING_LENGTH_LIMITS.roomName);
+    if (roomNameError) {
+      return NextResponse.json<ErrorPayload>(roomNameError, { status: 400 });
+    }
+
+    const emailError = getMaxLengthError(email, 'email', STRING_LENGTH_LIMITS.userEmail);
+    if (emailError) {
+      return NextResponse.json<ErrorPayload>(emailError, { status: 400 });
+    }
+
+    const passwordError = getMaxUtf8BytesError(password, 'password', PASSWORD_MAX_UTF8_BYTES);
+    if (passwordError) {
+      return NextResponse.json<ErrorPayload>(passwordError, { status: 400 });
     }
 
     return proxyAuthenticatedApiRequest(request, {

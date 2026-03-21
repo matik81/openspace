@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceRouteContext = {
@@ -89,6 +91,11 @@ export async function PATCH(
         );
       }
 
+      const nameError = getMaxLengthError(name, 'name', STRING_LENGTH_LIMITS.workspaceName);
+      if (nameError) {
+        return NextResponse.json<ErrorPayload>(nameError, { status: 400 });
+      }
+
       updatePayload.name = name;
     }
 
@@ -104,6 +111,11 @@ export async function PATCH(
         );
       }
 
+      const slugError = getMaxLengthError(slug, 'slug', STRING_LENGTH_LIMITS.workspaceSlug);
+      if (slugError) {
+        return NextResponse.json<ErrorPayload>(slugError, { status: 400 });
+      }
+
       updatePayload.slug = slug;
     }
 
@@ -117,6 +129,15 @@ export async function PATCH(
           },
           { status: 400 },
         );
+      }
+
+      const timezoneError = getMaxLengthError(
+        timezone,
+        'timezone',
+        STRING_LENGTH_LIMITS.workspaceTimezone,
+      );
+      if (timezoneError) {
+        return NextResponse.json<ErrorPayload>(timezoneError, { status: 400 });
       }
 
       updatePayload.timezone = timezone;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { OPAQUE_TOKEN_MAX_LENGTH } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -19,6 +21,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { code: 'BAD_REQUEST', message: 'token is required' },
         { status: 400 },
       );
+    }
+
+    const tokenError = getMaxLengthError(token, 'token', OPAQUE_TOKEN_MAX_LENGTH);
+    if (tokenError) {
+      return NextResponse.json<ErrorPayload>(tokenError, { status: 400 });
     }
 
     const result = await proxyApiRequest({

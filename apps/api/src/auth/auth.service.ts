@@ -18,8 +18,19 @@ import {
   UserStatus,
   WorkspaceStatus,
 } from '../generated/prisma';
+import {
+  OPAQUE_TOKEN_MAX_LENGTH,
+  PASSWORD_MAX_UTF8_BYTES,
+  REFRESH_TOKEN_MAX_LENGTH,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
+import {
+  assertMaxUtf8ByteLength,
+  requirePassword as requireBoundedPassword,
+  requireTrimmedString,
+} from '../common/string-field-validation';
 import { OperationLimitsService } from '../common/operation-limits.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
@@ -61,7 +72,11 @@ export class AuthService {
 
   async registerWithContext(dto: RegisterDto, context: { ipAddress: string }): Promise<RegisterResult> {
     await this.operationLimitsService.assertRegistrationAllowed(context.ipAddress);
-    const invitationToken = this.optionalString(dto.invitationToken);
+    const invitationToken = this.optionalString(
+      dto.invitationToken,
+      'invitationToken',
+      OPAQUE_TOKEN_MAX_LENGTH,
+    );
 
     if (invitationToken) {
       return this.registerWithInvitation(dto, invitationToken, context);
@@ -87,7 +102,7 @@ export class AuthService {
   }
 
   async verifyEmail(dto: VerifyEmailDto): Promise<{ verified: true }> {
-    const token = this.requireString(dto.token, 'token');
+    const token = this.requireString(dto.token, 'token', OPAQUE_TOKEN_MAX_LENGTH);
     const now = new Date();
 
     const verificationRecord = await this.prismaService.emailVerificationToken.findFirst({
@@ -187,15 +202,8 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<{ reset: true }> {
-    const token = this.requireString(dto.token, 'token');
-    const password = this.requireString(dto.password, 'password');
-
-    if (password.length < 8) {
-      throw new BadRequestException({
-        code: 'WEAK_PASSWORD',
-        message: 'Password must be at least 8 characters',
-      });
-    }
+    const token = this.requireString(dto.token, 'token', OPAQUE_TOKEN_MAX_LENGTH);
+    const password = this.requirePassword(dto.password);
 
     const now = new Date();
     const passwordResetRecord = await this.prismaService.passwordResetToken.findFirst({
@@ -253,7 +261,7 @@ export class AuthService {
     AuthTokenPair & { user: { id: string; email: string; firstName: string; lastName: string } }
   > {
     const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const password = this.requirePasswordInput(dto.password);
     const user = await this.prismaService.user.findUnique({
       where: { email },
     });
@@ -322,17 +330,23 @@ export class AuthService {
     dto: UpdateAccountDto,
   ): Promise<{ id: string; email: string; firstName: string; lastName: string }> {
     const userId = this.requireUuid(authUser.userId, 'userId');
-    const firstName = this.requireString(dto.firstName, 'firstName');
-    const lastName = this.requireString(dto.lastName, 'lastName');
-    const currentPassword = dto.currentPassword?.trim() ? dto.currentPassword.trim() : null;
-    const newPassword = dto.newPassword?.trim() ? dto.newPassword.trim() : null;
-
-    if (newPassword && newPassword.length < 8) {
-      throw new BadRequestException({
-        code: 'WEAK_PASSWORD',
-        message: 'Password must be at least 8 characters',
-      });
-    }
+    const firstName = this.requireString(
+      dto.firstName,
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    const lastName = this.requireString(
+      dto.lastName,
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
+    const currentPassword =
+      dto.currentPassword?.trim()
+        ? this.requirePasswordInput(dto.currentPassword, 'currentPassword')
+        : null;
+    const newPassword = dto.newPassword?.trim()
+      ? this.requirePassword(dto.newPassword, 'newPassword')
+      : null;
 
     const user = await this.prismaService.user.findUnique({
       where: { id: userId },
@@ -386,7 +400,11 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthTokenPair> {
-    const refreshToken = this.requireString(dto.refreshToken, 'refreshToken');
+    const refreshToken = this.requireString(
+      dto.refreshToken,
+      'refreshToken',
+      REFRESH_TOKEN_MAX_LENGTH,
+    );
     const payload = await this.verifyRefreshToken(refreshToken);
     const user = await this.prismaService.user.findUnique({
       where: { id: payload.sub },
@@ -427,7 +445,11 @@ export class AuthService {
   }
 
   async logout(dto: RefreshTokenDto): Promise<{ loggedOut: true }> {
-    const refreshToken = this.requireString(dto.refreshToken, 'refreshToken');
+    const refreshToken = this.requireString(
+      dto.refreshToken,
+      'refreshToken',
+      REFRESH_TOKEN_MAX_LENGTH,
+    );
     let payload: JwtSubject;
 
     try {
@@ -464,7 +486,7 @@ export class AuthService {
   ): Promise<{ cancelled: true }> {
     const userId = this.requireUuid(authUser.userId, 'userId');
     const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const password = this.requirePasswordInput(dto.password);
     const now = new Date();
 
     const user = await this.prismaService.user.findUnique({
@@ -667,23 +689,28 @@ export class AuthService {
     });
   }
 
-  private requireString(value: string | undefined | null, fieldName: string): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: `${fieldName} is required`,
-      });
-    }
-
-    return value.trim();
+  private requireString(
+    value: string | undefined | null,
+    fieldName: string,
+    maxLength?: number,
+  ): string {
+    return requireTrimmedString(value, fieldName, { maxLength });
   }
 
   private async registerWithEmailVerification(
     dto: RegisterDto,
     context: { ipAddress: string },
   ): Promise<RegisterResult> {
-    const firstName = this.requireString(dto.firstName, 'firstName');
-    const lastName = this.requireString(dto.lastName, 'lastName');
+    const firstName = this.requireString(
+      dto.firstName,
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    const lastName = this.requireString(
+      dto.lastName,
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
     const email = this.normalizeEmail(dto.email);
     const password = this.requirePassword(dto.password);
 
@@ -779,8 +806,16 @@ export class AuthService {
     context: { ipAddress: string },
   ): Promise<RegisterResult> {
     const invitation = await this.findInvitationRegistrationContext(invitationToken);
-    const firstName = this.requireString(dto.firstName, 'firstName');
-    const lastName = this.requireString(dto.lastName, 'lastName');
+    const firstName = this.requireString(
+      dto.firstName,
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    const lastName = this.requireString(
+      dto.lastName,
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
     const password = this.requirePassword(dto.password);
     const providedEmail = this.optionalEmail(dto.email);
 
@@ -872,7 +907,7 @@ export class AuthService {
     inviterName: string;
     expiresAt: Date;
   }> {
-    const invitationToken = this.requireString(token, 'token');
+    const invitationToken = this.requireString(token, 'token', OPAQUE_TOKEN_MAX_LENGTH);
     const now = new Date();
     const invitation = await this.prismaService.invitation.findFirst({
       where: {
@@ -926,7 +961,7 @@ export class AuthService {
   }
 
   private normalizeEmail(value: string | undefined | null): string {
-    return this.requireString(value, 'email').toLowerCase();
+    return this.requireString(value, 'email', STRING_LENGTH_LIMITS.userEmail).toLowerCase();
   }
 
   private optionalEmail(value: string | undefined | null): string | null {
@@ -937,23 +972,31 @@ export class AuthService {
     return this.normalizeEmail(value);
   }
 
-  private optionalString(value: string | undefined | null): string | null {
+  private optionalString(
+    value: string | undefined | null,
+    fieldName: string,
+    maxLength?: number,
+  ): string | null {
     if (typeof value !== 'string' || value.trim().length === 0) {
       return null;
     }
 
-    return value.trim();
+    return this.requireString(value, fieldName, maxLength);
   }
 
-  private requirePassword(value: string | undefined | null): string {
-    const password = this.requireString(value, 'password');
-    if (password.length < 8) {
-      throw new BadRequestException({
-        code: 'WEAK_PASSWORD',
-        message: 'Password must be at least 8 characters',
-      });
-    }
+  private requirePassword(
+    value: string | undefined | null,
+    fieldName = 'password',
+  ): string {
+    return requireBoundedPassword(value, fieldName);
+  }
 
+  private requirePasswordInput(
+    value: string | undefined | null,
+    fieldName = 'password',
+  ): string {
+    const password = this.requireString(value, fieldName);
+    assertMaxUtf8ByteLength(password, fieldName, PASSWORD_MAX_UTF8_BYTES);
     return password;
   }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { type CSSProperties, FormEvent, useEffect, useId, useMemo, useRef } from 'react';
 import {
   SCHEDULE_INTERVAL_MINUTES,
@@ -277,6 +278,7 @@ export function BookingModal({
               ref={titleInputRef}
               required
               disabled={!canEdit || isSubmitting}
+              maxLength={STRING_LENGTH_LIMITS.bookingSubject}
               value={draft.subject}
               onChange={(event) => onChange({ ...draft, subject: event.target.value })}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50"

@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,6 +27,7 @@ import { isRecord, normalizeErrorPayload } from '@/lib/api-contract';
 import { safeReadJson } from '@/lib/client-http';
 import { resolveDefaultTimezone } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload, WorkspaceItem } from '@/lib/types';
 import {
   buildWorkspaceControlPathFromSlug,
@@ -509,6 +514,35 @@ export function WorkspaceShell({
       }
 
       setAccountSettingsError(null);
+      const firstNameError = getMaxLengthError(
+        accountSettingsForm.firstName.trim(),
+        'firstName',
+        STRING_LENGTH_LIMITS.userFirstName,
+      );
+      if (firstNameError) {
+        setAccountSettingsError(firstNameError);
+        return;
+      }
+      const lastNameError = getMaxLengthError(
+        accountSettingsForm.lastName.trim(),
+        'lastName',
+        STRING_LENGTH_LIMITS.userLastName,
+      );
+      if (lastNameError) {
+        setAccountSettingsError(lastNameError);
+        return;
+      }
+      if (accountSettingsForm.currentPassword.trim()) {
+        const currentPasswordError = getMaxUtf8BytesError(
+          accountSettingsForm.currentPassword,
+          'currentPassword',
+          PASSWORD_MAX_UTF8_BYTES,
+        );
+        if (currentPasswordError) {
+          setAccountSettingsError(currentPasswordError);
+          return;
+        }
+      }
       if (
         accountSettingsForm.newPassword &&
         accountSettingsForm.newPassword !== accountSettingsForm.confirmNewPassword
@@ -518,6 +552,18 @@ export function WorkspaceShell({
           message: 'New password and confirmation must match',
         });
         return;
+      }
+
+      if (accountSettingsForm.newPassword) {
+        const newPasswordError = getMaxUtf8BytesError(
+          accountSettingsForm.newPassword,
+          'newPassword',
+          PASSWORD_MAX_UTF8_BYTES,
+        );
+        if (newPasswordError) {
+          setAccountSettingsError(newPasswordError);
+          return;
+        }
       }
 
       if (accountSettingsForm.newPassword && !accountSettingsForm.currentPassword.trim()) {

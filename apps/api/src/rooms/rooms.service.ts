@@ -18,9 +18,14 @@ import {
   WorkspaceRole,
   WorkspaceStatus,
 } from '../generated/prisma';
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { compare } from 'bcryptjs';
 import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
+import {
+  assertMaxUtf8ByteLength,
+  requireTrimmedString,
+} from '../common/string-field-validation';
 import { toLocalDateKey } from '../common/workspace-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoomDto } from './dto/create-room.dto';
@@ -47,7 +52,7 @@ export class RoomsService {
       RateLimitOperationType.CREATE_ROOM,
     );
     await this.assertWorkspaceRoomCapacity(normalizedWorkspaceId);
-    const roomName = this.requireString(dto.name, 'name');
+    const roomName = this.requireString(dto.name, 'name', STRING_LENGTH_LIMITS.roomName);
     await this.assertRoomNameAvailable(normalizedWorkspaceId, roomName);
 
     try {
@@ -121,7 +126,7 @@ export class RoomsService {
 
     const data: { name?: string; description?: string | null } = {};
     if (dto.name !== undefined) {
-      data.name = this.requireString(dto.name, 'name');
+      data.name = this.requireString(dto.name, 'name', STRING_LENGTH_LIMITS.roomName);
     }
     if (dto.description !== undefined) {
       data.description = this.normalizeUpdateDescription(dto.description);
@@ -161,7 +166,7 @@ export class RoomsService {
     const room = await this.findWorkspaceRoom(normalizedWorkspaceId, normalizedRoomId);
 
     if (
-      room.name !== this.requireString(dto.roomName, 'roomName') ||
+      room.name !== this.requireString(dto.roomName, 'roomName', STRING_LENGTH_LIMITS.roomName) ||
       user.email !== this.normalizeEmail(dto.email)
     ) {
       this.throwRoomDeleteConfirmationFailed();
@@ -171,7 +176,7 @@ export class RoomsService {
       where: { id: user.id },
       select: { passwordHash: true },
     });
-    if (!credentials || !(await compare(this.requireString(dto.password, 'password'), credentials.passwordHash))) {
+    if (!credentials || !(await compare(this.requirePasswordInput(dto.password), credentials.passwordHash))) {
       this.throwRoomDeleteConfirmationFailed();
     }
 
@@ -387,25 +392,26 @@ export class RoomsService {
     if (value === undefined) {
       return null;
     }
-    return this.requireString(value, 'description');
+    return this.requireString(value, 'description', STRING_LENGTH_LIMITS.roomDescription);
   }
 
   private normalizeUpdateDescription(value: string | null | undefined): string | null | undefined {
     if (value === undefined || value === null) {
       return value;
     }
-    return this.requireString(value, 'description');
+    return this.requireString(value, 'description', STRING_LENGTH_LIMITS.roomDescription);
   }
 
-  private requireString(value: string | undefined | null, fieldName: string): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({ code: 'BAD_REQUEST', message: `${fieldName} is required` });
-    }
-    return value.trim();
+  private requireString(
+    value: string | undefined | null,
+    fieldName: string,
+    maxLength?: number,
+  ): string {
+    return requireTrimmedString(value, fieldName, { maxLength });
   }
 
   private normalizeEmail(value: string | undefined | null): string {
-    return this.requireString(value, 'email').toLowerCase();
+    return this.requireString(value, 'email', STRING_LENGTH_LIMITS.userEmail).toLowerCase();
   }
 
   private requireUuid(value: string | undefined | null, fieldName: string): string {
@@ -446,6 +452,12 @@ export class RoomsService {
       return true;
     }
     return toLocalDateKey(cancelledAt, timezone) > selectedDateKey;
+  }
+
+  private requirePasswordInput(value: string | undefined | null, fieldName = 'password'): string {
+    const password = this.requireString(value, fieldName);
+    assertMaxUtf8ByteLength(password, fieldName, PASSWORD_MAX_UTF8_BYTES);
+    return password;
   }
 }
 

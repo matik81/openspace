@@ -1,3 +1,8 @@
+import {
+  OPAQUE_TOKEN_MAX_LENGTH,
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -86,6 +91,35 @@ describe('PublicAuthModal', () => {
     expect(screen.queryByText('Your session has expired. Please log in again.')).not.toBeInTheDocument();
   });
 
+  it('blocks login when the password exceeds the UTF-8 byte limit', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <PublicAuthModal
+        mode="login"
+        searchParams={createSearchParams()}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    const form = screen.getByLabelText('Password').closest('form');
+
+    expect(form).not.toBeNull();
+    await user.type(screen.getByLabelText('Email'), 'ada@example.com');
+    await user.type(screen.getByLabelText('Password'), '\u00E9'.repeat(40));
+    await user.click(within(form as HTMLFormElement).getByRole('button', { name: 'Login' }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        new RegExp(`^Password must be at most ${PASSWORD_MAX_UTF8_BYTES} UTF-8 bytes\\.$`),
+      ),
+    ).toBeVisible();
+  });
+
   it('marks registration credential fields to resist browser autofill', () => {
     render(
       <PublicAuthModal
@@ -100,10 +134,26 @@ describe('PublicAuthModal', () => {
 
     expect(form).not.toBeNull();
     expect(form).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('First name')).toHaveAttribute(
+      'maxlength',
+      String(STRING_LENGTH_LIMITS.userFirstName),
+    );
+    expect(screen.getByLabelText('Last name')).toHaveAttribute(
+      'maxlength',
+      String(STRING_LENGTH_LIMITS.userLastName),
+    );
     expect(screen.getByLabelText('Email')).toHaveAttribute('name', 'register-email');
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Email')).toHaveAttribute(
+      'maxlength',
+      String(STRING_LENGTH_LIMITS.userEmail),
+    );
     expect(screen.getByLabelText('Password')).toHaveAttribute('name', 'register-password');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByLabelText('Password')).toHaveAttribute(
+      'maxlength',
+      String(PASSWORD_MAX_UTF8_BYTES),
+    );
     expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
       'name',
       'register-confirm-password',
@@ -111,6 +161,40 @@ describe('PublicAuthModal', () => {
     expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
       'autocomplete',
       'new-password',
+    );
+    expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
+      'maxlength',
+      String(PASSWORD_MAX_UTF8_BYTES),
+    );
+  });
+
+  it('limits opaque token inputs in verification and password reset flows', () => {
+    const { rerender } = render(
+      <PublicAuthModal
+        mode="verify-email"
+        searchParams={createSearchParams()}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Verification token')).toHaveAttribute(
+      'maxlength',
+      String(OPAQUE_TOKEN_MAX_LENGTH),
+    );
+
+    rerender(
+      <PublicAuthModal
+        mode="reset-password"
+        searchParams={createSearchParams()}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Reset token')).toHaveAttribute(
+      'maxlength',
+      String(OPAQUE_TOKEN_MAX_LENGTH),
     );
   });
 

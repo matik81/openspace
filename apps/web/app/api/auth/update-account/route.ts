@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -26,6 +28,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
         { status: 400 },
       );
+    }
+
+    const firstNameError = getMaxLengthError(
+      firstName,
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    if (firstNameError) {
+      return NextResponse.json<ErrorPayload>(firstNameError, { status: 400 });
+    }
+
+    const lastNameError = getMaxLengthError(
+      lastName,
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
+    if (lastNameError) {
+      return NextResponse.json<ErrorPayload>(lastNameError, { status: 400 });
+    }
+
+    if (currentPassword) {
+      const currentPasswordError = getMaxUtf8BytesError(
+        currentPassword,
+        'currentPassword',
+        PASSWORD_MAX_UTF8_BYTES,
+      );
+      if (currentPasswordError) {
+        return NextResponse.json<ErrorPayload>(currentPasswordError, { status: 400 });
+      }
+    }
+
+    if (newPassword) {
+      const newPasswordError = getMaxUtf8BytesError(
+        newPassword,
+        'newPassword',
+        PASSWORD_MAX_UTF8_BYTES,
+      );
+      if (newPasswordError) {
+        return NextResponse.json<ErrorPayload>(newPasswordError, { status: 400 });
+      }
     }
 
     if (newPassword && !currentPassword) {

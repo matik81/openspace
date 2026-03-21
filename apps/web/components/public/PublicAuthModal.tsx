@@ -1,9 +1,15 @@
 'use client';
 
+import {
+  OPAQUE_TOKEN_MAX_LENGTH,
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { readErrorPayload } from '@/lib/client-http';
 import { getErrorDisplayMessage } from '@/lib/error-display';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload, InvitationRegistrationDetails } from '@/lib/types';
 import { SESSION_EXPIRED_MESSAGE } from '@/lib/user-messages';
 
@@ -206,6 +212,23 @@ export function PublicAuthModal({
     setError(null);
     setResetPasswordMessage(null);
 
+    const emailError = getMaxLengthError(loginForm.email.trim(), 'email', STRING_LENGTH_LIMITS.userEmail);
+    if (emailError) {
+      setError(emailError);
+      setIsSubmitting(false);
+      return;
+    }
+    const passwordError = getMaxUtf8BytesError(
+      loginForm.password,
+      'password',
+      PASSWORD_MAX_UTF8_BYTES,
+    );
+    if (passwordError) {
+      setError(passwordError);
+      setIsSubmitting(false);
+      return;
+    }
+
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {
@@ -234,6 +257,42 @@ export function PublicAuthModal({
         code: 'PASSWORD_MISMATCH',
         message: 'Password and password confirmation must match',
       });
+      return;
+    }
+    const firstNameError = getMaxLengthError(
+      registerForm.firstName.trim(),
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    if (firstNameError) {
+      setError(firstNameError);
+      return;
+    }
+    const lastNameError = getMaxLengthError(
+      registerForm.lastName.trim(),
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
+    if (lastNameError) {
+      setError(lastNameError);
+      return;
+    }
+    const emailError = getMaxLengthError(
+      registerForm.email.trim(),
+      'email',
+      STRING_LENGTH_LIMITS.userEmail,
+    );
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+    const passwordError = getMaxUtf8BytesError(
+      registerForm.password,
+      'password',
+      PASSWORD_MAX_UTF8_BYTES,
+    );
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -298,6 +357,17 @@ export function PublicAuthModal({
     setError(null);
     setResetPasswordMessage(null);
 
+    const tokenError = getMaxLengthError(
+      verificationToken.trim(),
+      'token',
+      OPAQUE_TOKEN_MAX_LENGTH,
+    );
+    if (tokenError) {
+      setError(tokenError);
+      setIsSubmitting(false);
+      return;
+    }
+
     const response = await fetch('/api/auth/verify-email', {
       method: 'POST',
       headers: {
@@ -326,6 +396,17 @@ export function PublicAuthModal({
     setIsSubmitting(true);
     setError(null);
     setResetPasswordMessage(null);
+
+    const emailError = getMaxLengthError(
+      resetPasswordForm.email.trim(),
+      'email',
+      STRING_LENGTH_LIMITS.userEmail,
+    );
+    if (emailError) {
+      setError(emailError);
+      setIsSubmitting(false);
+      return;
+    }
 
     const response = await fetch('/api/auth/request-password-reset', {
       method: 'POST',
@@ -359,6 +440,24 @@ export function PublicAuthModal({
         code: 'PASSWORD_MISMATCH',
         message: 'Password and password confirmation must match',
       });
+      return;
+    }
+    const tokenError = getMaxLengthError(
+      resetPasswordForm.token.trim(),
+      'token',
+      OPAQUE_TOKEN_MAX_LENGTH,
+    );
+    if (tokenError) {
+      setError(tokenError);
+      return;
+    }
+    const passwordError = getMaxUtf8BytesError(
+      resetPasswordForm.password,
+      'password',
+      PASSWORD_MAX_UTF8_BYTES,
+    );
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -559,6 +658,7 @@ export function PublicAuthModal({
               <input
                 required
                 type="email"
+                maxLength={STRING_LENGTH_LIMITS.userEmail}
                 value={loginForm.email}
                 onChange={(event) =>
                   setLoginForm((current) => ({ ...current, email: event.target.value }))
@@ -572,6 +672,7 @@ export function PublicAuthModal({
               <input
                 required
                 type="password"
+                maxLength={PASSWORD_MAX_UTF8_BYTES}
                 value={loginForm.password}
                 onChange={(event) =>
                   setLoginForm((current) => ({ ...current, password: event.target.value }))
@@ -627,6 +728,7 @@ export function PublicAuthModal({
                 <span className="mb-1 block text-sm font-medium text-slate-700">First name</span>
                 <input
                   required
+                  maxLength={STRING_LENGTH_LIMITS.userFirstName}
                   value={registerForm.firstName}
                   onChange={(event) =>
                     setRegisterForm((current) => ({ ...current, firstName: event.target.value }))
@@ -639,6 +741,7 @@ export function PublicAuthModal({
                 <span className="mb-1 block text-sm font-medium text-slate-700">Last name</span>
                 <input
                   required
+                  maxLength={STRING_LENGTH_LIMITS.userLastName}
                   value={registerForm.lastName}
                   onChange={(event) =>
                     setRegisterForm((current) => ({ ...current, lastName: event.target.value }))
@@ -653,6 +756,7 @@ export function PublicAuthModal({
               <input
                 required
                 type="email"
+                maxLength={STRING_LENGTH_LIMITS.userEmail}
                 name="register-email"
                 autoComplete="off"
                 autoCapitalize="none"
@@ -675,6 +779,7 @@ export function PublicAuthModal({
                 <input
                   required
                   minLength={8}
+                  maxLength={PASSWORD_MAX_UTF8_BYTES}
                   type="password"
                   name="register-password"
                   autoComplete="new-password"
@@ -695,6 +800,7 @@ export function PublicAuthModal({
                 <input
                   required
                   minLength={8}
+                  maxLength={PASSWORD_MAX_UTF8_BYTES}
                   type="password"
                   name="register-confirm-password"
                   autoComplete="new-password"
@@ -741,6 +847,7 @@ export function PublicAuthModal({
               </span>
               <input
                 required
+                maxLength={OPAQUE_TOKEN_MAX_LENGTH}
                 value={verificationToken}
                 onChange={(event) => setVerificationToken(event.target.value)}
                 placeholder="Paste token"
@@ -776,6 +883,7 @@ export function PublicAuthModal({
                 <input
                   required
                   type="email"
+                  maxLength={STRING_LENGTH_LIMITS.userEmail}
                   autoComplete="email"
                   value={resetPasswordForm.email}
                   onChange={(event) =>
@@ -815,6 +923,7 @@ export function PublicAuthModal({
                 <input
                   required
                   name="reset-token"
+                  maxLength={OPAQUE_TOKEN_MAX_LENGTH}
                   autoComplete="one-time-code"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -834,6 +943,7 @@ export function PublicAuthModal({
                   <input
                     required
                     minLength={8}
+                    maxLength={PASSWORD_MAX_UTF8_BYTES}
                     type="password"
                     name="new-password"
                     autoComplete="new-password"
@@ -855,6 +965,7 @@ export function PublicAuthModal({
                   <input
                     required
                     minLength={8}
+                    maxLength={PASSWORD_MAX_UTF8_BYTES}
                     type="password"
                     name="confirm-new-password"
                     autoComplete="new-password"

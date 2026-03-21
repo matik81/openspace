@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 type WorkspaceCancelRouteContext = {
@@ -48,6 +50,25 @@ export async function POST(
         },
         { status: 400 },
       );
+    }
+
+    const workspaceNameError = getMaxLengthError(
+      workspaceName,
+      'workspaceName',
+      STRING_LENGTH_LIMITS.workspaceName,
+    );
+    if (workspaceNameError) {
+      return NextResponse.json<ErrorPayload>(workspaceNameError, { status: 400 });
+    }
+
+    const emailError = getMaxLengthError(email, 'email', STRING_LENGTH_LIMITS.userEmail);
+    if (emailError) {
+      return NextResponse.json<ErrorPayload>(emailError, { status: 400 });
+    }
+
+    const passwordError = getMaxUtf8BytesError(password, 'password', PASSWORD_MAX_UTF8_BYTES);
+    if (passwordError) {
+      return NextResponse.json<ErrorPayload>(passwordError, { status: 400 });
     }
 
     return proxyAuthenticatedApiRequest(request, {

@@ -362,6 +362,54 @@ describe('Domain rules integration', () => {
     expect(recreateResponse.body.name).toBe('Unique Workspace');
   });
 
+  it('rejects overlong workspace, room, and invitation strings before persistence', async () => {
+    const admin = await createVerifiedUser('length-guard-admin@example.com');
+    const adminToken = await accessTokenFor(admin.id, admin.email);
+
+    const overlongWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'W'.repeat(121),
+        timezone: 'UTC',
+      });
+
+    expect(overlongWorkspaceResponse.status).toBe(400);
+    expect(overlongWorkspaceResponse.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'name must be at most 120 characters',
+    });
+
+    const workspaceId = await createWorkspace(adminToken, 'Length Guard Workspace');
+
+    const overlongRoomDescriptionResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Focus Room',
+        description: 'D'.repeat(1001),
+      });
+
+    expect(overlongRoomDescriptionResponse.status).toBe(400);
+    expect(overlongRoomDescriptionResponse.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'description must be at most 1000 characters',
+    });
+
+    const overlongInvitationEmailResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'm'.repeat(321),
+      });
+
+    expect(overlongInvitationEmailResponse.status).toBe(400);
+    expect(overlongInvitationEmailResponse.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'email must be at most 320 characters',
+    });
+  });
+
   it('enforces unique room names per workspace only across active rooms and the maximum room count', async () => {
     const admin = await createVerifiedUser('room-admin@example.com');
     const adminToken = await accessTokenFor(admin.id, admin.email);

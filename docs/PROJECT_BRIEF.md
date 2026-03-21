@@ -9,6 +9,13 @@ Registration fields:
 - `email`
 - `password`
 
+Current validation limits:
+
+- `firstName` and `lastName`: max 100 characters
+- `email`: max 320 characters
+- `password`: min 8 characters and max 72 UTF-8 bytes
+- invitation, verification, and password-reset opaque tokens: max 128 characters
+
 After registration:
 
 - the system creates or reactivates the user account
@@ -70,6 +77,12 @@ Workspace attributes:
 - `scheduleStartHour`
 - `scheduleEndHour`
 - `createdByUserId`
+
+Current validation limits:
+
+- workspace `name`: max 120 characters
+- workspace `slug`: max 100 characters
+- workspace `timezone`: max 100 characters
 
 Rules:
 
@@ -140,6 +153,11 @@ Admins can create rooms with:
 - `name`
 - `description`
 
+Current validation limits:
+
+- room `name`: max 120 characters
+- room `description`: max 1000 characters
+
 Rules:
 
 - room names must be unique within the same workspace among active rooms only
@@ -157,6 +175,10 @@ Members can create bookings with:
 - `endAt`
 - `subject`
 - `criticality`
+
+Current validation limits:
+
+- booking `subject`: max 200 characters
 
 Criticality values:
 

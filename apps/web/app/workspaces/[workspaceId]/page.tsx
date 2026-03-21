@@ -1,5 +1,6 @@
 'use client';
 
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { DateTime } from 'luxon';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -35,6 +36,7 @@ import {
   resolveBookingLoadDateRange,
   workspaceTodayDateKey,
 } from '@/lib/time';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { BookingListItem, ErrorPayload, RoomItem, WorkspaceItem } from '@/lib/types';
 import { buildWorkspacePathFromSlug } from '@/lib/workspace-routing';
 import { isBookingListPayload, isRoomListPayload } from '@/lib/workspace-payloads';
@@ -757,6 +759,14 @@ function WorkspaceBookingDashboard({
     (draft: BookingModalDraft, opts: { mode: 'create' | 'edit'; bookingId: string | null }) => {
       if (!draft.subject.trim()) {
         return { code: 'BAD_REQUEST', message: 'Title is required' } satisfies ErrorPayload;
+      }
+      const subjectError = getMaxLengthError(
+        draft.subject.trim(),
+        'subject',
+        STRING_LENGTH_LIMITS.bookingSubject,
+      );
+      if (subjectError) {
+        return subjectError;
       }
       const parsedStart = parseTimeInputStrict(draft.startTimeLocal);
       const parsedEnd = parseTimeInputStrict(draft.endTimeLocal);

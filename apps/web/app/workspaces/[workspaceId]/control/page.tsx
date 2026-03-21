@@ -1,5 +1,6 @@
 'use client';
 
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -21,6 +22,7 @@ import { safeReadJson } from '@/lib/client-http';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
 import { isUserSuspendedError, logoutSuspendedUser } from '@/lib/session-guards';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import {
   readWorkspaceSidebarState,
   writeWorkspaceSidebarState,
@@ -573,9 +575,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   const [isSubmittingWorkspaceSettings, setIsSubmittingWorkspaceSettings] = useState(false);
   const [settingsBanner, setSettingsBanner] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<ErrorPayload | null>(null);
+  const [resourceError, setResourceError] = useState<ErrorPayload | null>(null);
+  const [inviteError, setInviteError] = useState<ErrorPayload | null>(null);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
   const [deleteRoomConfirmation, setDeleteRoomConfirmation] =
     useState<DeleteRoomConfirmationState | null>(null);
+  const [deleteRoomError, setDeleteRoomError] = useState<ErrorPayload | null>(null);
   const [isMemberDirectoryFilterOpen, setIsMemberDirectoryFilterOpen] = useState(false);
   const [openMemberDirectoryActionMenuId, setOpenMemberDirectoryActionMenuId] = useState<
     string | null
@@ -595,6 +600,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
   );
   const [isCancelWorkspaceFormVisible, setIsCancelWorkspaceFormVisible] = useState(false);
   const [isCancellingWorkspace, setIsCancellingWorkspace] = useState(false);
+  const [cancelWorkspaceError, setCancelWorkspaceError] = useState<ErrorPayload | null>(null);
   const [isCancelWorkspaceCredentialsUnlocked, setIsCancelWorkspaceCredentialsUnlocked] =
     useState(false);
   const [cancelWorkspaceForm, setCancelWorkspaceForm] = useState<CancelWorkspaceState>({
@@ -864,13 +870,17 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     );
 
     if (lastSelectedWorkspaceIdRef.current !== selectedWorkspaceId) {
+      setResourceError(null);
+      setInviteError(null);
       setCancelWorkspaceForm((previous) => ({
         ...previous,
         workspaceName: '',
         password: '',
       }));
+      setCancelWorkspaceError(null);
       setIsCancelWorkspaceFormVisible(false);
       setIsCancelWorkspaceCredentialsUnlocked(false);
+      setDeleteRoomError(null);
       setDeleteRoomConfirmation(null);
       setIsDeleteRoomCredentialsUnlocked(false);
       setMemberRoleChange(null);
@@ -939,6 +949,33 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
 
       setSettingsBanner(null);
       setSettingsError(null);
+      const workspaceNameError = getMaxLengthError(
+        workspaceSettingsForm.name.trim(),
+        'name',
+        STRING_LENGTH_LIMITS.workspaceName,
+      );
+      if (workspaceNameError) {
+        setSettingsError(workspaceNameError);
+        return;
+      }
+      const workspaceSlugError = getMaxLengthError(
+        workspaceSettingsForm.slug.trim(),
+        'slug',
+        STRING_LENGTH_LIMITS.workspaceSlug,
+      );
+      if (workspaceSlugError) {
+        setSettingsError(workspaceSlugError);
+        return;
+      }
+      const workspaceTimezoneError = getMaxLengthError(
+        workspaceSettingsForm.timezone,
+        'timezone',
+        STRING_LENGTH_LIMITS.workspaceTimezone,
+      );
+      if (workspaceTimezoneError) {
+        setSettingsError(workspaceTimezoneError);
+        return;
+      }
       setIsSubmittingWorkspaceSettings(true);
       const response = await fetch(`/api/workspaces/${selectedWorkspace.id}`, {
         method: 'PATCH',
@@ -1011,12 +1048,47 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     setSettingsBanner(null);
     setSettingsError(null);
   }, []);
+  const clearResourceError = useCallback(() => {
+    setResourceError(null);
+  }, []);
+  const clearInviteError = useCallback(() => {
+    setInviteError(null);
+  }, []);
+  const clearDeleteRoomError = useCallback(() => {
+    setDeleteRoomError(null);
+  }, []);
+  const clearCancelWorkspaceError = useCallback(() => {
+    setCancelWorkspaceError(null);
+  }, []);
 
   const handleCreateRoom = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!selectedWorkspace || !canManageWorkspaceResources || isSubmittingRoom) {
         return;
+      }
+
+      setResourceError(null);
+      const roomNameError = getMaxLengthError(
+        newRoomName.trim(),
+        'name',
+        STRING_LENGTH_LIMITS.roomName,
+      );
+      if (roomNameError) {
+        setResourceError(roomNameError);
+        return;
+      }
+      const normalizedDescription = newRoomDescription.trim();
+      if (normalizedDescription.length > 0) {
+        const descriptionError = getMaxLengthError(
+          normalizedDescription,
+          'description',
+          STRING_LENGTH_LIMITS.roomDescription,
+        );
+        if (descriptionError) {
+          setResourceError(descriptionError);
+          return;
+        }
       }
 
       setIsSubmittingRoom(true);
@@ -1040,6 +1112,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           await logoutSuspendedUser(router);
           return;
         }
+        setResourceError(normalized);
         setIsSubmittingRoom(false);
         return;
       }
@@ -1066,6 +1139,29 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         return;
       }
 
+      setResourceError(null);
+      const roomNameError = getMaxLengthError(
+        roomEditForm.name.trim(),
+        'name',
+        STRING_LENGTH_LIMITS.roomName,
+      );
+      if (roomNameError) {
+        setResourceError(roomNameError);
+        return;
+      }
+      const normalizedDescription = roomEditForm.description.trim();
+      if (normalizedDescription.length > 0) {
+        const descriptionError = getMaxLengthError(
+          normalizedDescription,
+          'description',
+          STRING_LENGTH_LIMITS.roomDescription,
+        );
+        if (descriptionError) {
+          setResourceError(descriptionError);
+          return;
+        }
+      }
+
       setIsSubmittingRoom(true);
       const payload =
         roomEditForm.description.trim().length > 0
@@ -1079,9 +1175,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         },
         body: JSON.stringify(payload),
       });
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        setResourceError(normalizeErrorPayload(responsePayload, response.status));
         setIsSubmittingRoom(false);
         return;
       }
@@ -1105,6 +1202,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       }
 
       setIsDeleteRoomCredentialsUnlocked(false);
+      setDeleteRoomError(null);
       setDeleteRoomConfirmation({
         roomId: room.id,
         roomName: room.name,
@@ -1128,6 +1226,35 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         return;
       }
 
+      setDeleteRoomError(null);
+      const roomNameError = getMaxLengthError(
+        deleteRoomConfirmation.confirmRoomName.trim(),
+        'roomName',
+        STRING_LENGTH_LIMITS.roomName,
+      );
+      if (roomNameError) {
+        setDeleteRoomError(roomNameError);
+        return;
+      }
+      const emailError = getMaxLengthError(
+        deleteRoomConfirmation.email.trim(),
+        'email',
+        STRING_LENGTH_LIMITS.userEmail,
+      );
+      if (emailError) {
+        setDeleteRoomError(emailError);
+        return;
+      }
+      const passwordError = getMaxUtf8BytesError(
+        deleteRoomConfirmation.password,
+        'password',
+        PASSWORD_MAX_UTF8_BYTES,
+      );
+      if (passwordError) {
+        setDeleteRoomError(passwordError);
+        return;
+      }
+
       setDeletingRoomId(deleteRoomConfirmation.roomId);
       const response = await fetch(
         `/api/workspaces/${selectedWorkspace.id}/rooms/${deleteRoomConfirmation.roomId}`,
@@ -1143,14 +1270,16 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           }),
         },
       );
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        setDeleteRoomError(normalizeErrorPayload(responsePayload, response.status));
         setDeletingRoomId(null);
         return;
       }
 
       setIsDeleteRoomCredentialsUnlocked(false);
+      setDeleteRoomError(null);
       setDeleteRoomConfirmation(null);
       await loadAdminData();
       setDeletingRoomId(null);
@@ -1168,6 +1297,17 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!selectedWorkspace || !canManageWorkspaceResources || isSubmittingInvite) {
+        return;
+      }
+
+      setInviteError(null);
+      const inviteEmailError = getMaxLengthError(
+        inviteEmail.trim(),
+        'email',
+        STRING_LENGTH_LIMITS.userEmail,
+      );
+      if (inviteEmailError) {
+        setInviteError(inviteEmailError);
         return;
       }
 
@@ -1189,6 +1329,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           await logoutSuspendedUser(router);
           return;
         }
+        setInviteError(normalized);
         setIsSubmittingInvite(false);
         return;
       }
@@ -1376,6 +1517,35 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         return;
       }
 
+      setCancelWorkspaceError(null);
+      const workspaceNameError = getMaxLengthError(
+        cancelWorkspaceForm.workspaceName.trim(),
+        'workspaceName',
+        STRING_LENGTH_LIMITS.workspaceName,
+      );
+      if (workspaceNameError) {
+        setCancelWorkspaceError(workspaceNameError);
+        return;
+      }
+      const emailError = getMaxLengthError(
+        cancelWorkspaceForm.email.trim(),
+        'email',
+        STRING_LENGTH_LIMITS.userEmail,
+      );
+      if (emailError) {
+        setCancelWorkspaceError(emailError);
+        return;
+      }
+      const passwordError = getMaxUtf8BytesError(
+        cancelWorkspaceForm.password,
+        'password',
+        PASSWORD_MAX_UTF8_BYTES,
+      );
+      if (passwordError) {
+        setCancelWorkspaceError(passwordError);
+        return;
+      }
+
       setIsCancellingWorkspace(true);
       const response = await fetch(`/api/workspaces/${selectedWorkspace.id}/cancel`, {
         method: 'POST',
@@ -1384,13 +1554,15 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
         },
         body: JSON.stringify(cancelWorkspaceForm),
       });
-      await safeReadJson(response);
+      const responsePayload = await safeReadJson(response);
 
       if (!response.ok) {
+        setCancelWorkspaceError(normalizeErrorPayload(responsePayload, response.status));
         setIsCancellingWorkspace(false);
         return;
       }
 
+      setCancelWorkspaceError(null);
       await loadWorkspaces();
       router.replace('/dashboard');
       router.refresh();
@@ -1410,11 +1582,13 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
       email: '',
       password: '',
     });
+    setCancelWorkspaceError(null);
     setIsCancelWorkspaceCredentialsUnlocked(false);
     setIsCancelWorkspaceFormVisible(true);
   }, []);
   const closeCancelWorkspaceDialog = useCallback(() => {
     setIsCancelWorkspaceFormVisible(false);
+    setCancelWorkspaceError(null);
     setIsCancelWorkspaceCredentialsUnlocked(false);
   }, []);
 
@@ -1561,6 +1735,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     <input
                       required
                       disabled={!canEditWorkspaceSettings}
+                      maxLength={STRING_LENGTH_LIMITS.workspaceName}
                       value={workspaceSettingsForm.name}
                       onChange={(event) => {
                         clearSettingsFeedback();
@@ -1590,6 +1765,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     <input
                       required
                       disabled={!canEditWorkspaceSettings}
+                      maxLength={STRING_LENGTH_LIMITS.workspaceSlug}
                       value={workspaceSettingsForm.slug}
                       onChange={(event) => {
                         clearSettingsFeedback();
@@ -1744,14 +1920,22 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
           <input
             required
             placeholder="Room name"
+            maxLength={STRING_LENGTH_LIMITS.roomName}
             value={newRoomName}
-            onChange={(event) => setNewRoomName(event.target.value)}
+            onChange={(event) => {
+              clearResourceError();
+              setNewRoomName(event.target.value);
+            }}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <input
             placeholder="Description (optional)"
+            maxLength={STRING_LENGTH_LIMITS.roomDescription}
             value={newRoomDescription}
-            onChange={(event) => setNewRoomDescription(event.target.value)}
+            onChange={(event) => {
+              clearResourceError();
+              setNewRoomDescription(event.target.value);
+            }}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <button
@@ -1762,6 +1946,11 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             Create Room
           </button>
         </form>
+        {resourceError ? (
+          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {getErrorDisplayMessage(resourceError)}
+          </p>
+        ) : null}
         {hasLoadedAdminData && rooms.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No rooms created yet.</p>
         ) : null}
@@ -1816,13 +2005,15 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                           filters.
                         </p>
                         <input
+                          maxLength={STRING_LENGTH_LIMITS.roomName}
                           value={roomEditForm.name}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            clearResourceError();
                             setRoomEditForm((previous) => ({
                               ...previous,
                               name: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                         />
                       </label>
@@ -1834,13 +2025,15 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                           Optional notes such as capacity, equipment, or room usage.
                         </p>
                         <input
+                          maxLength={STRING_LENGTH_LIMITS.roomDescription}
                           value={roomEditForm.description}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            clearResourceError();
                             setRoomEditForm((previous) => ({
                               ...previous,
                               description: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                         />
                       </label>
@@ -1896,8 +2089,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
               required
               type="email"
               placeholder="Invite by email"
+              maxLength={STRING_LENGTH_LIMITS.userEmail}
               value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
+              onChange={(event) => {
+                clearInviteError();
+                setInviteEmail(event.target.value);
+              }}
               className="min-w-[240px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <button
@@ -1908,6 +2105,11 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
               Invite
             </button>
           </form>
+          {inviteError ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {getErrorDisplayMessage(inviteError)}
+            </p>
+          ) : null}
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-4">
@@ -2369,13 +2571,15 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     required
                     name="cancel-workspace-confirm-name"
                     autoComplete="off"
+                    maxLength={STRING_LENGTH_LIMITS.workspaceName}
                     value={cancelWorkspaceForm.workspaceName}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearCancelWorkspaceError();
                       setCancelWorkspaceForm((previous) => ({
                         ...previous,
                         workspaceName: event.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
@@ -2393,15 +2597,17 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     spellCheck={false}
                     name="cancel-workspace-confirm-contact"
                     autoComplete="new-password"
+                    maxLength={STRING_LENGTH_LIMITS.userEmail}
                     readOnly={!isCancelWorkspaceCredentialsUnlocked}
                     onFocus={() => setIsCancelWorkspaceCredentialsUnlocked(true)}
                     value={cancelWorkspaceForm.email}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearCancelWorkspaceError();
                       setCancelWorkspaceForm((previous) => ({
                         ...previous,
                         email: event.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
@@ -2416,18 +2622,25 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     type="password"
                     name="cancel-workspace-confirm-secret"
                     autoComplete="new-password"
+                    maxLength={PASSWORD_MAX_UTF8_BYTES}
                     readOnly={!isCancelWorkspaceCredentialsUnlocked}
                     onFocus={() => setIsCancelWorkspaceCredentialsUnlocked(true)}
                     value={cancelWorkspaceForm.password}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearCancelWorkspaceError();
                       setCancelWorkspaceForm((previous) => ({
                         ...previous,
                         password: event.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
+                {cancelWorkspaceError ? (
+                  <p className="rounded-lg border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
+                    {getErrorDisplayMessage(cancelWorkspaceError)}
+                  </p>
+                ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -2479,6 +2692,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
             labelledBy="delete-room-dialog-title"
             dismissLabel="Close room cancellation dialog"
             onDismiss={() => {
+              setDeleteRoomError(null);
               setDeleteRoomConfirmation(null);
               setIsDeleteRoomCredentialsUnlocked(false);
             }}
@@ -2497,6 +2711,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                 <button
                   type="button"
                   onClick={() => {
+                    setDeleteRoomError(null);
                     setDeleteRoomConfirmation(null);
                     setIsDeleteRoomCredentialsUnlocked(false);
                   }}
@@ -2535,8 +2750,10 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     required
                     name="delete-room-confirm-name"
                     autoComplete="off"
+                    maxLength={STRING_LENGTH_LIMITS.roomName}
                     value={deleteRoomConfirmation.confirmRoomName}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearDeleteRoomError();
                       setDeleteRoomConfirmation((previous) =>
                         previous
                           ? {
@@ -2544,8 +2761,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                               confirmRoomName: event.target.value,
                             }
                           : previous,
-                      )
-                    }
+                      );
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
@@ -2563,10 +2780,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     spellCheck={false}
                     name="delete-room-confirm-contact"
                     autoComplete="new-password"
+                    maxLength={STRING_LENGTH_LIMITS.userEmail}
                     readOnly={!isDeleteRoomCredentialsUnlocked}
                     onFocus={() => setIsDeleteRoomCredentialsUnlocked(true)}
                     value={deleteRoomConfirmation.email}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearDeleteRoomError();
                       setDeleteRoomConfirmation((previous) =>
                         previous
                           ? {
@@ -2574,8 +2793,8 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                               email: event.target.value,
                             }
                           : previous,
-                      )
-                    }
+                      );
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
@@ -2590,10 +2809,12 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                     type="password"
                     name="delete-room-confirm-secret"
                     autoComplete="new-password"
+                    maxLength={PASSWORD_MAX_UTF8_BYTES}
                     readOnly={!isDeleteRoomCredentialsUnlocked}
                     onFocus={() => setIsDeleteRoomCredentialsUnlocked(true)}
                     value={deleteRoomConfirmation.password}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearDeleteRoomError();
                       setDeleteRoomConfirmation((previous) =>
                         previous
                           ? {
@@ -2601,11 +2822,16 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                               password: event.target.value,
                             }
                           : previous,
-                      )
-                    }
+                      );
+                    }}
                     className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                   />
                 </label>
+                {deleteRoomError ? (
+                  <p className="rounded-lg border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
+                    {getErrorDisplayMessage(deleteRoomError)}
+                  </p>
+                ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -2620,6 +2846,7 @@ function WorkspaceAdminContent({ context }: { context: WorkspaceShellRenderConte
                   <button
                     type="button"
                     onClick={() => {
+                      setDeleteRoomError(null);
                       setDeleteRoomConfirmation(null);
                       setIsDeleteRoomCredentialsUnlocked(false);
                     }}

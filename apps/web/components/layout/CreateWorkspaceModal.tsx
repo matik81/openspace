@@ -1,5 +1,6 @@
 'use client';
 
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { FormEvent } from 'react';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import { IANA_TIMEZONES } from '@/lib/iana-timezones';
@@ -86,6 +87,7 @@ export function CreateWorkspaceModal({
             <input
               required
               autoFocus
+              maxLength={STRING_LENGTH_LIMITS.workspaceName}
               value={form.name}
               onChange={(event) => {
                 const nextName = event.target.value;
@@ -106,6 +108,7 @@ export function CreateWorkspaceModal({
             <span className="mb-1 block text-sm font-medium text-slate-700">Web Address</span>
             <input
               required
+              maxLength={STRING_LENGTH_LIMITS.workspaceSlug}
               value={form.slug}
               onChange={(event) =>
                 onChange({

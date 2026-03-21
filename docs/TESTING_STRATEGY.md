@@ -34,6 +34,7 @@ The API integration suite currently covers:
 - workspace ownership, delegated admin read-only settings visibility, owner-only settings editing and cancellation, explicit admin promotion and demotion, and delegated admin resource management
 - workspace leave flow with owner restriction plus future booking cancellation for non-owner leavers
 - account deletion flow with logical cancellation propagation for owned workspaces and membership cleanup for non-owned workspaces
+- persisted string boundary validation for auth, workspace, room, invitation, and booking inputs
 - booking creation
 - booking overlap rejection
 - user double-booking rejection inside a workspace
@@ -56,6 +57,7 @@ The web test suite currently includes:
 - Playwright `e2e-fullstack` suites that boot the real API and web apps against PostgreSQL
 - public auth coverage includes both standard registration and invitation registration flows
 - workspace admin coverage exercises the owner and admin split for read-only settings visibility, settings editing, cancellation, room management, invitations, member removal, and leave-workspace behavior
+- frontend validation coverage includes `maxLength` restrictions plus the UTF-8 byte guard for passwords
 
 Current note:
 

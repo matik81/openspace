@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyAuthenticatedApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -43,6 +45,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
+    const nameError = getMaxLengthError(name, 'name', STRING_LENGTH_LIMITS.workspaceName);
+    if (nameError) {
+      return NextResponse.json<ErrorPayload>(nameError, { status: 400 });
+    }
     let timezone: string | undefined;
     let scheduleStartHour: number | undefined;
     let scheduleEndHour: number | undefined;
@@ -59,6 +65,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
 
+      const slugError = getMaxLengthError(candidate, 'slug', STRING_LENGTH_LIMITS.workspaceSlug);
+      if (slugError) {
+        return NextResponse.json<ErrorPayload>(slugError, { status: 400 });
+      }
+
       slug = candidate;
     }
     if (Object.prototype.hasOwnProperty.call(body, 'timezone')) {
@@ -71,6 +82,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           },
           { status: 400 },
         );
+      }
+
+      const timezoneError = getMaxLengthError(
+        candidate,
+        'timezone',
+        STRING_LENGTH_LIMITS.workspaceTimezone,
+      );
+      if (timezoneError) {
+        return NextResponse.json<ErrorPayload>(timezoneError, { status: 400 });
       }
 
       timezone = candidate;

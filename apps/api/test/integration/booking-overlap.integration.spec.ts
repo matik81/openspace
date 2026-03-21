@@ -202,6 +202,48 @@ describe('Booking overlap integration', () => {
     });
   });
 
+  it('rejects booking subjects longer than 200 characters', async () => {
+    const adminEmail = 'booking-length-admin@example.com';
+    await registerAndVerify(adminEmail);
+    const adminToken = await login(adminEmail);
+
+    const createWorkspaceResponse = await request(app.getHttpServer())
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Booking Length Rules',
+      });
+
+    expect(createWorkspaceResponse.status).toBe(201);
+    const workspaceId = createWorkspaceResponse.body.id as string;
+
+    const createRoomResponse = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/rooms`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Length Room',
+      });
+
+    expect(createRoomResponse.status).toBe(201);
+    const roomId = createRoomResponse.body.id as string;
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/workspaces/${workspaceId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roomId,
+        startAt: futureDateIso(8, 10),
+        endAt: futureDateIso(8, 11),
+        subject: 'S'.repeat(201),
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'subject must be at most 200 characters',
+    });
+  });
+
   it('rejects overlapping bookings by the same user across different rooms', async () => {
     const adminEmail = 'booking-user-overlap@example.com';
     await registerAndVerify(adminEmail);

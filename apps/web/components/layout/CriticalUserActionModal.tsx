@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { FormEvent } from 'react';
 import { getErrorDisplayMessage } from '@/lib/error-display';
 import type { ErrorPayload } from '@/lib/types';
@@ -81,6 +85,7 @@ export function CriticalUserActionModal({
             <input
               required
               type="email"
+              maxLength={STRING_LENGTH_LIMITS.userEmail}
               autoCapitalize="none"
               spellCheck={false}
               value={form.email}
@@ -94,6 +99,7 @@ export function CriticalUserActionModal({
             <input
               required
               type="password"
+              maxLength={PASSWORD_MAX_UTF8_BYTES}
               value={form.password}
               onChange={(event) => onChange({ ...form, password: event.target.value })}
               className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"

@@ -1,3 +1,4 @@
+import { STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -284,6 +285,17 @@ describe('WorkspaceShell', () => {
     await user.click(screen.getByRole('menuitem', { name: /New workspace/i }));
 
     expect(await screen.findByRole('heading', { name: 'Create Workspace' })).toBeVisible();
+    expect(screen.getByLabelText('Display Name')).toHaveAttribute(
+      'maxlength',
+      String(STRING_LENGTH_LIMITS.workspaceName),
+    );
+    const webAddressInput = screen.getByText('Web Address').closest('label')?.querySelector('input');
+
+    expect(webAddressInput).not.toBeNull();
+    expect(webAddressInput).toHaveAttribute(
+      'maxlength',
+      String(STRING_LENGTH_LIMITS.workspaceSlug),
+    );
   });
 
   it('switches workspaces from the header dropdown', async () => {

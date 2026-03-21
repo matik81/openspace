@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  OPAQUE_TOKEN_MAX_LENGTH,
+  PASSWORD_MAX_UTF8_BYTES,
+  STRING_LENGTH_LIMITS,
+} from '@openspace/shared';
 import { getTrimmedString, isRecord } from '@/lib/api-contract';
 import { proxyApiRequest } from '@/lib/backend-api';
+import { getMaxLengthError, getMaxUtf8BytesError } from '@/lib/string-field-validation';
 import type { ErrorPayload } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -27,6 +33,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
         { status: 400 },
       );
+    }
+
+    const firstNameError = getMaxLengthError(
+      firstName,
+      'firstName',
+      STRING_LENGTH_LIMITS.userFirstName,
+    );
+    if (firstNameError) {
+      return NextResponse.json<ErrorPayload>(firstNameError, { status: 400 });
+    }
+
+    const lastNameError = getMaxLengthError(
+      lastName,
+      'lastName',
+      STRING_LENGTH_LIMITS.userLastName,
+    );
+    if (lastNameError) {
+      return NextResponse.json<ErrorPayload>(lastNameError, { status: 400 });
+    }
+
+    const passwordError = getMaxUtf8BytesError(password, 'password', PASSWORD_MAX_UTF8_BYTES);
+    if (passwordError) {
+      return NextResponse.json<ErrorPayload>(passwordError, { status: 400 });
+    }
+
+    if (email) {
+      const emailError = getMaxLengthError(email, 'email', STRING_LENGTH_LIMITS.userEmail);
+      if (emailError) {
+        return NextResponse.json<ErrorPayload>(emailError, { status: 400 });
+      }
+    }
+
+    if (invitationToken) {
+      const invitationTokenError = getMaxLengthError(
+        invitationToken,
+        'invitationToken',
+        OPAQUE_TOKEN_MAX_LENGTH,
+      );
+      if (invitationTokenError) {
+        return NextResponse.json<ErrorPayload>(invitationTokenError, { status: 400 });
+      }
     }
 
     const forwardedFor = request.headers.get('x-forwarded-for');

@@ -19,10 +19,15 @@ import {
   WorkspaceRole,
   WorkspaceStatus,
 } from '../generated/prisma';
+import { PASSWORD_MAX_UTF8_BYTES, STRING_LENGTH_LIMITS } from '@openspace/shared';
 import { compare } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { BackendPolicyService } from '../common/backend-policy.service';
 import { OperationLimitsService } from '../common/operation-limits.service';
+import {
+  assertMaxUtf8ByteLength,
+  requireTrimmedString,
+} from '../common/string-field-validation';
 import { isBookingWithinAllowedHours, isSingleLocalDay } from '../common/workspace-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { EMAIL_PROVIDER, EmailProvider } from '../auth/email/email-provider.interface';
@@ -75,7 +80,7 @@ export class WorkspacesService {
     );
     await this.assertUserWorkspaceCapacity(user.id);
 
-    const name = this.requireString(dto.name, 'name');
+    const name = this.requireString(dto.name, 'name', STRING_LENGTH_LIMITS.workspaceName);
     const slug =
       dto.slug === undefined
         ? this.buildWorkspaceSlugCandidate(name)
@@ -343,7 +348,10 @@ export class WorkspacesService {
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const current = await this.assertWorkspaceOwner(normalizedWorkspaceId, user);
 
-    const name = dto.name !== undefined ? this.requireString(dto.name, 'name') : undefined;
+    const name =
+      dto.name !== undefined
+        ? this.requireString(dto.name, 'name', STRING_LENGTH_LIMITS.workspaceName)
+        : undefined;
     const slug = dto.slug !== undefined ? this.requireWorkspaceSlug(dto.slug) : undefined;
     const timezone =
       dto.timezone !== undefined ? this.requireTimezone(dto.timezone) : current.timezone;
@@ -452,9 +460,13 @@ export class WorkspacesService {
       this.requireUuid(workspaceId, 'workspaceId'),
       user,
     );
-    const workspaceName = this.requireString(dto.workspaceName, 'workspaceName');
+    const workspaceName = this.requireString(
+      dto.workspaceName,
+      'workspaceName',
+      STRING_LENGTH_LIMITS.workspaceName,
+    );
     const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const password = this.requirePasswordInput(dto.password);
 
     if (workspace.name !== workspaceName || user.email !== email) {
       this.throwWorkspaceCancelConfirmationFailed();
@@ -703,7 +715,7 @@ export class WorkspacesService {
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const normalizedMemberUserId = this.requireUuid(memberUserId, 'memberUserId');
     const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const password = this.requirePasswordInput(dto.password);
 
     await this.assertWorkspaceAdmin(normalizedWorkspaceId, user);
 
@@ -960,7 +972,7 @@ export class WorkspacesService {
     const user = await this.requireVerifiedUser(authUser.userId);
     const normalizedWorkspaceId = this.requireUuid(workspaceId, 'workspaceId');
     const email = this.normalizeEmail(dto.email);
-    const password = this.requireString(dto.password, 'password');
+    const password = this.requirePasswordInput(dto.password);
     const workspace = await this.findActiveWorkspaceOrThrow(normalizedWorkspaceId);
     const membership = await this.prismaService.workspaceMember.findFirst({
       where: {
@@ -1373,15 +1385,16 @@ export class WorkspacesService {
     });
   }
 
-  private requireString(value: string | undefined | null, fieldName: string): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({ code: 'BAD_REQUEST', message: `${fieldName} is required` });
-    }
-    return value.trim();
+  private requireString(
+    value: string | undefined | null,
+    fieldName: string,
+    maxLength?: number,
+  ): string {
+    return requireTrimmedString(value, fieldName, { maxLength });
   }
 
   private requireWorkspaceSlug(value: string | undefined | null): string {
-    const slug = this.requireString(value, 'slug').toLowerCase();
+    const slug = this.requireString(value, 'slug', STRING_LENGTH_LIMITS.workspaceSlug).toLowerCase();
     if (!WorkspacesService.WORKSPACE_SLUG_PATTERN.test(slug)) {
       throw new BadRequestException({
         code: 'BAD_REQUEST',
@@ -1406,11 +1419,11 @@ export class WorkspacesService {
   }
 
   private normalizeEmail(value: string | undefined | null): string {
-    return this.requireString(value, 'email').toLowerCase();
+    return this.requireString(value, 'email', STRING_LENGTH_LIMITS.userEmail).toLowerCase();
   }
 
   private requireTimezone(value: string): string {
-    const timezone = this.requireString(value, 'timezone');
+    const timezone = this.requireString(value, 'timezone', STRING_LENGTH_LIMITS.workspaceTimezone);
     try {
       Intl.DateTimeFormat(undefined, { timeZone: timezone });
       return timezone;
@@ -1482,6 +1495,12 @@ export class WorkspacesService {
 
   private generateOpaqueToken(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  private requirePasswordInput(value: string | undefined | null, fieldName = 'password'): string {
+    const password = this.requireString(value, fieldName);
+    assertMaxUtf8ByteLength(password, fieldName, PASSWORD_MAX_UTF8_BYTES);
+    return password;
   }
 
   private hashToken(value: string): string {
